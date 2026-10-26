@@ -3,7 +3,20 @@
 button:hover{border-color:#b595fa;background:#342647}button:disabled{opacity:.45;cursor:default}select{color:#f2eafa;background:#231a34;border:1px solid #554566;border-radius:9px;padding:8px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:54px;padding:7px 16px;background:#160f26;border-bottom:1px solid #3c2f4d}
 .brand{display:flex;align-items:baseline;gap:9px}.brand strong{font-size:17px;letter-spacing:.5px}.brand small{color:#ae9cbf;font-size:11px}
-.toolbar{display:flex;align-items:center;gap:7px;min-width:0}.toolbar select{max-width:170px}
+.toolbar{display:flex;align-items:center;gap:7px;min-width:0}.toolbar select{max-width:290px}
+
+/* Save game selector is always visible; story selection only appears on New game. */
+.toolbar-field{display:flex;align-items:center;gap:8px;min-width:0;color:#b9a7c8;font-size:12px}
+.toolbar-field select{width:clamp(150px,24vw,290px);max-width:290px}
+.new-game-menu{position:relative;flex-shrink:0}
+.new-game-menu>summary{list-style:none;user-select:none;cursor:pointer;border:1px solid #51425e;color:#eee9f7;background:#272039;border-radius:9px;padding:9px 13px}
+.new-game-menu>summary::-webkit-details-marker{display:none}
+.new-game-menu>summary:hover,.new-game-menu[open]>summary{border-color:#b595fa;background:#342647}
+.new-game-popover{position:absolute;right:0;top:calc(100% + 9px);z-index:30;background:#20172c;border:1px solid #675578;border-radius:12px;min-width:258px;padding:14px;box-shadow:0 16px 44px #0009;display:flex;flex-direction:column;gap:10px}
+.new-game-popover label{font-size:12px;color:#c8b6d9}
+.new-game-popover select{width:100%;max-width:none}
+.new-game-popover button{background:#8852c3;border-color:#a97ddb;font-weight:600}
+
 .layout{display:grid;grid-template-columns:minmax(260px,40%) minmax(420px,60%);height:calc(100% - 54px);min-height:0}
 .scene-panel{position:relative;overflow:hidden;background:radial-gradient(ellipse at 30% 22%,#484076 0%,#241932 54%,#100d1c 100%);min-height:0}
 .background{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.94}
@@ -35,4 +48,4 @@ button:hover{border-color:#b595fa;background:#342647}button:disabled{opacity:.45
 #style{font-size:12px;padding:5px 7px}.primary{background:#8852c3;border:1px solid #a97ddb;font-weight:700}.primary:hover{background:#a76adc}
 @media(max-width:760px){.topbar{height:auto;flex-wrap:wrap}.toolbar{width:100%;justify-content:space-between}.layout{display:flex;flex-direction:column;height:calc(100% - 94px)}
 .scene-panel{height:36%;min-height:170px;flex-shrink:0}.dialog-panel{flex:1;min-height:300px}.dialog-top{height:48px}.transcript{min-height:120px}
-.scene-overlay{padding:8px}.sprites{height:93%}.message{font-size:13px}.toolbar select{max-width:140px}}
+.scene-overlay{padding:8px}.sprites{height:93%}.message{font-size:13px}.toolbar-field select{max-width:150px;min-width:80px;width:100%}.toolbar-field span{display:none}.new-game-popover{right:-34px;min-width:230px}}
