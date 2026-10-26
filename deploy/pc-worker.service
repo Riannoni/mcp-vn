@@ -1,0 +1,15 @@
+[Unit]
+Description=mcp-vn local ComfyUI pull worker
+Wants=network-online.target mcp-vn-comfy.service
+After=network-online.target mcp-vn-comfy.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/mcp-vn/worker.env
+ExecStart=/usr/bin/python3 -u %h/.local/share/mcp-vn/worker.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
