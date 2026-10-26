@@ -32,7 +32,7 @@ test("queue and finish local image job",async()=>{
  const png=Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082","hex");
  const done=await jobs.completeJob(j.id,png,"image/png","https://example.org/vn");
  assert.equal(done.status,"done");
- assert.match((await store.gameGet(g.id)).scene.background_url,/assets\/.*\.png\\?sig=[0-9a-f]+$/);
+ assert.match((await store.gameGet(g.id)).scene.background_url,/assets\/.*\.png\?sig=[0-9a-f]+$/);
 });
 test("story import forbids minor characters and missing reuse rights",async()=>{
  await assert.rejects(()=>store.importStory({title:"x",opening:"x",author:"x",source:"original",rights_confirmed:true,characters:[{age:15}]}));
