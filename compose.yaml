@@ -1,0 +1,22 @@
+services:
+  game:
+    build: .
+    container_name: mcp-vn
+    restart: unless-stopped
+    environment:
+      VN_HOST: "0.0.0.0"
+      VN_PORT: "3100"
+      VN_DATA_DIR: "/data"
+      VN_PUBLIC_ORIGIN: "${VN_PUBLIC_ORIGIN}"
+      VN_WORKER_TOKEN: "${VN_WORKER_TOKEN}"
+      VN_MCP_TOKEN: "${VN_MCP_TOKEN}"
+    ports:
+      - "192.168.50.29:3100:3100"
+    volumes:
+      - "./data:/data:rw"
+    security_opt:
+      - "no-new-privileges:true"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1g
