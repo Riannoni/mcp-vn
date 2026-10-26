@@ -1,0 +1,9 @@
+# ComfyUI ROCm 7.2 with official PyTorch Radeon gfx1201 wheels.
+# AMD's prebuilt ComfyUI image is optimized for Instinct gfx942/gfx950.
+FROM docker.io/rocm/comfyui:comfyui-0.18.2.amd0_rocm7.2.0_ubuntu24.04
+
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade \
+    --index-url https://download.pytorch.org/whl/rocm7.2 \
+    "torch==2.11.0+rocm7.2" \
+    "torchvision==0.26.0+rocm7.2" \
+    "torchaudio==2.11.0+rocm7.2"
