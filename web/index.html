@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mcp-vn — визуальная новелла</title></head>
+<body><div id="root">
+<header class="topbar">
+ <div class="brand"><strong>mcp-vn</strong><small>Живые истории</small></div>
+ <div class="toolbar">
+  <select id="games" aria-label="Сохранения"></select>
+  <select id="stories" aria-label="Истории"></select>
+  <button id="new-game" title="Новая игра">Новая игра</button>
+  <button id="fullscreen" title="Полный экран">⛶</button>
+ </div>
+</header>
+<main class="layout">
+ <section class="scene-panel">
+  <div id="background" class="background"></div>
+  <div id="sprites" class="sprites"></div>
+  <div class="scene-overlay">
+   <div id="location" class="location">Локация</div>
+   <div class="scene-foot">
+     <span id="hero" class="hero"></span>
+     <button id="art" class="scene-button" title="Создать изображение сцены">✦ Арт</button>
+     <button id="video" class="scene-button" title="Короткая анимация">▶ Видео</button>
+   </div>
+  </div>
+  <video id="scene-video" muted loop playsinline controls hidden></video>
+ </section>
+ <section class="dialog-panel">
+  <div class="dialog-top">
+   <div><div id="title" class="title">История</div><small id="turn-count"></small></div>
+   <div class="top-actions">
+     <label title="Показывать варианты действий"><input type="checkbox" id="show-choices"> Подсказки</label>
+     <button id="undo" title="Отменить последний ход">↶</button>
+   </div>
+  </div>
+  <div id="transcript" class="transcript" role="log" aria-live="polite"></div>
+  <div id="jobs" class="jobs"></div>
+  <div id="choices" class="choices"></div>
+  <div class="compose">
+   <textarea id="action" rows="3" placeholder="Напиши, что ты говоришь или делаешь..."></textarea>
+   <div class="compose-foot">
+     <div><span id="status">Подключение…</span><select id="style" aria-label="Стиль изображений">
+       <option value="semireal">2.5D</option><option value="anime">Аниме</option>
+       <option value="realistic">Реализм</option><option value="poster">Постер</option>
+     </select></div>
+     <button id="send" class="primary">Отправить ↵</button>
+   </div>
+  </div>
+ </section>
+</main>
+</div><script type="module" src="/game.js"></script></body></html>
