@@ -11,28 +11,39 @@ import * as jobs from "./src/jobs.mjs";
 const PORT=Number(process.env.VN_PORT||3100),HOST=process.env.VN_HOST||"127.0.0.1";
 const WORKER_KEY=process.env.VN_WORKER_TOKEN||"",MCP_KEY=process.env.VN_MCP_TOKEN||"";
 const PUBLIC=(process.env.VN_PUBLIC_ORIGIN||"https://xavoks.jo3.org/vn").replace(/\/$/,"");
-const UI="ui://mcp-vn/visual-novel-v2.html";
+// UI resource URIs are cache keys for the ChatGPT MCP Apps host.
+const UI="ui://mcp-vn/visual-novel-v3.html";
+const LEGACY_UI=["ui://mcp-vn/visual-novel.html","ui://mcp-vn/visual-novel-v2.html"];
 const UI_META={ui:{csp:{resourceDomains:[new URL(PUBLIC).origin],connectDomains:[]},prefersBorder:false}};
+const TOOL_UI_META={ui:{resourceUri:UI},"openai/outputTemplate":UI};
 if(HOST!=="127.0.0.1"&&(!WORKER_KEY||!MCP_KEY))throw Error("Both VN_WORKER_TOKEN and VN_MCP_TOKEN required on LAN");
 const result=(key,value)=>({content:[{type:"text",text:JSON.stringify({[key]:value})}],structuredContent:{[key]:value}});
 const safe=fn=>async a=>{try{return await fn(a||{})}catch(e){return{isError:true,content:[{type:"text",text:e.message||"Unknown error"}]}}};
 const Z=z.string();
 function mcpServer(){
- const m=new McpServer({name:"mcp-vn",version:"0.2.0"});
- registerAppResource(m,"visual-novel",UI,{mimeType:RESOURCE_MIME_TYPE,_meta:UI_META},
-  async()=>({contents:[{uri:UI,mimeType:RESOURCE_MIME_TYPE,
-    text:await fs.readFile("./dist/index.html","utf8"),
-    _meta:UI_META}]})
- );
- registerAppTool(m,"open_game",{
- title:"Visual novel",description:"Open the interactive visual novel with scrollback and free-text actions.",
- inputSchema:{game_id:Z.optional()},_meta:{ui:{resourceUri:UI}}},
- safe(async({game_id})=>{
+ const m=new McpServer({name:"mcp-vn",version:"0.3.0"});
+ // Serve current and legacy cache keys so pre-refresh snapshots never break.
+ for(const [index,uri] of [...LEGACY_UI,UI].entries()){
+   registerAppResource(m,"visual-novel-"+index,uri,{mimeType:RESOURCE_MIME_TYPE,_meta:UI_META},
+    async()=>({contents:[{uri,mimeType:RESOURCE_MIME_TYPE,
+      text:await fs.readFile("./dist/index.html","utf8"),_meta:UI_META}]})
+   );
+ }
+ const openSavedGame=safe(async({game_id})=>{
    if(game_id)return result("game",await games.gameGet(game_id));
    const sessions=await games.list("games");
    const latest=sessions.sort((a,b)=>(b.updated_at||"").localeCompare(a.updated_at||""))[0];
-   return result("game",latest?await games.gameGet(latest.id):await games.gameStart())
- }));
+   return result("game",latest?await games.gameGet(latest.id):await games.gameStart());
+ });
+ registerAppTool(m,"open_game",{
+   title:"Visual novel",description:"Open the latest v3 visual novel with art, transcript and free-text input.",
+   inputSchema:{game_id:Z.optional()},_meta:TOOL_UI_META
+ },openSavedGame);
+ // Deliberately new tool name to invalidate cached tool/UI metadata after Refresh.
+ registerAppTool(m,"open_game_latest",{
+   title:"Visual novel — latest UI",description:"Open the current visual novel v3 UI. Use this after an interface update or when a previous game window stays cached.",
+   inputSchema:{game_id:Z.optional()},_meta:TOOL_UI_META
+ },openSavedGame);
  m.tool("list_stories","List story packs ready to play.",{},safe(async()=>result("stories",await games.list("stories"))));
  m.tool("list_games","List saved game sessions.",{},safe(async()=>result("games",await games.list("games"))));
  m.tool("start_game","Start another game (previous saves stay intact).",
@@ -78,7 +89,7 @@ function json(res,code,x){res.writeHead(code,{"Content-Type":"application/json; 
 const service=http.createServer(async(req,res)=>{
  const u=new URL(req.url||"/","http://localhost");
  try{
- if(u.pathname==="/healthz")return json(res,200,{ok:true,name:"mcp-vn",version:"0.2.0"});
+ if(u.pathname==="/healthz")return json(res,200,{ok:true,name:"mcp-vn",version:"0.3.0"});
  if(u.pathname.startsWith("/worker/")){
   if(!validBearer(req,WORKER_KEY))return json(res,401,{error:"Unauthorized"});
   if(req.method==="GET"&&u.pathname==="/worker/next")return json(res,200,{job:await jobs.nextJob()});
