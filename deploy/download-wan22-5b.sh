@@ -4,7 +4,8 @@ umask 077
 base="$HOME/.local/share/mcp-vn-comfy/models"
 repo="https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files"
 fetch_model() {
-  local section="$1" file="$2" bytes="$3" out="$base/$section/$file"
+  local section="$1" file="$2" bytes="$3"
+  local out="$base/$section/$file"
   mkdir -p "$(dirname "$out")"
   if [[ -f "$out" && "$(stat -c %s "$out")" == "$bytes" ]]; then
     echo "Already verified: $file"
