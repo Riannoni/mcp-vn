@@ -10,8 +10,10 @@ services:
       VN_PUBLIC_ORIGIN: "${VN_PUBLIC_ORIGIN}"
       VN_WORKER_TOKEN: "${VN_WORKER_TOKEN}"
       VN_MCP_TOKEN: "${VN_MCP_TOKEN}"
+      VN_ASSET_SECRET: "${VN_ASSET_SECRET}"
     ports:
       - "192.168.50.29:3100:3100"
+      - "10.28.0.3:3100:3100"
     volumes:
       - "./data:/data:rw"
     security_opt:
