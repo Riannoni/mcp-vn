@@ -4,16 +4,18 @@ Wants=network-online.target
 After=network-online.target
 
 [Container]
-Image=docker.io/rocm/comfyui:comfyui-0.18.2.amd0_rocm7.2.0_ubuntu24.04
+Image=localhost/mcp-vn-comfy:gfx1201
 ContainerName=mcp-vn-comfy
 Pull=never
 PublishPort=127.0.0.1:8188:8188
 AddDevice=/dev/kfd
-AddDevice=/dev/dri/renderD128
+AddDevice=/dev/dri
 GroupAdd=keep-groups
 SecurityLabelDisable=true
 NoNewPrivileges=true
-Environment=HSA_OVERRIDE_GFX_VERSION=12.0.1
+Environment=PYTORCH_ROCM_ARCH=gfx1201
+Environment=HIP_ARCHITECTURES=gfx1201
+Environment=HCC_AMDGPU_TARGET=gfx1201
 Volume=/home/Xavok/.local/share/mcp-vn-comfy:/data:rw
 ShmSize=2g
 Exec=/bin/bash -lc "exec python3 $COMFYUI_PATH/main.py --listen 0.0.0.0 --port 8188 --disable-auto-launch --extra-model-paths-config /data/extra_model_paths.yaml --input-directory /data/input --output-directory /data/output --temp-directory /data/temp --user-directory /data/user"
