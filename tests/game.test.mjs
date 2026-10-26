@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"mcp-vn-"));
 process.env.VN_DATA_DIR=root;
+process.env.VN_ASSET_SECRET="test-only-secret";
 const store=await import("../src/game-store.mjs");
 const jobs=await import("../src/jobs.mjs");
 test("start, free-text action, narration, undo and persistence",async()=>{
