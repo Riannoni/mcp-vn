@@ -54,7 +54,7 @@ export async function completeJob(id,bytes,mime,baseUrl){
  const name=crypto.randomUUID()+"."+ext,dir=path.join(dataRoot,"assets");
  await fs.mkdir(dir,{recursive:true});await fs.writeFile(path.join(dir,name),bytes,{flag:"wx",mode:0o600});
  j.file=name;j.status="done";j.progress=100;j.finished_at=new Date().toISOString();
- j.asset_url=baseUrl.replace(/\/$/,"")+"/assets/"+name;
+ j.asset_url=baseUrl.replace(/\/$/,"")+"/assets/"+name+"?sig="+assetSignature(name);
  await save(j);
  await attachImage(j.game_id,{kind:j.kind,character:j.character,url:j.asset_url});
  return j});
@@ -67,4 +67,10 @@ export async function failJob(id,error){
 export async function assetFile(name){
  if(!/^[a-f0-9-]{36}\.(png|jpg|webp|mp4)$/.test(name))throw Error("Invalid asset name");
  return path.join(dataRoot,"assets",name);
+}
+
+export function assetSignature(name){
+ const secret=process.env.VN_ASSET_SECRET;
+ if(!secret)throw Error("VN_ASSET_SECRET required");
+ return crypto.createHmac("sha256",secret).update(name).digest("hex");
 }
