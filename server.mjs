@@ -11,16 +11,18 @@ import * as jobs from "./src/jobs.mjs";
 const PORT=Number(process.env.VN_PORT||3100),HOST=process.env.VN_HOST||"127.0.0.1";
 const WORKER_KEY=process.env.VN_WORKER_TOKEN||"",MCP_KEY=process.env.VN_MCP_TOKEN||"";
 const PUBLIC=(process.env.VN_PUBLIC_ORIGIN||"https://xavoks.jo3.org/vn").replace(/\/$/,"");
-const UI="ui://mcp-vn/visual-novel.html";
+const UI="ui://mcp-vn/visual-novel-v2.html";
+const UI_META={ui:{csp:{resourceDomains:[new URL(PUBLIC).origin],connectDomains:[]},prefersBorder:false}};
 if(HOST!=="127.0.0.1"&&(!WORKER_KEY||!MCP_KEY))throw Error("Both VN_WORKER_TOKEN and VN_MCP_TOKEN required on LAN");
 const result=(key,value)=>({content:[{type:"text",text:JSON.stringify({[key]:value})}],structuredContent:{[key]:value}});
 const safe=fn=>async a=>{try{return await fn(a||{})}catch(e){return{isError:true,content:[{type:"text",text:e.message||"Unknown error"}]}}};
 const Z=z.string();
 function mcpServer(){
  const m=new McpServer({name:"mcp-vn",version:"0.2.0"});
- registerAppResource(m,"visual-novel",UI,{mimeType:RESOURCE_MIME_TYPE,
-  _meta:{ui:{csp:{resourceDomains:[new URL(PUBLIC).origin],connectDomains:[]},prefersBorder:false}}},
-  async()=>({contents:[{uri:UI,mimeType:RESOURCE_MIME_TYPE,text:await fs.readFile("./dist/index.html","utf8")}]})
+ registerAppResource(m,"visual-novel",UI,{mimeType:RESOURCE_MIME_TYPE,_meta:UI_META},
+  async()=>({contents:[{uri:UI,mimeType:RESOURCE_MIME_TYPE,
+    text:await fs.readFile("./dist/index.html","utf8"),
+    _meta:UI_META}]})
  );
  registerAppTool(m,"open_game",{
  title:"Visual novel",description:"Open the interactive visual novel with scrollback and free-text actions.",
