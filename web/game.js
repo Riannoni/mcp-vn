@@ -30,7 +30,7 @@ function draw(next){
  const sprites=$("sprites");sprites.replaceChildren();
  for(const s of game.scene?.sprites||[]){
   const shell=element("div","sprite");
-  if(s.image_url){const img=element("img");img.src=s.image_url;img.alt=s.name;img.loading="lazy";shell.append(img)}
+  if(s.image_url){const img=element("img");img.src=s.image_url;img.alt=s.name;img.loading="eager";img.decoding="async";img.onerror=()=>{shell.classList.add("sprite-unavailable");img.remove()};shell.append(img)}
   shell.append(element("span","sprite-label",s.name));sprites.append(shell);
  }
  const video=$("scene-video");
@@ -71,7 +71,11 @@ function beginPoll(){
 async function updateSaves(){
  try{const saves=unpack(await call("list_games"),"games").sort((a,b)=>(b.updated_at||"").localeCompare(a.updated_at||""));
  const s=$("games");s.replaceChildren();
- for(const g of saves){const e=element("option",null,g.title+" · "+g.hero);e.value=g.id;s.append(e)}
+ for(const g of saves){
+  const date=g.updated_at?new Date(g.updated_at).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+  const e=element("option",null,g.title+" · "+g.hero+(date?" · "+date:""));
+  e.value=g.id;e.title=g.id;s.append(e);
+ }
  if(game)s.value=game.id;
  }catch(e){state(e.message)}
 }
@@ -112,7 +116,7 @@ $("undo").onclick=async()=>{if(!game)return;try{draw(unpack(await call("undo_las
 $("new-game").onclick=async()=>{
  try{
   const r=await call("start_game",{story_id:$("stories").value||"ash-gate",hero_name:game?.hero?.name||"Макс Кроу",hero_description:game?.hero?.description||""});
-  game=null;draw(unpack(r));await updateSaves();
+  game=null;draw(unpack(r));await updateSaves();$("new-game-controls").open=false;
  }catch(e){state(e.message)}
 };
 $("games").onchange=async e=>{try{const r=await call("get_game",{game_id:e.target.value});game=null;draw(unpack(r));await refreshJobs()}catch(err){state(err.message)}};
