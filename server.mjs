@@ -88,7 +88,10 @@ const service=http.createServer(async(req,res)=>{
  }
  if(u.pathname.startsWith("/assets/")){
   if(req.method!=="GET")return json(res,405,{error:"Method"});
-  const name=u.pathname.slice(8),f=await jobs.assetFile(name),bytes=await fs.readFile(f);
+  const name=u.pathname.slice(8),sig=u.searchParams.get("sig")||"",expected=jobs.assetSignature(name);
+  const a=Buffer.from(sig),b=Buffer.from(expected);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return json(res,403,{error:"Asset forbidden"});
+  const f=await jobs.assetFile(name),bytes=await fs.readFile(f);
   const mime=name.endsWith(".mp4")?"video/mp4":name.endsWith(".png")?"image/png":name.endsWith(".webp")?"image/webp":"image/jpeg";
   res.writeHead(200,{"Content-Type":mime,"Cache-Control":"private, max-age=300","Content-Length":bytes.length});return res.end(bytes);
  }
