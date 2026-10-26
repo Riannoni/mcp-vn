@@ -1,0 +1,10 @@
+mcp_vn:
+  base_path: /data/models
+  checkpoints: checkpoints
+  diffusion_models: diffusion_models
+  text_encoders: text_encoders
+  clip: text_encoders
+  vae: vae
+  loras: loras
+  controlnet: controlnet
+  embeddings: embeddings
