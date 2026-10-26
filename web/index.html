@@ -5,9 +5,15 @@
 <header class="topbar">
  <div class="brand"><strong>mcp-vn</strong><small>Живые истории</small></div>
  <div class="toolbar">
-  <select id="games" aria-label="Сохранения"></select>
-  <select id="stories" aria-label="Истории"></select>
-  <button id="new-game" title="Новая игра">Новая игра</button>
+  <label class="toolbar-field" for="games"><span>Сохранение</span><select id="games" aria-label="Выбрать сохранение"></select></label>
+  <details id="new-game-controls" class="new-game-menu">
+   <summary>+ Новая игра</summary>
+   <div class="new-game-popover">
+    <label for="stories">Выбрать сюжет</label>
+    <select id="stories" aria-label="Сюжет для новой игры"></select>
+    <button id="new-game" type="button">Начать игру</button>
+   </div>
+  </details>
   <button id="fullscreen" title="Полный экран">⛶</button>
  </div>
 </header>
