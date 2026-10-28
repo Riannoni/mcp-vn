@@ -99,6 +99,17 @@ test("visual variants are reused only for matching background",async()=>{
  assert.equal(newJob.status,"queued");
  assert.notEqual(newJob.id,"cached");
 });
+test("repeated unchanged neural-CG refresh deduplicates rather than superseding queued work",async()=>{
+ const {gid}=await startReady();
+ const req={game_id:gid,kind:"scene",quality:"standard",
+  prompt:"One original scene with exactly one canonical character",neural_scene:true,
+  narrator_prompt:true};
+ const first=await jobs.enqueue(req);
+ const second=await jobs.enqueue(req);
+ assert.equal(second.id,first.id);
+ assert.equal(second.deduplicated,true);
+ assert.equal((await jobs.getJob(first.id)).status,"queued");
+});
 test("legacy asset with unknown provenance cannot silently be assumed correct",()=>{
  const s=normalizeSprite({name:"Unknown",image_url:"https://example.org/x.png",
     art_style:"realistic",outfit:"formal",transparent:true},{},"https://example.org/bg.png");
