@@ -405,6 +405,7 @@ const service=http.createServer(async(req,res)=>{
     const relevant=(await jobs.jobsForGame(jobMatch[1])).slice(0,25).map(j=>({
      id:j.id,kind:j.kind,character:j.character||"",style:j.style||"",status:j.status,
      stage:j.stage||"",applied:!!j.applied,
+     narrator_prompt:j.spec?.narrator_prompt===true,
      error:String(j.error||"").slice(0,180),
      not_applied_reason:String(j.not_applied_reason||"").slice(0,180),
      quality_status:j.quality_status||"",
@@ -554,6 +555,23 @@ const service=http.createServer(async(req,res)=>{
        safeScene.visual_direction=input.scene.visual_direction.slice(0,420);
       if(["cg","layers"].includes(input.scene.visual_mode))
        safeScene.visual_mode=input.scene.visual_mode;
+      if(input.scene.image_prompts&&typeof input.scene.image_prompts==="object"&&
+          !Array.isArray(input.scene.image_prompts)){
+       const source=input.scene.image_prompts,clean={};
+       for(const kind of ["background","cg"])
+        if(typeof source[kind]==="string"&&source[kind].trim())
+         clean[kind]=source[kind].trim().slice(0,2000);
+       if(source.sprites&&typeof source.sprites==="object"&&!Array.isArray(source.sprites)){
+        const known=new Set([g.hero?.name,...(g.story?.characters||[]).map(x=>x.name),
+         ...(g.scene?.sprites||[]).map(x=>x.name)].filter(Boolean));
+        const items={};
+        for(const [name,prompt] of Object.entries(source.sprites).slice(0,5))
+         if(known.has(name)&&typeof prompt==="string"&&prompt.trim())
+          items[name]=prompt.trim().slice(0,1600);
+        if(Object.keys(items).length)clean.sprites=items;
+       }
+       if(Object.keys(clean).length)safeScene.image_prompts=clean;
+      }
       // A remote narrator may suggest image-layer state, but may ONLY
       // describe established, named cast members. Never allow arbitrary
       // image URLs or changes to the game's locked visual style.
