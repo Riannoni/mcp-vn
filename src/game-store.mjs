@@ -298,7 +298,12 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
   g.scene.cg_revision=(Number.isSafeInteger(g.scene.cg_revision)?
    g.scene.cg_revision:0)+1;
  if(changedShot&&g.scene.cg_url){
-  g.scene.cg_dirty=true;g.scene.mode="layered";
+  // Keep previous CG if location unchanged and visual_mode is still cg
+  if(oldLocation===g.scene.location&&scene.visual_mode==="cg"){
+   g.scene.cg_dirty=false;g.scene.mode="cg";
+  }else{
+   g.scene.cg_dirty=true;g.scene.mode="layered";
+  }
  }
  g.choices=(choices||[]).slice(0,6).map(x=>txt(x,200));
  for(const x of inventory_add||[]){
