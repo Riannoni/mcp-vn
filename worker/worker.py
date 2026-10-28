@@ -294,7 +294,7 @@ def prompt_builder(job, background):
     elif kind=="scene":
         people=", ".join(c["name"]+": "+appearance_tags(c.get("appearance",""))+
                          ". "+str(c.get("appearance",""))[:140] for c in spec.get("characters",[]))
-        positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. Same physical location and viewpoint as the input photograph. "
+        positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. Market square with brick buildings, stalls, open air. Character standing against brick wall of market building. Same physical location as input photograph. "
            f"Create an integrated visual novel cinematic frame with the following adult characters in the foreground: {people}. "
            f"Story action: {subject}. Match the scene lighting ({lighting}), scale, perspective, shadows and colors. "
            "Do not redraw buildings or alter the existing geometry outside the insertion area.")
@@ -355,7 +355,7 @@ def prompt_builder(job, background):
         if any(w in subj_l for w in ["pulls her","pulling","hand pulls","buttock aside","spread"]):
             pose_hints.append("one hand pulling buttock aside, fingers gripping flesh, clear view of cleft")
         if any(w in subj_l for w in ["wall","masonry","bracing"]):
-            pose_hints.append("standing against wall, hands on wall, not on ground")
+            pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
         if pose_hints:
             positive = "POSE: " + ", ".join(pose_hints) + ". " + positive
             negative += ", facing camera, looking at viewer, looking at camera, portrait, front view, face visible, eye contact, holding camera, holding object, lying on ground"
