@@ -192,3 +192,8 @@ h1,h2,p{margin-top:0}
 
 .render-job .job-prompt-source{grid-column:1/-1;font-size:10px;color:#86caa9;
  overflow-wrap:anywhere}
+
+/* CG intentionally overlays layers; clicking the illustration inspects
+   accepted sprite layers without reintroducing a full toolbar. */
+#stage[role="button"]{cursor:pointer}
+#stage:focus-visible{outline:2px solid #cba5ec;outline-offset:2px}
