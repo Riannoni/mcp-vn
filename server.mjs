@@ -403,13 +403,15 @@ const service=http.createServer(async(req,res)=>{
    if(req.method==="GET"&&jobMatch){
     await games.gameGet(jobMatch[1]);
     const relevant=(await jobs.jobsForGame(jobMatch[1])).slice(0,25).map(j=>({
-     id:j.id,kind:j.kind,character:j.character||"",status:j.status,
+     id:j.id,kind:j.kind,character:j.character||"",style:j.style||"",status:j.status,
      stage:j.stage||"",applied:!!j.applied,
      error:String(j.error||"").slice(0,180),
      not_applied_reason:String(j.not_applied_reason||"").slice(0,180),
      quality_status:j.quality_status||"",
      attempts:j.attempts||0,
-     timings:j.timings||{},created_at:j.created_at,finished_at:j.finished_at,
+     timings:j.timings||{},attempt_history:(j.attempt_history||[]).slice(-5),
+     qa:{semantic_status:j.qa?.semantic_status||"",reasons:(j.qa?.reasons||[]).slice(0,4),
+       warnings:(j.qa?.warnings||[]).slice(0,4)},created_at:j.created_at,finished_at:j.finished_at,
      progress:j.progress||0,preview:!!j.spec?.preview_only,
      ...(j.kind==="video"&&j.status==="done"?{asset_url:j.asset_url||""}:{})
     }));
@@ -432,6 +434,11 @@ const service=http.createServer(async(req,res)=>{
    if(req.method==="GET"&&perfMatch)
     return json(res,200,{performance:measureTurnPerformance(
       await games.gameGet(perfMatch[1]),{limit:12})});
+   const traceMatch=sub.match(/^turn-trace\/([a-f0-9-]{36})$/i);
+   if(req.method==="GET"&&traceMatch){
+    const game=await games.gameGet(traceMatch[1]);
+    return json(res,200,{turn_trace:await makeTraceReport(traceMatch[1],game,{limit:12})});
+   }
    if(req.method==="POST"&&sub==="undo"){
     const input=JSON.parse((await body(req,4096)).toString());
     const id=String(input.game_id||"");
@@ -543,6 +550,10 @@ const service=http.createServer(async(req,res)=>{
     if(input.scene&&typeof input.scene==="object"){
       for(const key of ["location","time_of_day","weather"])
        if(typeof input.scene[key]==="string")safeScene[key]=input.scene[key].slice(0,170);
+      if(typeof input.scene.visual_direction==="string")
+       safeScene.visual_direction=input.scene.visual_direction.slice(0,420);
+      if(["cg","layers"].includes(input.scene.visual_mode))
+       safeScene.visual_mode=input.scene.visual_mode;
       // A remote narrator may suggest image-layer state, but may ONLY
       // describe established, named cast members. Never allow arbitrary
       // image URLs or changes to the game's locked visual style.
