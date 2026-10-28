@@ -304,6 +304,7 @@ async function refreshLocalEpisode(){
 async function loadGame(id){
  if(!id)return;
  currentSave=id;
+ restoreVisualPreference(id);
  const d=await api("/api/vn/game?id="+encodeURIComponent(id));
  if(currentSave!==id)return;
  closeInfo();closeCommandMenu();
@@ -349,7 +350,7 @@ async function runTurn(resume=false){
  $("turn-status").textContent=name==="undo"?"Отменяем ход…":name==="video"?"Готовим видео…":name==="ooc"||name==="recap"?"Рассказчик отвечает…":"Рассказчик пишет…";
  const start=performance.now();
  try{
-  const body={game_id:id,model:activeModel,reasoning_effort:selectedEffort()};
+  const body={game_id:id,model:activeModel,reasoning_effort:selectedEffort(),auto_visual:autoArtEnabled};
   if(!resume){body.action=action;body.expected_version=currentGame.version;}
   if(prompts[name])body.confirmed=true;
   const local=currentGame.local_scene?.mode==="local";
@@ -357,6 +358,7 @@ async function runTurn(resume=false){
   if(currentGame?.id!==id)return;
   $("player-action").value="";
   if(result.game)renderGame(result.game);
+  if(result.turn_timings)lastTurnBreakdown=result.turn_timings;
   if(result.type==="ooc"||result.type==="recap"){
    displayInfo(result.type==="ooc"?"Вне сюжета":"Краткий пересказ",result.text);
   }else if(result.type==="video"){
@@ -676,25 +678,25 @@ document.addEventListener("DOMContentLoaded",()=>{
  $("open-history").addEventListener("click",openHistory);
  $("open-latency").addEventListener("click",openLatency);
  $("local-exit").addEventListener("click",exitLocalStory);
- $("open-looks").addEventListener("click",openLooks);
+
  $("close-info").addEventListener("click",closeInfo);
  $("info-modal").addEventListener("click",e=>{
   if(e.target===$("info-modal"))closeInfo();
  });
- $("view-layers").addEventListener("click",()=>{
-   if(!currentGame?.scene?.cg_url)return;
-   showSceneVariant(stageView==="layers"?"cg":"layers");
- });
- $("view-background").addEventListener("click",()=>{
-   showSceneVariant(stageView==="background"?"auto":"background");
- });
- $("toggle-characters").addEventListener("click",()=>{
-   if(stageView!=="layers"){
-     stageView="layers";castVisible=true;
-   }else castVisible=!castVisible;
-   renderScene(currentGame);
- });
  $("manual-cg").addEventListener("click",requestCG);
+ $("toggle-stage").addEventListener("click",()=>{
+  imagesHidden=!imagesHidden;syncImageVisibility();
+ });
+ $("auto-art").addEventListener("change",async()=>{
+  autoArtEnabled=$("auto-art").checked;
+  if(currentGame){
+   try{localStorage.setItem("vn-auto-art:"+currentGame.id,autoArtEnabled?"on":"off")}catch(_){}
+   if(autoArtEnabled){
+    try{await scheduleMissingVisuals(currentGame);await pollVisualJobs()}
+    catch(e){showToast(e.message)}
+   }
+  }
+ });
 
  $("send").addEventListener("click",()=>runTurn(false));
  $("resume").addEventListener("click",()=>runTurn(true));
