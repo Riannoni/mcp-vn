@@ -85,10 +85,10 @@
           <p>Один промпт и seed для всех моделей. Обработка последовательная, чтобы не перегружать VRAM.</p>
         </details>
         <details class="comparison-details" id="llm-lab">
-          <summary>◉ Тест локальных LLM · Qwen / Cydonia</summary>
+          <summary>◉ Тест локальных LLM · Cydonia</summary>
           <p>Отдельный тест рассказчика. Основной сюжет новеллы не меняется. История беседы хранится только в этой вкладке браузера.</p>
           <label for="llm-model">Языковая модель</label>
-          <select id="llm-model"><option value="qwen3.5:9b-q4_K_M">Qwen3.5 9B</option><option value="cydonia:24b-v4.3-iq4_xs">Cydonia 24B</option></select>
+          <select id="llm-model"><option value="cydonia:24b-v4.3-iq4_xs">Cydonia 24B</option></select>
           <div id="llm-history" class="llm-history" role="log" aria-live="polite"></div>
           <label for="llm-prompt">Сообщение или продолжение сцены</label>
           <textarea id="llm-prompt" rows="4" maxlength="2500" placeholder="Опиши продолжение эпизода или задай вопрос модели…"></textarea>
