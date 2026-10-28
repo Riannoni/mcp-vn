@@ -22,6 +22,7 @@ from scene_compositor import compose as compose_cg
 from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
 from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
+from scene_constraints import scene_constraints
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -334,6 +335,9 @@ def prompt_builder(job, background):
         # a reference identity as a request for multiple appearances.
         positive=lead+positive
         negative=extra_negative+negative
+        scene_positive,scene_negative=scene_constraints(spec,subject)
+        if scene_positive:positive=scene_positive+" "+positive
+        if scene_negative:negative=scene_negative+", "+negative
     # Model-specific prompt rules
     if style in ("semireal","realistic","poster"):
         # CyberRealistic Pony v18: score ladder + source_photo + rating_explicit
