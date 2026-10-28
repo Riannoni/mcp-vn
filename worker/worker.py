@@ -643,8 +643,9 @@ def image_graph(job):
     # Approved A/B test: pose ControlNet improves running and kneeling
     # full-body framing without reducing CLIP face identity on the tested character.
     # Unsupported poses intentionally fall back to textual pose prompts.
-    pose_kind=str((spec.get("variant") or {}).get("pose","standing"))
-    # For scene rear poses, map to OpenPose guide
+    # A neural CG has no 'variant.pose'. Defaulting it to "standing"
+    # silently activates an unrelated ControlNet guide on every shot.
+    pose_kind=str((spec.get("variant") or {}).get("pose","standing")) if kind=="sprite" else ""
     if kind=="scene" and spec.get("composition")=="neural_story":
         subj = str(job.get("prompt") or "").lower()
         # Only use a hard-coded OpenPose guide for a matching explicit
