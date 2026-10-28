@@ -210,6 +210,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
   if kind=="scene":
    if neural_story:
     reasons.extend(scene_caption_conflicts(spec.get("characters") or [],caption))
+    reasons.extend(scene_action_conflicts(spec.get("characters") or [],caption,spec.get("prompt","")))
    expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
    counts={0:r"\b(?:no people|nobody|no one)\b",
            1:r"\b(?:one person|one man|one woman|single person|a person|a man|a woman)\b",
