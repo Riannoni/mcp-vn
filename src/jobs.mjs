@@ -69,8 +69,12 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
    throw Error("CG needs a valid scene background. Generate the background first.");
   if(kind==="scene"&&spec.characters.length===0)
    throw Error("CG needs characters present on the scene");
-  if(kind==="scene"&&spec.ready_count!==spec.characters.length)
-   throw Error("Canonical scene CG requires visually up-to-date accepted sprites; refresh the characters first.");
+  if(kind==="scene"&&spec.composition!=="neural_story"&&
+     spec.ready_count!==spec.characters.length)
+   throw Error("Layered CG requires accepted sprites; refresh the characters first.");
+  if(kind==="scene"&&spec.composition==="neural_story"&&
+     spec.characters.some(x=>!x.anchor_face_asset&&!x.anchor_asset))
+   throw Error("Neural CG requires established canonical character references.");
   // Local CG can compose a complete separate scene from the persistent
   // local story state, even if a canonical sprite has become obsolete.
   if(kind==="local_cg"&&!local_visual_state?.characters?.length)
@@ -405,7 +409,8 @@ export async function completeJob(id,bytes,mime,baseUrl){
             variant:j.spec.variant,url:j.asset_url,background_asset:j.spec.background_asset})):
         await attachImage(j.game_id,{kind:j.kind,character:j.character,url:j.asset_url,
           style:j.style,expected_location:j.spec?.expected_location||null,
-          variant:j.spec?.variant,face_url:j.face_url||""});
+          variant:j.spec?.variant,face_url:j.face_url||"",
+          composition:j.spec?.composition||""});
       j.applied=applied?.applied!==false;
       if(j.spec.library_only)j.library_stored=true;
      }else j.not_applied_reason="Scene or character state changed while generating";
