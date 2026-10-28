@@ -347,10 +347,11 @@ class Handler(BaseHTTPRequestHandler):
     if path=="/api/vn/visual-jobs":
      game_id=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id",[""])[0]
      return self.send_json(200,vn_web.visual_jobs(game_id))
-    if path in ("/api/vn/memory","/api/vn/performance"):
+    if path in ("/api/vn/memory","/api/vn/performance","/api/vn/turn-trace"):
      game_id=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id",[""])[0]
-     response=(vn_web.game_memory(game_id) if path.endswith("/memory")
-       else vn_web.game_performance(game_id))
+     response=(vn_web.game_memory(game_id) if path.endswith("/memory") else
+       vn_web.game_turn_trace(game_id) if path.endswith("/turn-trace") else
+       vn_web.game_performance(game_id))
      return self.send_json(200,response)
     if path=="/api/vn/games":return self.send_json(200,vn_web.games())
     if path=="/api/vn/game":
