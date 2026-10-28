@@ -13,6 +13,7 @@ from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
+from scene_caption_contract import scene_caption_conflicts
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -197,21 +198,8 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    if kind=="background" and expected=="outdoor_market_square":
     reasons.append("VLM sees an interior instead of an outdoor market square")
   if kind=="scene":
-   # Unlike a sprite, a neural CG can be accepted solely from CLIP count
-   # evidence. Use the actual caption as a second veto for clear conflicts.
-   requested=(spec.get("characters") or [])
-   if neural_story and len(requested)==1 and re.search(
-       r"\\b(?:another (?:person|woman|man|adult|figure|stands|is)|"
-       r"two (?:people|persons|women|men|adults)|second (?:person|woman|man))\\b",
-       desc):
-    reasons.append("Neural CG contains an additional principal figure according to VLM")
-   if neural_story and len(requested)==1 and outfit_requires_bare(
-       requested[0].get("outfit","")):
-    outfit_alignment=clothing_alignment(desc)
-    if outfit_alignment=="failed":
-     reasons.append("Neural CG wardrobe contradicts requested unclothed state")
-    elif outfit_alignment=="uncertain":
-     warnings.append("VLM could not verify neural CG wardrobe")
+   if neural_story:
+    reasons.extend(scene_caption_conflicts(spec.get("characters") or [],caption))
    expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
    counts={0:r"\b(?:no people|nobody|no one)\b",
            1:r"\b(?:one person|one man|one woman|single person|a person|a man|a woman)\b",
