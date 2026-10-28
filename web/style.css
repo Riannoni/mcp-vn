@@ -192,3 +192,13 @@ select{color:#f2eafa;background:#231a34;border:1px solid #554566;border-radius:9
 
 #preview-image[hidden],#preview-video[hidden]{display:none!important}
 #preview-video{display:block;margin:12px auto 0;width:100%;max-height:75vh;object-fit:contain}
+
+/* Long, instrumented renderer rows remain readable rather than clipped. */
+.jobs-details{flex:none;min-height:0;border-top:1px solid #503c5c}
+.jobs-details summary{cursor:pointer;padding:7px 16px;color:#d5b9e9;font-size:11px;
+ font-weight:650;list-style:revert}
+.jobs-details[open] .jobs{max-height:min(32vh,285px);padding-bottom:8px}
+.jobs .job{align-items:start;flex-wrap:wrap}
+.jobs .job-summary{white-space:normal;overflow-wrap:anywhere;text-align:left}
+.jobs .job-name{flex:0 1 20%;min-width:90px}
+@media(max-width:740px){.jobs-details[open] .jobs{max-height:200px}}
