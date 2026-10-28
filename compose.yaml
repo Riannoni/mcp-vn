@@ -11,9 +11,9 @@ services:
       VN_WORKER_TOKEN: "${VN_WORKER_TOKEN}"
       VN_ASSET_SECRET: "${VN_ASSET_SECRET}"
       VN_LOCAL_MODEL_URL: "http://192.168.50.27:11434"
-      VN_LOCAL_MODEL_ID: "qwen3.5:9b-q4_K_M"
+      VN_LOCAL_MODEL_ID: "cydonia:24b-v4.3-iq4_xs"
       VN_LOCAL_NARRATOR_MODEL: "cydonia:24b-v4.3-iq4_xs"
-      VN_LOCAL_NARRATOR_FALLBACK: "qwen3.5:9b-q4_K_M"
+      VN_LOCAL_NARRATOR_FALLBACK: "cydonia:24b-v4.3-iq4_xs"
       VN_LOCAL_ROUTER_TOKEN: "${VN_WORKER_TOKEN}"
     ports:
       - "192.168.50.29:3100:3100"
