@@ -18,8 +18,8 @@ def principal_count_evidence(expected_count, scores):
     if n == 1:
         positive=solo
         competitors=pair+group+empty
-        verified=(positive>=0.08 and positive>pair*0.8 and
-                  positive>group*0.8 and positive>empty*0.8)
+        verified=(positive>=0.29 and positive>pair*1.15 and
+                  positive>group*1.08 and positive>empty*1.5)
     elif n == 2:
         positive=pair
         competitors=solo+group+empty
@@ -57,9 +57,8 @@ def scene_location_evidence(expected, scores):
     courtyard=float(scores.get("outdoor_courtyard",0))
     urban=market+street+courtyard
     reasons=[]
-    # Market/forest check relaxed: CLIP often misidentifies market scenes
     if expected in ("outdoor_market_square","outdoor_street","outdoor_courtyard"):
-        if forest>=.50 and forest>urban*2.0:
+        if forest>=.27 and forest>urban*1.20:
             reasons.append(
               f"Requested {expected}, but CLIP strongly identifies forest "
               f"(forest={forest:.3f}, urban={urban:.3f})")
