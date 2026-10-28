@@ -96,6 +96,11 @@ test("repeated unchanged neural-CG refresh deduplicates rather than superseding 
  const second=await jobs.enqueue(req);
  assert.equal(second.id,first.id);
  assert.equal(second.deduplicated,true);
+ // A second browser refresh may vary harmless metadata or the wording of
+ // its positive prompt; the requested scene intent is still the same.
+ const refreshed=await jobs.enqueue({...req,prompt:"A clearer instruction for the same narrative shot"});
+ assert.equal(refreshed.id,first.id);
+ assert.equal(refreshed.deduplicated,true);
  assert.equal((await jobs.getJob(first.id)).status,"queued");
 });
 test("visual variants are reused only for matching background",async()=>{
