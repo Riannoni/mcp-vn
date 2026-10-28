@@ -27,10 +27,7 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
         lead=f"Exactly {count} separate established principal characters and no clones. "
         exclude="duplicate people, cloned faces, twins, second copy of subject, collage, "
     # Shot framing terms are not physical photography equipment.
-    lead+=(
-        "VIEWPOINT describes only the virtual observer's angle. "
-        "No physical camera, tripod or photography gear in the world. "
-    )
+    lead+="The described shot angle is the viewer's virtual viewpoint only. "
     exclude+=(
         "DSLR, photography camera, camera body, camera lens, tripod, "
         "film equipment, photographer, studio lights, wall-mounted clock, "
@@ -40,8 +37,8 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
     if any("clock" in str(x).lower() for x in [
             spec.get("world",""),subject,*(p.get("appearance","") for p in cast)]):
         lead+=(
-            "Any clock-shaped emblem on a shoulder is a SMALL FLAT SILVER "
-            "SKIN MARK only; never render a literal clock object from it. "
+            "The shoulder emblem is a SMALL FLAT SILVER TATTOO "
+            "on the skin, with no separate associated prop. "
         )
     if location=="outdoor_market_square":
         lead+=(
