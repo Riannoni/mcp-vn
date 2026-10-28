@@ -37,3 +37,10 @@ export function inputEnterIntent(event){
  if(event.ctrlKey||event.metaKey||event.shiftKey)return "newline";
  return "send";
 }
+
+/** Restore an explicitly selected narrator when its model becomes available. */
+export function preferredNarrator(available,remembered,current,fallback="local-cydonia-24b"){
+ const ids=new Set(available||[]);
+ for(const id of [remembered,current,fallback,...ids])if(id&&ids.has(id))return id;
+ return "";
+}
