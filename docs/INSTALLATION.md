@@ -1,8 +1,8 @@
-# Установка и обновление mcp-vn 0.6.4
+# Установка и обновление VN Web 0.7.0
 
 ## Перед началом
 
-Это не однокомандный installer. Исходная установка рассчитана на домашний Ubuntu-сервер с Docker Compose и отдельный игровой ПК на Bazzite/Fedora с AMD ROCm, ComfyUI и systemd user services. Потребуются настроенные LAN/VPN, учётная запись ChatGPT и защищённый OAuth gateway на VPS.
+Это не однокомандный installer. Исходная установка рассчитана на домашний Ubuntu-сервер с Docker Compose и отдельный игровой ПК на Bazzite/Fedora с AMD ROCm, ComfyUI и systemd user services. Потребуются локальная сеть, запущенные графические модели и доступ к выбранному рассказчику через локальную модель или OAuth провайдера. MCP/VPS-шлюз для работы VN Web не нужен.
 
 **В репозитории нет весов AI, сохранений, ключей и токенов.** Пользователь самостоятельно получает совместимые модели с учётом их лицензий и авторизации. См. [MODELS.md](MODELS.md).
 
@@ -14,7 +14,7 @@
 | ComfyUI | ПК `127.0.0.1:8188` | только ПК |
 | Vision QA | ПК `127.0.0.1:9312` | только ПК |
 | KoboldCpp gateway | ПК:11434 | только домашний game server + bearer token |
-| Streamable HTTP MCP | `https://YOUR_DOMAIN/vn/mcp` | Internet через OAuth proxy |
+| VN Web | `http://YOUR_PC:8190/vn/` | Домашняя сеть, пароль приложения |
 
 В `compose.yaml` и `deploy/*.service` сохранены IP-адреса и пути **исходного личного развёртывания**. Для новой установки замените адреса и пользовательский каталог PC (`/home/Xavok`), иначе сервисы будут пытаться обращаться к чужой машине.
 
@@ -31,7 +31,6 @@ chmod 600 .env
 
 ```bash
 openssl rand -hex 32    # VN_WORKER_TOKEN
-openssl rand -hex 32    # VN_MCP_TOKEN
 openssl rand -hex 32    # VN_ASSET_SECRET
 ```
 
@@ -39,7 +38,6 @@ openssl rand -hex 32    # VN_ASSET_SECRET
 
 - `VN_PUBLIC_ORIGIN` — публичный HTTPS origin с префиксом `/vn`, если он используется.
 - `VN_WORKER_TOKEN` — идентичный ключ для Node game и GPU-воркера/локального LLM gateway.
-- `VN_MCP_TOKEN` — отдельный ключ для защищённого MCP API за VPS gateway.
 - `VN_ASSET_SECRET` — секрет HMAC ссылок на изображения.
 
 Проверьте `compose.yaml`: текущие привязки портов и адрес `VN_LOCAL_MODEL_URL` относятся к исходной LAN. При новой установке исправьте **до запуска**.
@@ -121,11 +119,11 @@ systemctl --user status mcp-vn-kobold-gateway.service
 
 Исходное развёртывание: **Cydonia** (`cydonia:24b-v4.3-iq4_xs`) — основной рассказчик локального эпизода; **Qwen** (`qwen3.5:9b-q4_K_M`) — визуальный режиссёр и текстовый fallback. Эти имена задаются в `compose.yaml`, а не передаются с фронтенда без авторизации.
 
-## 5. VPS: публичный MCP и ChatGPT
+## 5. VN Web и подключение моделей
 
-Установите HTTPS reverse proxy / MCP gateway с проверкой OAuth/JWT, который принимает только аутентифицированные подключения к `/vn/mcp` и доверенным образом маршрутизирует их к домашнему серверу (например, по VPN). **Не** публикуйте порты worker, ComfyUI, KoboldCpp или `/data` в Интернет.
+Игровой сервер в Docker предоставляет только защищённые HTTP API для VN Web и локального GPU-воркера. Публичный `/mcp` отключён. Не публикуйте Worker API, ComfyUI, KoboldCpp или каталог `data` в Интернет.
 
-В этом репозитории находится сервер mcp-vn, **не полноценный Auth0/VPS gateway**; его нужно настраивать отдельно. Инструкция по пользовательской регистрации в ChatGPT: [CONNECT-CHATGPT.md](CONNECT-CHATGPT.md).
+В браузере откройте VN Web на ПК и выберите локальный рассказчик либо авторизуйте Grok/ChatGPT через раздел «Подключения». Для этого работает локальный универсальный прокси, а не прежний MCP gateway.
 
 ## 6. Проверка установки
 
