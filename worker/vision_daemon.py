@@ -133,10 +133,11 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    reasons.append(f"Expected {expected} outdoors; CLIP strongly detects indoor ({indoor:.2f})")
   elif expected in INDOOR and outdoor>0.80:
    reasons.append(f"Expected {expected} indoors; CLIP strongly detects outdoors ({outdoor:.2f})")
-  # Market square check relaxed: CLIP often misidentifies market scenes
   if expected=="outdoor_market_square":
-   if probs.get("indoor_room",0)>0.70:
+   if probs.get("indoor_room",0)>0.42:
     reasons.append("Market square resembles an interior furnished room")
+   elif probs.get("outdoor_market_square",0)<.14:
+    warnings.append("Market square details weak or ambiguous")
  if neural_story:
   expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
   people_scores=score_principal_people(image)
@@ -225,11 +226,12 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    if re.search(r"\b(?:no people|nobody)\b",desc):
     reasons.append("Sprite has no visible character")
    outfit=str(spec.get("variant",{}).get("outfit","")).lower()
-   # Wardrobe check disabled: VLM unreliable for nude detection
-   # if wants_unclothed:
-   #  verdict=clothing_alignment(desc)
-   #  if verdict=="failed":
-   #   reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
+   if wants_unclothed:
+    # Only an explicit contradictory clothing description blocks publication.
+    # An uncertain caption must not masquerade as positive proof or failure.
+    verdict=clothing_alignment(desc)
+    if verdict=="failed":
+     reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
    # Strong wardrobe constraints are handled as warnings when VLM is unsure.
    expected_color=next((c for c in ("black","white","green","red","blue","brown","purple","yellow","grey","gray")
        if re.search(r"\b"+c+r"\b",outfit)),None)
