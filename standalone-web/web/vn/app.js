@@ -70,6 +70,8 @@ function renderVisualJobs(jobs){
    progress.max=100;progress.value=pct;progress.setAttribute("aria-label",name);
    row.append(progress);
   }
+  if(j.narrator_prompt===true)
+   row.append(label("div","Задание для изображения составил выбранный рассказчик","job-prompt-source"));
   row.append(label("div",jobTimings(j),"job-timings"));
   if(j.attempt_history?.length>1)row.append(label("div",j.attempt_history.map(a=>
     "Попытка "+a.number+" · "+a.outcome+" · очередь "+timingSeconds(a.wait_ms||0)+" · "+
