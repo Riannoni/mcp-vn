@@ -103,8 +103,8 @@
  <section class="dialog" role="dialog" aria-modal="true" aria-label="Подключения моделей">
   <div class="dialog-header"><div><span class="eyebrow">UNIVERSAL PROXY</span><h2>Подключить рассказчиков</h2></div><button id="close-providers" class="subtle">Закрыть</button></div>
   <p>Выбери локальную модель или подключи свой аккаунт ChatGPT либо Grok.</p>
-  <div class="provider-row"><div><strong>ChatGPT / Codex</strong><small>Код устройства · доступные GPT-модели</small><small id="oauth-openai-state" class="provider-state">Не подключено</small></div><button id="auth-openai" class="secondary" type="button">Войти</button></div>
-  <div class="provider-row"><div><strong>Grok / xAI</strong><small>Свой код устройства · доступ по тарифу xAI</small><small id="oauth-grok-state" class="provider-state">Не подключено</small></div><button id="auth-grok" class="secondary" type="button">Войти</button></div>
+  <div class="provider-row"><div><strong>ChatGPT / Codex</strong><small>Код устройства · доступные GPT-модели</small></div><div class="provider-actions"><button id="auth-openai" class="secondary" type="button">Войти</button><small id="oauth-openai-state" class="provider-state" aria-live="polite">Проверка…</small></div></div>
+  <div class="provider-row"><div><strong>Grok / xAI</strong><small>Свой код устройства · доступ по тарифу xAI</small></div><div class="provider-actions"><button id="auth-grok" class="secondary" type="button">Войти</button><small id="oauth-grok-state" class="provider-state" aria-live="polite">Проверка…</small></div></div>
   <div class="provider-row"><div><strong>Qwen и Cydonia</strong><small>Локальный ROCm · настроено</small></div><span class="ready">Подключено</span></div>
   <div id="oauth-panel" class="oauth-panel" hidden>
    <strong id="oauth-provider-name">Авторизация</strong>
