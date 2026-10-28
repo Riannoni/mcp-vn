@@ -24,6 +24,18 @@ export function visualFingerprint(scene){
   "cg_revision:"+scene.cg_revision:"";
  return [assetId(scene?.background_url),...sprites,...(revision?[revision]:[])].join(";");
 }
+// Neural CGs are based on the scene's intended appearance, not on
+// intermediate transparent sprites that will be hidden behind the CG.
+export function sceneIntentFingerprint(scene={}){
+ const people=(scene.sprites||[]).map(x=>[
+  norm(x.name,""),norm(x.outfit,"default"),norm(x.pose,"standing"),
+  norm(x.emotion,"neutral")
+ ]);
+ return JSON.stringify([norm(scene.location,""),assetId(scene.background_url),
+  norm(scene.time_of_day,""),norm(scene.weather,""),
+  Number(scene.cg_revision||0),norm(scene.visual_direction,""),
+  norm(scene.image_prompts?.cg,""),people]);
+}
 export function normalizeSprite(sprite={},identity={},sceneBackground="",gameStyle=""){
  const s={...sprite};
  s.art_style=norm(s.art_style||identity?.base_style,"realistic");
@@ -52,9 +64,11 @@ export function normalizeVisualState(g){
  scene.sprites=(scene.sprites||[]).map(s=>
    normalizeSprite(s,g.identities?.[s.name]||{},scene.background_url,g.art_style));
  if(scene.cg_url){
+   const neural=scene.cg_composition==="neural_story";
    scene.cg_dirty=scene.background_dirty||!!(g.art_style&&scene.cg_style!==g.art_style)||
-     scene.sprites.some(s=>s.visual_dirty)||
-      !scene.cg_basis||scene.cg_basis!==visualFingerprint(scene);
+     (!neural&&scene.sprites.some(s=>s.visual_dirty))||
+      !scene.cg_basis||scene.cg_basis!==(neural?
+       sceneIntentFingerprint(scene):visualFingerprint(scene));
    if(scene.cg_dirty&&scene.mode==="cg")scene.mode="layered";
  }else{
    scene.cg_dirty=false;
