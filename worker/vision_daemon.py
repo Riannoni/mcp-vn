@@ -13,7 +13,7 @@ from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
-from scene_caption_contract import scene_caption_conflicts
+from scene_caption_contract import scene_caption_conflicts, insufficient_scene_caption
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -183,15 +183,25 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    "scene":"Count the people visible (one, two or more), describe their appearance and whether they stand indoors or outdoors. One factual sentence."
   }
   if kind=="scene" and spec.get("composition")=="neural_story":
-   prompts["scene"]=("Count only the large principal characters in the foreground, "
-     "excluding tiny distant pedestrians, statues, paintings and background figures. "
-     "Are there one, two or more distinct adults visibly occupying the foreground? "
-     "Briefly state their body poses and outfits. One direct sentence.")
+   prompts["scene"]=(
+     "Describe the actual image in TWO COMPLETE factual sentences, not a number. "
+     "Describe the foreground adult people and their distinct body positions, "
+     "visible clothes, physical objects and indoor/outdoor setting. "
+     "If identical people appear twice in different places, mention both. "
+     "Do not invent anything not visible.")
   if wants_unclothed:
    prompts["sprite"]=("Describe factually whether the clearly adult person wears any garments "
      "or accessories. Name visible items of clothing, or say 'no clothes visible' if none. "
      "Avoid assumptions. Answer in one brief sentence.")
   caption=summarize(image,prompts.get(kind,prompts["background"]))
+  if neural_story and insufficient_scene_caption(caption):
+   # SmolVLM2 occasionally returned only "Two.". Re-prompt with
+   # descriptive captioning instead of a pure counting question.
+   alt=summarize(image,
+     "Start with 'The image shows'. Describe the entire picture in two "
+     "full English sentences including foreground subjects, their positions, "
+     "physical objects and background. Do not answer with a count alone.")
+   if not insufficient_scene_caption(alt):caption=alt
   desc=caption.lower()
   if expected in OUTDOOR and re.search(r"\b(?:inside|indoors|bedroom|interior room|living room|office|hallway)\b",desc):
    warnings.append("VLM describes an interior while an outdoor location is requested")
