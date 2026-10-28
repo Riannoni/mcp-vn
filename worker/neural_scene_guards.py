@@ -3,7 +3,7 @@
 The storyteller owns the composition; these additions prevent repeated
 diffusion artifacts (duplicate women, literal clock/camera props).
 """
-def neural_scene_guards(spec,attempts=1,error=""):
+def neural_scene_guards(spec,attempts=1,error="",subject=""):
     if spec.get("composition")!="neural_story":
         return "", "", ""
     cast=spec.get("characters") or []
@@ -38,7 +38,7 @@ def neural_scene_guards(spec,attempts=1,error=""):
     )
     # A 'clock-like' shoulder mark had been hallucinated as a large wall clock.
     if any("clock" in str(x).lower() for x in [
-            spec.get("world",""),*(p.get("appearance","") for p in cast)]):
+            spec.get("world",""),subject,*(p.get("appearance","") for p in cast)]):
         lead+=(
             "Any clock-shaped emblem on a shoulder is a SMALL FLAT SILVER "
             "SKIN MARK only; never render a literal clock object from it. "
