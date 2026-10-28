@@ -195,7 +195,7 @@ function showApp(){
 }
 async function loadModels(){
  const catalog=await api("/api/vn/models");
- models=catalog.models||[];
+ models=(catalog.models||[]).filter(m => !/qwen/i.test(m.id) && !/qwen/i.test(m.name||""));
  const select=$("narrator"),old=getSavedModel()||select.value||activeModel;
  select.replaceChildren();
  const groups={local:"Локальные · ROCm",openai:"ChatGPT / Codex · OAuth",grok:"Grok / xAI · OAuth"};

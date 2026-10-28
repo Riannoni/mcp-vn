@@ -27,8 +27,8 @@ const all=async()=>{
  return Promise.all((await fs.readdir(root)).filter(x=>x.endsWith(".json")).map(x=>read(x.slice(0,-5))));
 };
 const styles={anime:"waiIllustriousSDXL_v170.safetensors",
- semireal:"CyberRealisticPony_V18.0_F16.safetensors",
- realistic:"CyberRealisticPony_V18.0_F16.safetensors",
+ semireal:"ponyRealism_V23ULTRA.safetensors",
+ realistic:"ponyRealism_V23ULTRA.safetensors",
  poster:"CyberRealisticPony_V18.0_F16.safetensors",
  animation:"BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors"};
 export function styleList(){return Object.keys(styles)}
