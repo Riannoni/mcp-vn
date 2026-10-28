@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Private standalone VN backend. Only the browser-facing Model Lab imports this."""
 from __future__ import annotations
-import copy,json,re,shlex,urllib.parse,urllib.request,urllib.error
+import copy,json,re,shlex,time,urllib.parse,urllib.request,urllib.error
 from pathlib import Path
 import vn_oauth_device
 HOME="http://192.168.50.29:3100"
@@ -155,6 +155,11 @@ def game_performance(game_id):
   raise VNError("Неверный ID сохранения")
  return home("performance/"+game_id,timeout=12)
 
+def game_turn_trace(game_id):
+ if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
+  raise VNError("Неверный ID сохранения")
+ return home("turn-trace/"+game_id,timeout=12)
+
 def game_undo(game_id,expected_version):
  if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
   raise VNError("Неверный ID сохранения")
@@ -200,6 +205,16 @@ SYSTEM="""Ты независимый рассказчик интерактив�
 противоречить друг другу.
 Добавляй scene.location/time_of_day/weather только при реальном изменении,
 не переписывай текущую локацию автоматически. Не делай надуманной смены сцены.
+Для каждой существенной перемены внешности, позы, положения персонажей,
+новой локации или нового действия дай scene.visual_direction: короткий
+визуальный промпт для художника (кадр, действие, расположение, одежда, свет).
+Он идёт локальной графической модели, не попадает в реплики рассказчика.
+Добавляй scene.visual_mode="cg" при значительном физическом действии,
+контакте, перемене одежды, композиции или локации; при небольшой эмоции
+или жесте scene.visual_mode="layers". Не проси CG для простого разговора.
+Не предлагай визуальный режим только ради нового абзаца.
+В сцене нет изменения? Не обновляй visual_direction, visual_mode или sprites.
+
 Если персонаж явно присутствует в кадре или меняет эмоцию/позу/одежду,
 добавь scene.sprites: ПОЛНЫЙ список видимых NPC в кадре (максимум 4):
 [{"name":"Мира","emotion":"neutral","pose":"standing","outfit":"green cloak"}].
@@ -246,6 +261,12 @@ def parse_answer(s):
   out=[{"speaker":"Рассказчик","text":str(d.get("narration") or d.get("text"))[:10000]}]
  if not out:raise VNError("Модель вернула пустой JSON; можно повторить ход",503)
  scene={k:v[:170] for k,v in (d.get("scene") or {}).items() if k in ("location","time_of_day","weather") and isinstance(v,str)} if isinstance(d.get("scene"),dict) else {}
+ if isinstance(d.get("scene"),dict):
+  visual=d["scene"]
+  if isinstance(visual.get("visual_direction"),str):
+   scene["visual_direction"]=visual["visual_direction"].strip()[:420]
+  if visual.get("visual_mode") in ("cg","layers"):
+   scene["visual_mode"]=visual["visual_mode"]
  if isinstance(d.get("scene"),dict) and isinstance(d["scene"].get("sprites"),list):
   sprites=[]
   for actor in d["scene"]["sprites"][:4]:
@@ -277,9 +298,9 @@ def validate_model(game_id,model,reasoning_effort):
   raise VNError("Эта модель не поддерживает выбранную глубину размышления",400)
  return levels
 
-def turn(game_id,model,action=None,version=None,reasoning_effort="auto"):
+def turn(game_id,model,action=None,version=None,reasoning_effort="auto",auto_visual=True):
  if isinstance(action,str) and action.strip().startswith("/"):
-  return command(game_id,model,action,version,reasoning_effort)
+  return command(game_id,model,action,version,reasoning_effort,auto_visual=auto_visual)
  levels=validate_model(game_id,model,reasoning_effort)
  if action is not None:
   if not isinstance(action,str) or not 1<=len(action.strip())<=5000:raise VNError("Текст хода: 1–5000 символов")
@@ -287,9 +308,9 @@ def turn(game_id,model,action=None,version=None,reasoning_effort="auto"):
   if version is not None:request["expected_version"]=int(version)
   packet=home("submit",request,timeout=12)["packet"]
  else:packet=home("packet/"+game_id,timeout=12)["packet"]
- return narrate_packet(game_id,model,packet,reasoning_effort,levels)
+ return narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=auto_visual)
 
-def narrate_packet(game_id,model,packet,reasoning_effort,levels):
+def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True):
  if not packet.get("pending_narration"):raise VNError("Нет ожидающего хода",409)
  system=SYSTEM
  directive=(packet.get("command") or {}).get("instruction","")
@@ -303,24 +324,32 @@ def narrate_packet(game_id,model,packet,reasoning_effort,levels):
   request["temperature"]=0.7
  if reasoning_effort!="auto":
   request["reasoning_effort"]=reasoning_effort
+ model_started=time.monotonic()
  result=proxy("/v1/chat/completions",request,timeout=195)
+ model_ms=round((time.monotonic()-model_started)*1000)
  content=(result.get("choices") or [{}])[0].get("message",{}).get("content","")
  if isinstance(content,list):content="\n".join(x.get("text","") for x in content if isinstance(x,dict))
  parsed=parse_answer(content)
  if (packet.get("command") or {}).get("name")=="end":parsed["choices"]=[]
+ commit_started=time.monotonic()
  committed=home("commit",{
   "game_id":game_id,"action_id":packet["pending_action"]["id"],
   "messages":parsed["messages"],"scene":parsed["scene"],"choices":parsed["choices"],"flags":parsed.get("flags",{})
  },timeout=28)
+ commit_ms=round((time.monotonic()-commit_started)*1000)
  # Visuals are asynchronous and must never roll back a committed story turn.
- try:visual=visual_refresh(game_id).get("visual",{})
- except VNError as err:visual={"warning":str(err)}
+ visual={}
+ if auto_visual:
+  try:visual=visual_refresh(game_id).get("visual",{})
+  except VNError as err:visual={"warning":str(err)}
  return {"game":rewrite_game(committed["game"]),"model":model,
    "reasoning_effort":reasoning_effort,"visual":visual,
+   "turn_timings":{"narrator_model_ms":model_ms,"commit_roundtrip_ms":commit_ms,
+                   "visual_scheduled":len(visual.get("scheduled",[]))},
    "tokens":(result.get("usage") or {}).get("completion_tokens",0),
    "backend":result.get("vn_backend","")}
 COMMAND_NAMES={"continue","improvise","ooc","skip","cut","recap","end","video","roll","retry","undo"}
-def command(game_id,model,text,version,reasoning_effort="auto",confirmed=False):
+def command(game_id,model,text,version,reasoning_effort="auto",confirmed=False,auto_visual=True):
  if not isinstance(text,str) or len(text)>2000:raise VNError("Команда: не более 2000 символов")
  match=re.fullmatch(r"/([a-z]+)(?:\s+([\s\S]*))?",text.strip(),re.I)
  if not match or match[1].lower() not in COMMAND_NAMES:raise VNError("Неизвестная команда. Выбери команду из меню «/».")
@@ -347,7 +376,7 @@ def command(game_id,model,text,version,reasoning_effort="auto",confirmed=False):
  data=home("command",{"game_id":game_id,"action":text.strip(),"model":model,
   "expected_version":version,"confirmed":confirmed is True},timeout=25)
  if data.get("packet"):
-  return narrate_packet(game_id,model,data["packet"],reasoning_effort,levels)
+  return narrate_packet(game_id,model,data["packet"],reasoning_effort,levels,auto_visual=auto_visual)
  if data.get("game"):data["game"]=rewrite_game(data["game"])
  if data.get("job",{}).get("asset_url"):data["job"]["asset_url"]=asset_url(data["job"]["asset_url"])
  return data
