@@ -149,7 +149,7 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
  const characters=before.characters.map(actor=>{
   const incoming=asObject(byName.find(x=>namesEqual(x.name,actor.name)));
   return {...actor,...Object.fromEntries(DETAIL_KEYS.map(key=>[
-   key,incoming[key]===undefined?actor[k]:trim(incoming[key],key==="outfit"?350:300)
+   key,incoming[key]===undefined?actor[key]:trim(incoming[key],key==="outfit"?350:300)
   ]))}
  });
  const state={
