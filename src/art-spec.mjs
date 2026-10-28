@@ -71,7 +71,8 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
    rendered_background_asset:s.rendered_background_asset||"",
    anchor_asset:assetName(canonical?.base_sprite_url),
    anchor_face_asset:assetName(canonical?.face_url),
-   emotion:compact(s.emotion||"neutral",60),outfit:compact(s.outfit||"default",80)};
+   emotion:compact(s.emotion||"neutral",60),outfit:compact(s.outfit||"default",80),
+   pose:compact(s.pose||"standing",280)};
  });
  const available=characters.filter(c=>c.sprite_asset&&c.sprite_alpha&&!c.visual_dirty);
  const face=assetName(identity?.face_url);
