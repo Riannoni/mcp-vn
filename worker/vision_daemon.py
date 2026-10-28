@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
-from wardrobe_contract import wants_unclothed, clothing_alignment
+from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -164,7 +164,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  first_anchor=kind=="sprite" and not spec.get("anchor_asset")
  outfit_change=kind=="sprite" and spec.get("variant",{}).get("outfit","default")!="default"
  pose_change=kind=="sprite" and spec.get("variant",{}).get("pose","standing")!="standing"
- requires_bare=kind=="sprite" and wants_unclothed(spec.get("variant",{}).get("outfit",""))
+ requires_bare=kind=="sprite" and outfit_requires_bare(spec.get("variant",{}).get("outfit",""))
  # A compound outfit can describe carried clothes, not worn garments.
  wants_unclothed=requires_bare
  trusted_composite=(kind=="scene" and spec.get("composition")=="anchored_composite"
