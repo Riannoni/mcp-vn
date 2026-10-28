@@ -12,6 +12,32 @@ def insufficient_scene_caption(caption):
     words=re.findall(r"[a-zA-Z]+",str(caption or ""))
     return len(words)<8
 
+def scene_action_conflicts(characters,caption,narrator_prompt):
+    """Veto clear contradictions between a requested wall brace and actual pose.
+
+    Only assert a failure for an explicit observation, not VLM silence.
+    """
+    people=characters if isinstance(characters,list) else []
+    if len(people)!=1 or not caption:
+        return []
+    intended=str(narrator_prompt or "").lower()
+    pose=str(people[0].get("pose","")).lower()
+    wants_brace=(
+        ("wall" in intended or "masonry" in intended) and
+        ("lean" in intended or "brac" in intended or "palm" in intended or
+         "lean" in pose)
+    )
+    if not wants_brace:
+        return []
+    desc=str(caption).lower()
+    if re.search(r"\\b(?:lying|laying|reclining|crawling|sitting)\\b",desc):
+        return ["CG physical pose contradicts intended standing wall contact"]
+    if re.search(r"\\b(?:hand|hands|elbow|elbows)\\b.{0,25}"
+                 r"\\b(?:ground|paving|pavement|street)\\b",desc):
+        return ["CG hands are on the ground instead of on the required wall"]
+    return []
+
+
 def scene_caption_conflicts(characters,caption):
     people=characters if isinstance(characters,list) else []
     desc=str(caption or "")
