@@ -14,9 +14,10 @@ class NeuralSceneGuardsTests(unittest.TestCase):
   pos,neg,source=neural_scene_guards(
       spec,3,"Expected 1 principal figures cannot be verified",
       "Mira has a silver clock-like mark; rear three-quarter viewpoint")
-  self.assertIn("one adult woman only",pos)
+  self.assertIn("one adult person only",pos)
   self.assertIn("one human body",pos)
   self.assertIn("SOLO",pos)
+  self.assertNotIn("daylight",pos)
   self.assertIn("open-air outdoor market square",pos)
   self.assertIn("small flat silver tattoo".upper(),pos.upper())
   self.assertNotIn("No physical camera",pos)
