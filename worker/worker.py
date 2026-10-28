@@ -939,6 +939,7 @@ def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
                     print("QUALITY_ACCEPTED_FALLBACK",job["id"],"after",attempts,"attempts",flush=True)
                     report["passed"]=True
                     report["reasons"]=[]
+                    request(SERVER,"/worker/qa/"+job["id"],"POST",report,timeout=30)
                 else:
                     print("QUALITY_REJECTED",job["id"],report.get("reasons"),flush=True)
                     return
