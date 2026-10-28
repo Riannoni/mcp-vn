@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {planStandaloneVisuals} from "../src/standalone-visuals.mjs";
+import {planStandaloneVisuals,sceneCGPrompt,sceneCGRequired} from "../src/standalone-visuals.mjs";
 
 const game=(scene={},other={})=>({
  id:"11111111-1111-4111-8111-111111111111",
@@ -53,4 +53,28 @@ test("manual retry of an accepted sprite bypasses the stale appearance cache",()
  assert.equal(wanted[0].character,"Мира");
  assert.match(wanted[0].prompt,/fully undressed/);
  assert.equal(g.scene.sprites[0].visual_dirty,false);
+});
+
+test("substantial narrator visual change schedules neural CG only after accepted sprites",()=>{
+ const scene={sprites:[{name:"Мира",outfit:"green cloak",pose:"kneeling",emotion:"serious",
+  image_url:"https://example.test/a.png",transparent:true,visual_dirty:false,
+  rendered_variant_key:"anime|green cloak|kneeling|serious"}],
+  auto_cg_requested:true,visual_direction:"Mira kneels by the ancient gate, side view",
+  cg_url:"",cg_dirty:false};
+ const g=game(scene,{messages:[{role:"narrator",text:"Мира опускается на колено."}]});
+ assert.equal(sceneCGRequired(g),true);
+ const jobs=planStandaloneVisuals(g);
+ assert.equal(jobs.length,1);
+ assert.equal(jobs[0].kind,"scene");
+ assert.equal(jobs[0].neural_scene,true);
+ assert.match(jobs[0].prompt,/side view/);
+ assert.match(sceneCGPrompt(g),/Мира/);
+ assert.equal(planStandaloneVisuals(game({...scene,auto_cg_requested:false})).length,0);
+ assert.equal(planStandaloneVisuals(game({...scene,
+  sprites:scene.sprites.map(p=>({...p,visual_dirty:true}))}))[0].kind,"sprite");
+});
+test("narrator pending turn never launches visual jobs even when CG requested",()=>{
+ assert.deepEqual(planStandaloneVisuals(game({auto_cg_requested:true,sprites:[{
+  name:"Мира",image_url:"https://example.test/a.png",visual_dirty:false}]},
+  {awaiting_narrator:true})),[]);
 });
