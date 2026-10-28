@@ -34,8 +34,8 @@ def is_unclothed(spec):
 STYLES = {
     "anime": ("waiIllustriousSDXL_v170.safetensors", 24, 6.0),
     "animation": ("BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors", 8, 1.0),
-    "semireal": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
-    "realistic": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
+    "semireal": ("ponyRealism_V23ULTRA.safetensors", 32, 6.0),
+    "realistic": ("ponyRealism_V23ULTRA.safetensors", 32, 6.0),
     "poster": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
 }
 SESSION = None
@@ -333,19 +333,35 @@ def prompt_builder(job, background):
         # a reference identity as a request for multiple appearances.
         positive=lead+positive
         negative=extra_negative+negative
+    # Model-specific prompt rules
     if style in ("semireal","realistic","poster"):
-        
-    # Prompt enhancer for quality and NSFW
-    if not any(q in positive.lower() for q in ["masterpiece", "best quality", "score_9"]):
-        if style == "animation":
-            positive = "masterpiece, best quality, highly detailed, sharp focus, " + positive
-        else:
-            positive = "masterpiece, best quality, highres, absurdres, very aesthetic, detailed skin, detailed eyes, sharp focus, " + positive
-    if any(w in (subject + positive).lower() for w in ["nude", "naked", "sex", "nsfw", "explicit", "обнаж", "раздет", "секс"]):
-        positive += ", nsfw, explicit, detailed genitalia, detailed nipples, soft lighting, intimate atmosphere"
-positive="score_9, score_8_up, score_7_up. "+positive
+        # CyberRealistic Pony v18: score ladder + source_photo + rating_explicit
+        # Negative should include score_6/5/4 and anti-cartoon
+        positive="score_9, score_8_up, score_7_up, source_photo, photorealistic, rating_explicit. "+positive
+        negative+=", score_6, score_5, score_4, cartoon, anime, 3d render, plastic skin, airbrushed"
     elif style=="anime":
-        positive="masterpiece, best quality, amazing quality, "+positive
+        # WAI-Illustrious: masterpiece/best quality, not score tags
+        positive="masterpiece, best quality, high quality, very aesthetic, detailed. "+positive
+        negative+=", lowres, bad anatomy, bad hands, worst quality, low quality"
+    elif style=="animation":
+        # Anima/BAS:NSFW: animation style, not Japanese anime screencap
+        positive="masterpiece, best quality, highly detailed, sharp focus. "+positive
+    # Pose reinforcement for clear narrator poses
+    if kind=="scene" and subject:
+        subj_l = subject.lower()
+        pose_hints = []
+        if any(w in subj_l for w in ["bent forward","leaning forward","from behind","back view","rear view","buttock"]):
+            pose_hints.append("from behind, rear view, bent forward against wall, face turned away, looking away from camera, not looking at viewer, not facing camera")
+        if any(w in subj_l for w in ["pulls her","pulling","hand pulls","buttock aside","spread"]):
+            pose_hints.append("one hand pulling buttock aside, fingers gripping flesh, clear view of cleft")
+        if any(w in subj_l for w in ["wall","masonry","bracing"]):
+            pose_hints.append("standing against wall, hands on wall, not on ground")
+        if pose_hints:
+            positive = "POSE: " + ", ".join(pose_hints) + ". " + positive
+            negative += ", facing camera, looking at viewer, looking at camera, portrait, front view, face visible, eye contact, holding camera, holding object, lying on ground"
+    # Teeth fix
+    if kind in ("scene","sprite"):
+        negative += ", bad teeth, ugly teeth, crooked teeth, missing teeth, deformed teeth, open mouth with bad teeth, extra teeth"
     if kind=="local_cg" and job.get("attempts",1)>1:
         error=str(job.get("error","")).lower()
         if "principal" in error or "one=" in error:
@@ -542,8 +558,13 @@ def image_graph(job):
             img_node=str(62+i*3)
             apply_node=str(64+i*3)
             graph[img_node]={"class_type":"LoadImage","inputs":{"image":filename}}
+            # Low face weight on rear poses: keep identity, reduce looking-at-camera prior
+            face_weight = 0.74
+            subj = str(job.get("prompt") or "").lower()
+            if any(w in subj for w in ["from behind","rear","bent forward","buttock","back view","not facing"]):
+                face_weight = 0.12
             adapter={"model":model_ref,"ipadapter":["61",0],"image":[img_node,0],
-                "clip_vision":["60",0],"weight":0.74,"weight_type":"linear",
+                "clip_vision":["60",0],"weight":face_weight,"weight_type":"linear",
                 "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
                 "embeds_scaling":"V only"}
             if len(people)>1:
@@ -632,10 +653,17 @@ def image_graph(job):
     # full-body framing without reducing CLIP face identity on the tested character.
     # Unsupported poses intentionally fall back to textual pose prompts.
     pose_kind=str((spec.get("variant") or {}).get("pose","standing"))
+    # For scene rear poses, map to OpenPose guide
+    if kind=="scene" and spec.get("composition")=="neural_story":
+        subj = str(job.get("prompt") or "").lower()
+        if any(w in subj for w in ["bent forward","from behind","rear","buttock"]):
+            pose_kind = "bent_forward_rear"
+        elif any(w in subj for w in ["wall","leaning"]):
+            pose_kind = "leaning_wall_rear"
     pose_filename=pose_control_guide(pose_kind)
     env_enabled=os.environ.get("VN_POSE_CONTROL","1").lower() not in ("0","false","off")
     previous_error=str(job.get("error","")).lower()
-    if (kind=="sprite" and not is_animation and env_enabled and pose_filename and
+    if ((kind=="sprite" or (kind=="scene" and spec.get("composition")=="neural_story")) and not is_animation and env_enabled and pose_filename and
         not (job.get("attempts",1)>1 and ("controlnet" in previous_error or
                "control net" in previous_error or "out of memory" in previous_error))):
         try:
@@ -653,7 +681,7 @@ def image_graph(job):
               "positive":graph["5"]["inputs"]["positive"],
               "negative":graph["5"]["inputs"]["negative"],
               "control_net":["23",0],"image":["24",0],
-              "strength":0.75,"start_percent":0.0,"end_percent":0.86}}
+              "strength":0.92,"start_percent":0.0,"end_percent":0.95}}
             graph["5"]["inputs"]["positive"]=["25",0]
             graph["5"]["inputs"]["negative"]=["25",1]
             print("POSE_CONTROL_ACTIVE",job["id"],pose_kind,flush=True)
@@ -844,7 +872,6 @@ def assess(job,raw,background):
     spec=job.get("spec") or {}
     environment=(spec.get("environment") or {}).get("id","unclassified")
     if kind in ("background","scene","local_cg") and environment!="unclassified" and semantic=="unavailable":
-        # Skip hard location reject for explicit NSFW scenes
         prompt_text = str(job.get("prompt","") or "").lower()
         if not any(w in prompt_text for w in ["nude","naked","nsfw","explicit","обнаж","раздет"]):
             reasons.append("Location QA unavailable: canonical scene unchanged")
