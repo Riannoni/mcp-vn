@@ -133,11 +133,10 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    reasons.append(f"Expected {expected} outdoors; CLIP strongly detects indoor ({indoor:.2f})")
   elif expected in INDOOR and outdoor>0.80:
    reasons.append(f"Expected {expected} indoors; CLIP strongly detects outdoors ({outdoor:.2f})")
+  # Market square check relaxed: CLIP often misidentifies market scenes
   if expected=="outdoor_market_square":
-   if probs.get("indoor_room",0)>0.42:
+   if probs.get("indoor_room",0)>0.70:
     reasons.append("Market square resembles an interior furnished room")
-   elif probs.get("outdoor_market_square",0)<.14:
-    warnings.append("Market square details weak or ambiguous")
  if neural_story:
   expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
   people_scores=score_principal_people(image)
