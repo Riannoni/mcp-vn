@@ -38,7 +38,7 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
  local_shot="",local_variant_jobs=[],
  local_visual_state=null,local_basis_asset="",local_basis_job_id="",
  local_basis_verified=false,local_fresh_composition=false,
- video_start_asset="",video_source_verified=false}){
+ video_start_asset="",video_source_verified=false,neural_scene=false}){
  const game=await gameGet(game_id);
  if(!["background","sprite","scene","video","local_cg"].includes(kind))throw Error("Invalid kind");
  if(style!==undefined&&style!==game.art_style)
@@ -61,7 +61,7 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
   preview_only,library_only,target_location,target_time_of_day,target_weather,
   local_shot,local_variant_jobs,local_visual_state,
   local_basis_asset,local_basis_job_id,local_basis_verified,local_fresh_composition,
-  video_start_asset,video_source_verified});
+  video_start_asset,video_source_verified,neural_scene});
  if(kind==="scene"||kind==="local_cg"){
   if(kind==="scene"&&game.scene?.background_dirty)
    throw Error("CG requires the background to match the game's locked art style");
@@ -194,7 +194,7 @@ export async function jobsForGame(gameId){
  const jobs=(await all()).filter(x=>x.game_id===gameId);
  return jobs.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,35);
 }
-const isCpuJob=j=>j.kind==="scene"||
+const isCpuJob=j=>(j.kind==="scene"&&j.spec?.composition!=="neural_story")||
  (j.kind==="local_cg"&&j.spec?.composition!=="neural_story");
 export async function activeGpuJobs(){
  const now=Date.now();
