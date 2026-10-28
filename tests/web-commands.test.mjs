@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchingCommands,latencyText,inputEnterIntent} from '../standalone-web/web/vn/commands.js';
+import {matchingCommands,latencyText,inputEnterIntent,preferredNarrator} from '../standalone-web/web/vn/commands.js';
 test('command filtering never treats arguments or normal prose as autocomplete',()=>{
  assert.equal(matchingCommands('/').length,11);
  assert.deepEqual(matchingCommands('/re').map(x=>x.name),['recap','retry']);
@@ -21,4 +21,12 @@ test("Enter sends, Ctrl+Enter inserts a newline and IME text is not submitted",(
  assert.equal(inputEnterIntent({key:"Enter",isComposing:true}),"");
  assert.equal(inputEnterIntent({key:"Enter",keyCode:229}),"");
  assert.equal(inputEnterIntent({key:"ArrowDown"}),"");
+});
+
+test("remembered storyteller wins over local default and reconnects when available",()=>{
+ const available=["local-cydonia-24b","grok-4.7","gpt-6"];
+ assert.equal(preferredNarrator(available,"grok-4.7","local-cydonia-24b"),"grok-4.7");
+ assert.equal(preferredNarrator(["local-cydonia-24b"],"grok-4.7",""),"local-cydonia-24b");
+ assert.equal(preferredNarrator(available,"grok-4.7","local-cydonia-24b"),"grok-4.7");
+ assert.equal(preferredNarrator([],"grok-4.7",""),"");
 });
