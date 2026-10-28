@@ -352,6 +352,9 @@ def prompt_builder(job, background):
         pose_hints = []
         if any(w in subj_l for w in ["bent forward","leaning forward","from behind","back view","rear view","buttock"]):
             pose_hints.append("from behind, rear view, bent forward against wall, face turned away, looking away from camera, not looking at viewer, not facing camera")
+        sex_kw=["anal","sex","penetration","insert","cock","penis","fuck","oral","blowjob","suck","vaginal","pussy","cunt","ride","doggy","missionary","cowgirl","threesome","creampie","cum","orgasm"]
+        if any(w in subj_l for w in sex_kw):
+            pose_hints.append("explicit sex scene, penetration visible, nude bodies, genital contact, not looking at camera")
         if any(w in subj_l for w in ["wall","masonry","bracing"]):
             pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
         if pose_hints:
