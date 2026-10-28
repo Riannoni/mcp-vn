@@ -295,11 +295,11 @@ def prompt_builder(job, background):
         people=", ".join(c["name"]+": "+appearance_tags(c.get("appearance",""))+
                          ". "+str(c.get("appearance",""))[:140] for c in spec.get("characters",[]))
         positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. Market square with brick buildings, stalls, open air. Character standing against brick wall of market building. Same physical location as input photograph. "
-           f"Create an integrated visual novel cinematic frame with the following adult characters in the foreground: {people}. "
+           f"Preserve character identity: same hair color, hair style, body type as reference. Create an integrated visual novel cinematic frame with the following adult characters in the foreground: {people}. "
            f"Story action: {subject}. Match the scene lighting ({lighting}), scale, perspective, shadows and colors. "
            "Do not redraw buildings or alter the existing geometry outside the insertion area.")
         negative=("split screen, collage, framed portraits, poster, isolated character card, borders, text, watermark, "
-                  f"duplicated faces, disfigured hands, child, underage, {envnegative}")
+                  f"duplicated faces, disfigured hands, wrong hair color, wrong hair style, different body type, child, underage, {envnegative}")
     else:
         positive=(f"{stylehint}. Essential scene geometry: {envpositive}. "
            f"Open-air PUBLIC SQUARE with sky and buildings OUTSIDE if market square. "
@@ -353,7 +353,7 @@ def prompt_builder(job, background):
         if any(w in subj_l for w in ["bent forward","leaning forward","from behind","back view","rear view","buttock"]):
             pose_hints.append("from behind, rear view, bent forward against wall, face turned away, looking away from camera, not looking at viewer, not facing camera")
         if any(w in subj_l for w in ["pulls her","pulling","hand pulls","buttock aside","spread"]):
-            pose_hints.append("one hand pulling buttock aside, fingers gripping flesh, clear view of cleft")
+            pose_hints.append("one hand pulling buttock aside, fingers gripping flesh, clear view of cleft, hand visible on buttock")
         if any(w in subj_l for w in ["wall","masonry","bracing"]):
             pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
         if pose_hints:
