@@ -67,7 +67,7 @@ export function planStandaloneVisuals(g,{retry=false}={}){
   reason:"sprite_missing_or_changed"
  }));
  if(!retry&&sceneCGRequired(g))
-  return [{kind:"scene",style:g.art_style,quality:"standard",
+  return [{kind:"scene",style:g.art_style,quality:"standard",neural_scene:true,
    prompt:sceneCGPrompt(g),reason:"narrator_material_scene_change"}];
  return [];
 }
