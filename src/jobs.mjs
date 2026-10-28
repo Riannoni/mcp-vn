@@ -117,6 +117,19 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
     spec.background_asset,spec.expected_variant_key,prompt.trim()]);
   const identical=existing.find(j=>sameTarget(j)&&fingerprint(j)===requestFingerprint);
   if(identical)return {...identical,deduplicated:true};
+  // Automatic neural CG is keyed to its immutable story-shot fingerprint.
+  // Do not let secondary request metadata changes supersede an identical
+  // queued/working frame. Otherwise a 4s UI poll can starve the GPU forever.
+  // An explicit force=true request is still able to replace the old job.
+  if(kind==="scene"&&spec.composition==="neural_story"&&!force){
+   const pending=existing.find(j=>sameTarget(j)&&
+     j.spec?.composition==="neural_story"&&
+     j.spec?.cg_basis_snapshot===spec.cg_basis_snapshot&&
+     j.spec?.expected_location===spec.expected_location&&
+     j.spec?.background_asset===spec.background_asset&&
+     !j.superseded_by);
+   if(pending)return {...pending,deduplicated:true};
+  }
   // A new intent supersedes queued work for this target. Running GPU work may
   // finish physically, but its result will never be attached to the game.
   for(const stale of existing.filter(sameTarget)){
