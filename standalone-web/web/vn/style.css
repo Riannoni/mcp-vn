@@ -126,3 +126,22 @@ h1,h2,p{margin-top:0}
 .render-job .job-error{grid-column:1/-1;color:#f5b4bc;overflow-wrap:anywhere}
 .render-jobs-empty{margin:6px 0;color:#aa9bb9;font-size:11px}
 .keyboard-hint{display:block;margin-top:6px;color:#9d8eaf;font-size:10px}
+
+/* Compact image controls and separate story-focused reading mode. */
+.auto-art-toggle{margin:0 0 4px;display:inline-flex;align-items:center;gap:8px;
+ font-size:12px;font-weight:650;white-space:nowrap;color:#d1bbdf;cursor:pointer}
+.auto-art-toggle input{width:16px;height:16px;min-width:16px;margin:0;accent-color:#a77ad8}
+#app.visual-hidden .workspace{grid-template-columns:minmax(0,1fr)}
+#app.visual-hidden .scene-panel{display:none}
+#app.visual-hidden .story-panel{width:100%}
+#app.visual-hidden .message{max-width:min(100%,1100px)}
+#app.visual-hidden .message.player{align-self:flex-end}
+.render-jobs-list{max-height:250px}
+.render-job{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.render-job .job-timings,.render-job .job-attempts,.render-job .job-warning{
+ grid-column:1/-1;font-size:11px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.render-job .job-timings{color:#c4b5da}
+.render-job .job-attempts{color:#a69ab7}
+.render-job .job-warning{color:#e0bf9c}
+#toggle-stage{white-space:nowrap}
+@media(max-width:900px){#app.visual-hidden .story-panel{height:calc(100dvh - 190px)}}
