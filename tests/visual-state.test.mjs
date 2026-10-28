@@ -87,6 +87,30 @@ test("late generation cannot revert a more recent desired state",async()=>{
  assert.equal(s.outfit,"summer dress");
  assert.equal(s.visual_dirty,true);
 });
+test("neural CG claims and publishes even when its separate sprite is stale",async()=>{
+ const {gid}=await startReady();
+ await narrative(gid,{outfit:"updated scene wardrobe",pose:"leaning"});
+ const before=await store.gameGet(gid);
+ assert.equal(before.scene.sprites[0].visual_dirty,true);
+ const j=await jobs.enqueue({game_id:gid,kind:"scene",
+  prompt:"Story beat with canonical face and new camera angle",
+  neural_scene:true,narrator_prompt:true});
+ assert.equal(j.spec.composition,"neural_story");
+ const claim=await jobs.nextJob("gpu");
+ assert.equal(claim?.id,j.id);
+ assert.equal(claim.status,"working");
+ await jobs.reportQA(j.id,{passed:true,reasons:[],
+  semantic_status:"passed"});
+ const result=await jobs.completeJob(j.id,image(1216,704),"image/png",
+  "https://example.org/vn");
+ assert.equal(result.status,"done");
+ assert.equal(result.applied,true);
+ const current=await store.gameGet(gid);
+ assert.equal(current.scene.cg_composition,"neural_story");
+ assert.equal(current.scene.cg_dirty,false);
+ assert.equal(current.scene.mode,"cg");
+ assert.equal(current.scene.sprites[0].visual_dirty,true);
+});
 test("repeated unchanged neural-CG refresh deduplicates rather than superseding queued work",async()=>{
  const {gid}=await startReady();
  const req={game_id:gid,kind:"scene",quality:"standard",
