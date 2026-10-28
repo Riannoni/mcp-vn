@@ -43,18 +43,16 @@ MODELS = {
 SIZES = {(1024,768),(768,1024),(1024,1024),(768,768),(896,512),(1216,704)}
 def scan_models():
     """Return available models by scanning checkpoints dir."""
+    known_files = {v[2][0].split("/")[-1]: k for k,v in MODELS.items()}
     ckpt_dir = MODELDIR / "checkpoints"
-    found = {}
+    result = dict(MODELS)
     if ckpt_dir.exists():
         for f in ckpt_dir.glob("*.safetensors"):
-            name = f.stem
-            key = name.lower().replace("_","").replace("-","")[:16]
-            found[key] = (name, f"SDXL · {name}", [f"checkpoints/{f.name}"], True)
-    # Merge with known models, prefer known labels
-    result = dict(MODELS)
-    for k,v in found.items():
-        if k not in result:
-            result[k] = v
+            if f.name in known_files:
+                continue  # already in MODELS with proper label
+            key = f.stem.lower().replace("_","").replace("-","")[:20]
+            if key not in result:
+                result[key] = (f.stem, f"SDXL · {f.stem}", [f"checkpoints/{f.name}"], True)
     return result
 def load(path, default=None):
  try:return json.loads(path.read_text())
