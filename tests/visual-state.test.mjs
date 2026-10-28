@@ -87,6 +87,17 @@ test("late generation cannot revert a more recent desired state",async()=>{
  assert.equal(s.outfit,"summer dress");
  assert.equal(s.visual_dirty,true);
 });
+test("repeated unchanged neural-CG refresh deduplicates rather than superseding queued work",async()=>{
+ const {gid}=await startReady();
+ const req={game_id:gid,kind:"scene",quality:"standard",
+  prompt:"One original scene with exactly one canonical character",neural_scene:true,
+  narrator_prompt:true};
+ const first=await jobs.enqueue(req);
+ const second=await jobs.enqueue(req);
+ assert.equal(second.id,first.id);
+ assert.equal(second.deduplicated,true);
+ assert.equal((await jobs.getJob(first.id)).status,"queued");
+});
 test("visual variants are reused only for matching background",async()=>{
  const {gid}=await startReady();
  const cached=await jobs.enqueue({game_id:gid,kind:"sprite",character:"Мира",prompt:"same"});
@@ -98,17 +109,6 @@ test("visual variants are reused only for matching background",async()=>{
  const newJob=await jobs.enqueue({game_id:gid,kind:"sprite",character:"Мира",prompt:"new lighting"});
  assert.equal(newJob.status,"queued");
  assert.notEqual(newJob.id,"cached");
-});
-test("repeated unchanged neural-CG refresh deduplicates rather than superseding queued work",async()=>{
- const {gid}=await startReady();
- const req={game_id:gid,kind:"scene",quality:"standard",
-  prompt:"One original scene with exactly one canonical character",neural_scene:true,
-  narrator_prompt:true};
- const first=await jobs.enqueue(req);
- const second=await jobs.enqueue(req);
- assert.equal(second.id,first.id);
- assert.equal(second.deduplicated,true);
- assert.equal((await jobs.getJob(first.id)).status,"queued");
 });
 test("legacy asset with unknown provenance cannot silently be assumed correct",()=>{
  const s=normalizeSprite({name:"Unknown",image_url:"https://example.org/x.png",
