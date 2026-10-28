@@ -307,6 +307,24 @@ def prompt_builder(job, background):
            "Real-world coherent perspective, natural light, environmental depth, wide establishing shot, no portraits.")
         negative=(f"{envnegative}, collage, separate portrait, split-screen, picture-in-picture, "
           "text, watermark, logo, blurry, deformed buildings, child, underage")
+    # For a VN Web story turn, the selected LLM authors the complete
+    # image-positive text. Do not prepend old outfit descriptions or generic
+    # camera directions that contradict the just-narrated visual moment.
+    # Keep only invariant style/identity/asset safety constraints here.
+    if spec.get("narrator_prompt") is True and kind in ("background","sprite","scene") and subject.strip():
+        positive=f"{stylehint}. {subject.strip()}."
+        if kind=="sprite":
+            positive+=(f" Exactly one established adult fictional character: "
+                      f"{job.get('character','')}. Stable face identity; "
+                      "neutral solid backdrop for alpha extraction, no scenery.")
+        elif kind=="scene":
+            names=[str(c.get("name","")) for c in (spec.get("characters") or [])]
+            positive+=(f" Exactly {len(names)} established adult principal figures "
+                      f"({', '.join(names)}), no invented protagonists. "
+                      f"Same required location: {place}. Unified camera perspective.")
+        else:
+            positive+=(f" Environment only, no identifiable named characters. "
+                      f"Required location: {place}.")
     if style in ("semireal","realistic","poster"):
         positive="score_9, score_8_up, score_7_up. "+positive
     elif style=="anime":
@@ -479,7 +497,7 @@ def image_graph(job):
                 graph.pop(key,None)
             graph["5"]["inputs"]["model"]=["1",0]
             print("STORY_IDENTITY_FALLBACK",job["id"],str(error)[:140],flush=True)
-    elif kind=="scene" and background is not None and not is_animation:
+    elif kind=="scene" and background is not None and not is_animation and spec.get("composition")!="neural_story":
         source=scene_mask(background,spec.get("characters",[]))
         filename=upload_to_comfy(pil_png(source),"mcp_vn_mask_"+job["id"]+".png")
         graph["10"]={"class_type":"LoadImage","inputs":{"image":filename}}
