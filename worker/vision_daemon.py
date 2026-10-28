@@ -13,7 +13,7 @@ from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
-from scene_caption_contract import scene_caption_conflicts, insufficient_scene_caption
+from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
