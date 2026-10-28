@@ -5,6 +5,27 @@ let fit=true,activeModel="local-cydonia-24b";
 let currentLocalEpisode=null,localPollBusy=false;
 let visualPollActive=false,visualPollBusy=false,lastVisualGame="",visualPollOnce=false;
 let lastVisualJobs=[],stageView="auto",castVisible=true,lastTurnWallSec=null;
+let lastTurnBreakdown=null,imagesHidden=false,autoArtEnabled=true;
+const VISUAL_TIMINGS=[["queue_wait_ms","очередь"],["retry_wait_ms","повторы"],
+ ["prepare_ms","подготовка"],["cpu_wait_ms","ожид. CPU"],
+ ["generation_ms","Comfy"],["compose_ms","CG"],["postprocess_ms","CPU"],
+ ["qa_ms","QA"],["publish_ms","запись"],["other_ms","прочее"],["total_ms","итого"]];
+const timingSeconds=n=>(Number(n)/1000).toLocaleString("ru-RU",{maximumFractionDigits:1})+" с";
+function jobTimings(j){
+ const t=j.timings||{};
+ const fields=VISUAL_TIMINGS.filter(([k])=>Object.hasOwn(t,k));
+ return fields.length?fields.map(([k,l])=>l+" "+timingSeconds(t[k])).join(" / "):"Тайминги ещё не измерены";
+}
+function restoreVisualPreference(id){
+ try{autoArtEnabled=localStorage.getItem("vn-auto-art:"+id)!=="off"}
+ catch(_){autoArtEnabled=true}
+ $("auto-art").checked=autoArtEnabled;
+}
+function syncImageVisibility(){
+ $("app").classList.toggle("visual-hidden",imagesHidden);
+ $("toggle-stage").textContent=imagesHidden?"▣ Показать изображение":"◫ Скрыть изображение";
+ $("toggle-stage").setAttribute("aria-pressed",String(imagesHidden));
+}
 const EFFORT_NAMES={auto:"Авто (настройка модели)",low:"Низкая · быстро",
  medium:"Средняя · баланс",high:"Высокая · глубже",
  xhigh:"Очень высокая · медленно",max:"Максимальная · самый долгий ответ"};
@@ -29,28 +50,34 @@ const JOB_STAGES={queued:"В очереди",working:"В работе",preparing
  generating:"Генерация",generated:"Сгенерировано",postprocess:"Обработка",
  publishing:"Публикация",done:"Готово",failed:"Ошибка"};
 function renderVisualJobs(jobs){
- const active=jobs.filter(j=>j.status==="queued"||j.status==="working");
+ const active=jobs.filter(j=>["queued","working"].includes(j.status));
  $("render-jobs-title").textContent=active.length?
   "Активных: "+active.length+" · последние задачи":"Нет активных · последние задачи";
  const list=$("render-jobs-list");list.replaceChildren();
- if(!jobs.length){
-  list.append(label("p","Задач пока нет","render-jobs-empty"));return;
- }
- for(const j of jobs.slice(0,10)){
+ if(!jobs.length){list.append(label("p","Задач пока нет","render-jobs-empty"));return;}
+ for(const j of jobs.slice(0,12)){
   const row=label("div","","render-job "+(j.status||""));
-  const name=(JOB_KINDS[j.kind]||j.kind||"Арт")+(j.character?" · "+j.character:"");
+  const name=(JOB_KINDS[j.kind]||j.kind||"Арт")+
+   (j.character?" · "+j.character:"")+(j.style?" · "+j.style:"");
   row.append(label("strong",name));
   const stage=j.status==="done"?"Готово":
    j.status==="failed"?"Ошибка":JOB_STAGES[j.stage]||JOB_STAGES[j.status]||"В работе";
   const pct=Number.isFinite(Number(j.progress))?
    Math.max(0,Math.min(100,Math.round(Number(j.progress)))):0;
   row.append(label("span",stage+(j.status==="working"?" · "+pct+"%":""),"job-state"));
-  if(j.status==="working"||j.status==="queued"){
+  if(["working","queued"].includes(j.status)){
    const progress=document.createElement("progress");
    progress.max=100;progress.value=pct;progress.setAttribute("aria-label",name);
    row.append(progress);
   }
+  row.append(label("div",jobTimings(j),"job-timings"));
+  if(j.attempt_history?.length>1)row.append(label("div",j.attempt_history.map(a=>
+    "Попытка "+a.number+" · "+a.outcome+" · очередь "+timingSeconds(a.wait_ms||0)+" · "+
+    VISUAL_TIMINGS.filter(([k])=>k!=="total_ms"&&Object.hasOwn(a.timings||{},k))
+     .map(([k,l])=>l+" "+timingSeconds(a.timings[k])).join(" / ")
+  ).join("\n"),"job-attempts"));
   if(j.status==="failed"&&j.error)row.append(label("div",j.error,"job-error"));
+  if(j.qa?.warnings?.length)row.append(label("div",j.qa.warnings.join("; "),"job-warning"));
   list.append(row);
  }
 }
@@ -91,7 +118,7 @@ async function pollVisualJobs(){
     }else{warn.hidden=true;$("visual-retry").hidden=!((currentGame?.scene?.sprites||[]).length>0&&currentGame?.local_scene?.mode!=="local")}
     // Once a missing location background completes, schedule the character
     // layers against its accepted final URL, never against a stale image.
-    if(!currentGame.awaiting_narrator)
+    if(autoArtEnabled&&!currentGame.awaiting_narrator)
       await scheduleMissingVisuals(currentGame).catch(e=>
        console.warn("next visual stage:",e.message));
    }
@@ -100,11 +127,12 @@ async function pollVisualJobs(){
  finally{visualPollBusy=false}
 }
 async function scheduleMissingVisuals(g,{retry=false}={}){
- if(!g||g.local_scene?.mode==="local")return;
+ if(!g||g.local_scene?.mode==="local"||(!autoArtEnabled&&!retry))return;
  const scene=g.scene||{};
  const missing=!scene.background_url||!!scene.background_dirty||
    !(scene.sprites||[]).length||
-   (scene.sprites||[]).some(x=>!x.image_url||x.visual_dirty);
+   (scene.sprites||[]).some(x=>!x.image_url||x.visual_dirty)||
+   (scene.auto_cg_requested&&(!scene.cg_url||scene.cg_dirty));
  if(!missing&&!retry)return;
  const result=await api("/api/vn/visual-refresh",{game_id:g.id,retry});
  if(result.visual?.scheduled?.length){
@@ -206,12 +234,6 @@ function renderScene(g){
  $("stage-caption").textContent=isCG?"Иллюстрация сцены":
    onlyBackground?"Фон локации":
    (scene.sprites||[]).length?"Фон и персонажи":"Фон локации";
- const mode=$("view-layers"),background=$("view-background"),people=$("toggle-characters");
- mode.disabled=!availableCG;
- mode.textContent=isCG?"◈ Показать слои":"◈ Показать CG";
- mode.classList.toggle("is-active",isCG);
- background.classList.toggle("is-active",onlyBackground);
- people.classList.toggle("is-active",!sprites.hidden&&!isCG);
  const canCompose=!g.awaiting_narrator&&g.local_scene?.mode!=="local"&&
    !!scene.background_url&&!scene.background_dirty&&
    !!(scene.sprites||[]).length&&!(scene.sprites||[]).some(x=>x.visual_dirty);
