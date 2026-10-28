@@ -43,6 +43,9 @@
  </div>
  <button id="providers-button" class="subtle provider-button" type="button">Подключения</button>
  <span id="provider-badge" class="provider-badge">Локальный режим</span>
+ <label class="auto-art-toggle" title="Автоматически обновлять изображения после существенных изменений сцены">
+  <input id="auto-art" type="checkbox" checked> Автообновление артов
+ </label>
 </div>
 <div class="workspace">
  <section class="scene-panel">
@@ -55,14 +58,11 @@
   <div class="scene-footer">
    <button id="fit" class="subtle" type="button">▣ Вписать полностью</button>
    <span id="stage-caption" class="hint">Иллюстрация сцены</span>
-   <button id="visual-retry" class="subtle" type="button" hidden>↻ Перерисовать персонажей</button>
+
   </div>
-  <div class="scene-tool-row" role="group" aria-label="Слои и иллюстрации">
-    <button id="view-layers" class="subtle" type="button" title="Показать спрайты на фоне вместо CG">◈ Кадр / слои</button>
-    <button id="view-background" class="subtle" type="button" title="Показать только фон текущей локации">▤ Фон</button>
-    <button id="toggle-characters" class="subtle" type="button" title="Показать или скрыть персонажей">♙ Персонажи</button>
-    <button id="open-looks" class="subtle" type="button" title="Посмотреть закреплённые изображения персонажей">◉ Образы</button>
-    <button id="manual-cg" class="subtle" type="button" title="Вручную собрать CG из подтверждённых слоёв">✧ Собрать CG</button>
+  <div class="scene-tool-row" role="group" aria-label="Управление иллюстрациями">
+    <button id="manual-cg" class="subtle" type="button" title="Собрать CG из принятых слоёв">✧ Собрать CG</button>
+    <button id="visual-retry" class="subtle" type="button" hidden>↻ Перерисовать персонажей</button>
   </div>
   <details id="render-jobs-panel" class="render-jobs-panel" open>
    <summary><span>◷ Рендеринг</span><small id="render-jobs-title" aria-live="polite">Загрузка задач…</small></summary>
@@ -78,6 +78,7 @@
    <div class="story-tools">
      <button id="open-history" class="subtle" type="button">◷ История</button>
      <button id="open-latency" class="subtle" type="button">◴ Задержка</button>
+     <button id="toggle-stage" class="subtle" type="button" aria-pressed="false">◫ Скрыть изображение</button>
      <button id="local-exit" class="subtle" type="button" hidden>↩ Вернуться в сюжет</button>
    </div>
    <span id="turn-status" class="turn-status">Готово</span>
