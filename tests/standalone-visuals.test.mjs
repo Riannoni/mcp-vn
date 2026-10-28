@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {planStandaloneVisuals,sceneCGPrompt,sceneCGRequired} from "../src/standalone-visuals.mjs";
-import {sceneIntentFingerprint} from "../src/visual-state.mjs";
+import {sceneIntentFingerprint,normalizeVisualState} from "../src/visual-state.mjs";
+import {currentSceneMatches} from "../src/art-spec.mjs";
 
 const game=(scene={},other={})=>({
  id:"11111111-1111-4111-8111-111111111111",
@@ -134,4 +135,23 @@ test("without canonical identity, fall back to initial sprite before CG",()=>{
  const g=game({auto_cg_requested:true,sprites:[{name:"Мира",outfit:"cloak",
   pose:"standing",visual_dirty:true,image_url:""}]});
  assert.deepEqual(planStandaloneVisuals(g).map(j=>j.kind),["sprite"]);
+});
+
+test("neural CG integrity is independent of sprite PNG but rejects changed wardrobe",()=>{
+ const sprite={name:"Мира",outfit:"cloak",pose:"standing",emotion:"calm",
+  image_url:"https://example.test/sprite.png",transparent:true,
+  visual_dirty:true};
+ const scene={location:"Tirren market",background_url:"https://example.test/bg.png",
+  background_style:"anime",cg_style:"anime",sprites:[sprite],
+  cg_composition:"neural_story",cg_url:"https://example.test/cg.png"};
+ const g=game(scene);
+ scene.cg_basis=sceneIntentFingerprint(scene);
+ const spec={kind:"scene",style:"anime",composition:"neural_story",
+  expected_location:"Tirren market",background_asset:"bg.png",
+  cg_basis_snapshot:scene.cg_basis,characters:[{name:"Мира",sprite_asset:"sprite.png"}]};
+ assert.equal(currentSceneMatches(g,spec),true);
+ normalizeVisualState(g);
+ assert.equal(g.scene.cg_dirty,false);
+ g.scene.sprites[0].pose="kneeling";
+ assert.equal(currentSceneMatches(g,spec),false);
 });
