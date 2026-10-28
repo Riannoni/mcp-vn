@@ -423,11 +423,12 @@ class Handler(BaseHTTPRequestHandler):
       return self.send_json(200,vn_web.command(
        str(x.get("game_id","")),str(x.get("model","")),x.get("action"),
        x.get("expected_version"),str(x.get("reasoning_effort","auto")),
-       x.get("confirmed") is True))
+       x.get("confirmed") is True,x.get("auto_visual") is not False))
      if path=="/api/vn/turn":
       return self.send_json(200,vn_web.turn(
        str(x.get("game_id","")),str(x.get("model","")),x.get("action"),
-       x.get("expected_version"),str(x.get("reasoning_effort","auto"))))
+       x.get("expected_version"),str(x.get("reasoning_effort","auto")),
+       x.get("auto_visual") is not False))
      if path=="/api/vn/local-turn":
       return self.send_json(202,vn_web.local_turn(
        str(x.get("game_id","")),str(x.get("model","")),
@@ -435,7 +436,8 @@ class Handler(BaseHTTPRequestHandler):
      if path=="/api/vn/resume":
       return self.send_json(200,vn_web.turn(
        str(x.get("game_id","")),str(x.get("model","")),
-       reasoning_effort=str(x.get("reasoning_effort","auto"))))
+       reasoning_effort=str(x.get("reasoning_effort","auto")),
+       auto_visual=x.get("auto_visual") is not False))
      if path=="/api/vn/visual-refresh":
       return self.send_json(200,vn_web.visual_refresh(
        str(x.get("game_id","")),x.get("retry") is True))
