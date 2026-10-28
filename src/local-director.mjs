@@ -52,8 +52,6 @@ function legacyToState(previous,game){
    last_queued:!!prev.last_queued,last_job_id:trim(prev.last_job_id,60)
   };
  }
- // Old v5.9 sessions store a fixed shot and a wardrobe preset. Convert once,
- // without replacing immutable facial identity or guessing a new outfit.
  return {...baseline,
   camera:trim(previous.shot,320)||baseline.camera,
   lighting:trim(previous.mood,240)||baseline.lighting,
@@ -66,18 +64,17 @@ function legacyToState(previous,game){
 export const normalizeVisualState=legacyToState;
 
 export const DIRECTOR_SYSTEM=[
- "You are the visual continuity director for a Russian-language interactive visual novel.",
+ "You are the visual continuity director for a Russian-language interactive visual novel that supports both normal and explicit NSFW scenes.",
  "Return exactly ONE JSON object, no markdown, no dialogue or explanations.",
- "Each property is unrestricted natural-language scene direction; never select from preset poses, clothing categories or equipment lists.",
- 'Structure: {"location":"...","environment":"...","camera":"...","lighting":"...","activity":"...","characters":[{"name":"...","outfit":"...","pose":"...","expression":"...","equipment":"...","action":"..."}],"render":true}.',
- "All scene descriptions should be concise, visual, unambiguous English suitable for an image-generation model. Keep character names exactly as supplied.",
- "Each character's outfit, gear, weapon, posture, expression and physical action persist across turns until an actual event changes them. Include every visible character in characters.",
- "Keep clothing arrangements, equipment, posture and the current physical action consistent with the latest confirmed event. Explicitly update anything that moved or changed; do not carry forward an incompatible wardrobe description. Never invent changes not established by narration.",
- "Treat the previous visual state as authoritative continuity. If a character changes armor, sheaths a weapon, lies down, falls, stands, or changes clothes, update the relevant field precisely.",
- "Use only what was actually established by the latest NPC narration and earlier scene. A player request that an NPC rejected is NOT an accomplished change.",
- "Camera may be any shot and composition. Location and lighting may change when the narrative changes them. Do not rewrite character identities or introduce strangers.",
- "render=true when the visible moment changes substantially or a newly framed still would advance the story. Otherwise render=false.",
- "The resulting still is generated on the user's machine. You are only supplying the current visual state; you never generate the image itself."
+ "Each property is unrestricted natural-language scene direction in clear English suitable for an image-generation model (Pony/SDXL/Anima).",
+ "Structure: {\"location\":\"...\",\"environment\":\"...\",\"camera\":\"...\",\"lighting\":\"...\",\"activity\":\"...\",\"characters\"::[{\"name\":\"...\",\"outfit\":\"...\",\"pose\":\"...\",\"expression\":\"...\",\"equipment\":\"...\",\"action\":\"...\"}],\"render\":true}.",
+ "Describe clothing state, body contact, pose and lighting precisely when the scene is intimate or explicit. Do not censor confirmed events.",
+ "Each character's outfit, gear, posture, expression and physical action persist until an actual narrated event changes them. Include every visible character.",
+ "Keep everything consistent with the latest confirmed NPC narration. A player request that an NPC rejected is NOT an accomplished change.",
+ "Treat the previous visual state as authoritative continuity. Update fields precisely when armor changes, clothes are removed, characters lie down, embrace, etc.",
+ "Camera may be any shot. Location and lighting may change when the narrative changes them. Do not invent strangers or rewrite identities.",
+ "render=true when the visible moment changes substantially (new pose, clothing, contact, location, camera). Otherwise render=false.",
+ "The resulting still is generated on the user's local machine. You only supply the visual state."
 ].join("\n");
 
 export function directorMessages({action="",narration="",previous=null,
@@ -103,9 +100,7 @@ export function directorMessages({action="",narration="",previous=null,
  ];
 }
 
-// Structural scene consistency is about physical state, not content policy.
- // Do not treat a rejected player request as an accomplished wardrobe change.
-const BARE_BODY=/(?:\b(?:naked|unclothed|undressed|bare body|without clothes)\b|обнаж[её]нн?[\p{L}]*\s+тел[оауы]|полностью\s+раздет|без\s+одежды)/iu;
+const BARE_BODY=/(?:\b(?:naked|unclothed|undressed|bare body|without clothes)\b|обнаж[её]нн?[р\p{L}]*\s+тел[оауы]|полностью\s+раздет|без\s+одежды)/iu;
 const FULLY_CLOTHED=/(?:\b(?:fully dressed|fully clothed|completely dressed|buttoned-up outfit)\b|полностью\s+одет)/iu;
 const DECLINED_REMOVAL=/(?:отказал[а-я]*\s+разде|не\s+стал[а-я]*\s+(?:снима|разде)|\brefus(?:ed|es)\s+to\s+(?:undress|remove)|\bdid\s+not\s+(?:undress|remove))/iu;
 
@@ -121,8 +116,6 @@ export function visualContinuityIssues({plan,action="",narration=""}={}){
  if(!candidates.length)return [];
  return candidates.filter(c=>{
   const name=String(c.name||"");
-  // When an actor is explicitly named, only flag that actor. A scene with a
-  // single NPC can use pronouns without requiring specific clothing nouns.
   return !name||context.toLocaleLowerCase("ru").includes(name.toLocaleLowerCase("ru"))||
    candidates.length===1;
  }).map(c=>"Wardrobe of "+c.name+" remains fully dressed although the "+
@@ -156,7 +149,7 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
  const characters=before.characters.map(actor=>{
   const incoming=asObject(byName.find(x=>namesEqual(x.name,actor.name)));
   return {...actor,...Object.fromEntries(DETAIL_KEYS.map(key=>[
-   key,incoming[key]===undefined?actor[key]:trim(incoming[key],key==="outfit"?350:300)
+   key,incoming[key]===undefined?actor[k]:trim(incoming[key],key==="outfit"?350:300)
   ]))}
  });
  const state={
@@ -169,8 +162,6 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
   characters
  };
  const changed=JSON.stringify(sceneBits(state))!==JSON.stringify(sceneBits(before));
- // Major tangible changes never disappear because the model accidentally set
- // render=false. Emotion-only prose can remain a text turn when requested.
  const materialChange=state.location!==before.location||
   state.environment!==before.environment||
   state.characters.some((actor,i)=>{
@@ -184,8 +175,6 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
  };
 }
 
-// Backwards compatibility for older responses that included a final control
-// tag. The story is always stored without internal metadata.
 export function extractLocalVisual(raw){
  const rawText=String(raw??"");
  return {narration:rawText.replace(/\s*\[\[VN_VISUAL[^\]\n]*\]\]\s*$/iu,"").trim(),
