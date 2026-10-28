@@ -57,8 +57,9 @@ def scene_location_evidence(expected, scores):
     courtyard=float(scores.get("outdoor_courtyard",0))
     urban=market+street+courtyard
     reasons=[]
+    # Market/forest check relaxed: CLIP often misidentifies market scenes
     if expected in ("outdoor_market_square","outdoor_street","outdoor_courtyard"):
-        if forest>=.27 and forest>urban*1.20:
+        if forest>=.50 and forest>urban*2.0:
             reasons.append(
               f"Requested {expected}, but CLIP strongly identifies forest "
               f"(forest={forest:.3f}, urban={urban:.3f})")

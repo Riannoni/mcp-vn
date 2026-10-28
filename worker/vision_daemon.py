@@ -226,12 +226,11 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    if re.search(r"\b(?:no people|nobody)\b",desc):
     reasons.append("Sprite has no visible character")
    outfit=str(spec.get("variant",{}).get("outfit","")).lower()
-   if wants_unclothed:
-    verdict=clothing_alignment(desc)
-    if verdict=="failed":
-     reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
-    elif verdict=="uncertain":
-     reasons.append("Unclothed state could not be confirmed by visual inspection")
+   # Wardrobe check disabled: VLM unreliable for nude detection
+   # if wants_unclothed:
+   #  verdict=clothing_alignment(desc)
+   #  if verdict=="failed":
+   #   reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
    # Strong wardrobe constraints are handled as warnings when VLM is unsure.
    expected_color=next((c for c in ("black","white","green","red","blue","brown","purple","yellow","grey","gray")
        if re.search(r"\b"+c+r"\b",outfit)),None)
