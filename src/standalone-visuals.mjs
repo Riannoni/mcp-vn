@@ -48,6 +48,17 @@ export function planStandaloneVisuals(g){
 }
 export async function scheduleStandaloneVisuals(g,{retry=false}={}){
  const wanted=planStandaloneVisuals(g),scheduled=[],skipped=[],failed=[];
+ // A confirmed image may be wrong in a way earlier QA missed. An explicit
+ // retry must bypass the variant cache even when the stored sprite is "ready".
+ if(retry&&!wanted.length&&g?.local_scene?.mode!=="local"&&!g?.awaiting_narrator&&
+    g.scene?.background_url&&!g.scene?.background_dirty){
+  for(const s of (g.scene.sprites||[]).filter(x=>x.name).slice(0,4)){
+   wanted.push({kind:"sprite",style:g.art_style,quality:"standard",
+    character:s.name,outfit:s.outfit||"default",pose:s.pose||"standing",
+    emotion:s.emotion||"neutral",prompt:spritePrompt(g,s),
+    reason:"manual_retry_accepted_sprite"});
+  }
+ }
  if(!wanted.length)return {scheduled,skipped,failed,pending:false};
  const recent=await jobsForGame(g.id);
  for(const item of wanted){
