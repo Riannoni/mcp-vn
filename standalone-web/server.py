@@ -30,7 +30,7 @@ WEB = ROOT / "web"
 CONFIG = Path.home() / ".config/mcp-vn-model-lab/credentials.json"
 MODELDIR = Path.home() / ".local/share/mcp-vn-comfy/models"
 LAN = ipaddress.ip_network("192.168.50.0/24")
-LLM_IDS = ("qwen3.5:9b-q4_K_M","cydonia:24b-v4.3-iq4_xs")
+LLM_IDS = ("cydonia:24b-v4.3-iq4_xs",)
 ROUTER = "http://192.168.50.27:11434"
 ROUTER_ENV = Path.home() / ".config/mcp-vn/worker.env"
 MODELS = {
@@ -41,6 +41,21 @@ MODELS = {
  "cyberz": ("CyberRealistic Z-Image v4 Q8 · Эксперимент", "Z-Image · experimental", ["diffusion_models/CyberRealistic_zit_v4.0-Q8_0.gguf","text_encoders/qwen_3_4b_fp4_mixed.safetensors","vae/ae.safetensors"], False),
 }
 SIZES = {(1024,768),(768,1024),(1024,1024),(768,768),(896,512),(1216,704)}
+def scan_models():
+    """Return available models by scanning checkpoints dir."""
+    ckpt_dir = MODELDIR / "checkpoints"
+    found = {}
+    if ckpt_dir.exists():
+        for f in ckpt_dir.glob("*.safetensors"):
+            name = f.stem
+            key = name.lower().replace("_","").replace("-","")[:16]
+            found[key] = (name, f"SDXL · {name}", [f"checkpoints/{f.name}"], True)
+    # Merge with known models, prefer known labels
+    result = dict(MODELS)
+    for k,v in found.items():
+        if k not in result:
+            result[k] = v
+    return result
 def load(path, default=None):
  try:return json.loads(path.read_text())
  except FileNotFoundError:return default
@@ -367,19 +382,19 @@ class Handler(BaseHTTPRequestHandler):
    except vn_web.VNError as e:return self.send_json(e.status,{"error":str(e)})
   if path=="/api/models":
    return self.send_json(200,{"models":[dict(id=k,name=v[0],family=v[1],negative=v[3],
-     ready=all((MODELDIR/f).exists() for f in v[2])) for k,v in MODELS.items()]})
+     ready=all((MODELDIR/f).exists() for f in v[2])) for k,v in scan_models().items()]})
   if path=="/api/jobs":return self.send_json(200,{"jobs":STORE.list()})
   if path=="/api/llm-models":
    try:
     data=local_llm_gateway("/api/tags",timeout=5)
     details={x.get("name",""):x for x in data.get("models",[])}
    except Exception:details={}
-   return self.send_json(200,{"models":[
-    {"id":LLM_IDS[0],"name":"Qwen3.5 9B (текущая)","ready":LLM_IDS[0] in details,
-     "backend":details.get(LLM_IDS[0],{}).get("backend","unknown")},
-    {"id":LLM_IDS[1],"name":"Cydonia 24B v4.3 IQ4_XS","ready":LLM_IDS[1] in details,
-     "backend":details.get(LLM_IDS[1],{}).get("backend","unknown")}
-   ]})
+   models=[]
+   for name,info in details.items():
+    if "qwen" in name.lower(): continue
+    models.append({"id":name,"name":name,"ready":True,
+      "backend":info.get("backend","unknown")})
+   return self.send_json(200,{"models":models})
   if path=="/api/health":
    try:
     q=comfy("/queue",timeout=4)
