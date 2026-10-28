@@ -497,6 +497,49 @@ def image_graph(job):
                 graph.pop(key,None)
             graph["5"]["inputs"]["model"]=["1",0]
             print("STORY_IDENTITY_FALLBACK",job["id"],str(error)[:140],flush=True)
+    elif kind=="scene" and spec.get("composition")=="neural_story" and not is_animation:
+        # A neural CG replaces the whole shot, so it must be conditioned on
+        # immutable identity anchors, NOT on a disposable pose/outfit sprite.
+        people=(spec.get("characters") or [])[:2]
+        if not people or any(not (p.get("anchor_face_asset") or p.get("anchor_asset"))
+                             for p in people):
+            raise ValueError("Canonical face/reference missing for neural CG")
+        graph["60"]={"class_type":"CLIPVisionLoader","inputs":{
+            "clip_name":"CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"}}
+        graph["61"]={"class_type":"IPAdapterModelLoader","inputs":{
+            "ipadapter_file":"ip-adapter-plus-face_sdxl_vit-h.safetensors"}}
+        model_ref=["1",0]
+        for i,actor in enumerate(people):
+            anchor=fetch_asset(actor.get("anchor_face_asset") or actor["anchor_asset"])
+            if anchor is None:
+                raise ValueError("Canonical face reference cannot be loaded for "+actor["name"])
+            # Face-only image reference preserves identity across camera angles,
+            # without forcing the body pose from a studio sprite onto a CG.
+            head=(ImageOps.fit(anchor.convert("RGB"),(512,512),
+                              method=Image.Resampling.LANCZOS)
+                  if actor.get("anchor_face_asset") else
+                  ImageOps.fit(head_crop(anchor),(512,512),
+                              method=Image.Resampling.LANCZOS))
+            filename=upload_to_comfy(pil_png(head),
+                "mcp_vn_canonical_face_"+str(i)+"_"+job["id"]+".png")
+            img_node=str(62+i*3)
+            apply_node=str(64+i*3)
+            graph[img_node]={"class_type":"LoadImage","inputs":{"image":filename}}
+            adapter={"model":model_ref,"ipadapter":["61",0],"image":[img_node,0],
+                "clip_vision":["60",0],"weight":0.74,"weight_type":"linear",
+                "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
+                "embeds_scaling":"V only"}
+            if len(people)>1:
+                mask=regional_face_attention_mask(i,width,height)
+                mask_file=upload_to_comfy(pil_png(mask),
+                    "mcp_vn_cg_face_region_"+str(i)+"_"+job["id"]+".png")
+                mask_node=str(63+i*3)
+                graph[mask_node]={"class_type":"LoadImage","inputs":{"image":mask_file}}
+                adapter["attn_mask"]=[mask_node,1]
+            graph[apply_node]={"class_type":"IPAdapterAdvanced","inputs":adapter}
+            model_ref=[apply_node,0]
+        graph["5"]["inputs"]["model"]=model_ref
+        print("CANONICAL_CG_FACES",job["id"],len(people),flush=True)
     elif kind=="scene" and background is not None and not is_animation and spec.get("composition")!="neural_story":
         source=scene_mask(background,spec.get("characters",[]))
         filename=upload_to_comfy(pil_png(source),"mcp_vn_mask_"+job["id"]+".png")
