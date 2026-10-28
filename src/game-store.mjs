@@ -236,6 +236,24 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  }
  if(typeof scene.visual_direction==="string")
   g.scene.visual_direction=txt(scene.visual_direction,420);
+ // A prompt belongs to one visual beat, never an unrelated future pose.
+ if(scene.image_prompts&&typeof scene.image_prompts==="object"&&!Array.isArray(scene.image_prompts)){
+  const source=scene.image_prompts,art={};
+  for(const key of ["background","cg"])
+   if(typeof source[key]==="string"&&source[key].trim())
+    art[key]=txt(source[key],2000);
+  if(source.sprites&&typeof source.sprites==="object"&&!Array.isArray(source.sprites)){
+   const sprites={};
+   for(const [name,prompt] of Object.entries(source.sprites).slice(0,5))
+    if(typeof prompt==="string"&&prompt.trim()&&typeof name==="string"&&name.trim())
+     sprites[txt(name,100)]=txt(prompt,1600);
+   if(Object.keys(sprites).length)art.sprites=sprites;
+  }
+  g.scene.image_prompts=art;
+ }else if(scene.sprites!==undefined||scene.location!==undefined||
+   scene.visual_mode!==undefined||scene.visual_direction!==undefined){
+  g.scene.image_prompts={};
+ }
  if(scene.background_url!==undefined)g.scene.background_url=urls(scene.background_url);
  if(scene.sprites!==undefined){
  if(!Array.isArray(scene.sprites)||scene.sprites.length>8)throw Error("Too many sprites");
