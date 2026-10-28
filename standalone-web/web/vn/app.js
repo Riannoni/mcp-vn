@@ -579,8 +579,9 @@ function showProviderStates(){
  for(const provider of ["openai","grok"]){
   const connected=models.some(x=>x.provider===provider);
   const active=oauthActiveProvider===provider;
-  $("oauth-"+provider+"-state").textContent=connected?"Подключено · проверь модели":
-    active?"Идёт авторизация…":"Не подключено";
+  const indicator=$("oauth-"+provider+"-state");
+  indicator.textContent=connected?"✓ Подключено":active?"Идёт авторизация…":"Не подключено";
+  indicator.classList.toggle("is-connected",connected);
   $("auth-"+provider).textContent=active?"Продолжить":"Войти";
  }
 }
