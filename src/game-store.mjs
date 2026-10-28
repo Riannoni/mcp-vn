@@ -289,8 +289,15 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
   });
  g.scene.auto_cg_requested=scene.visual_mode==="cg"?true:
   scene.visual_mode==="layers"?false:physicalChanged;
- if((physicalChanged||(scene.visual_mode==="cg"&&
-    previousDirection!==(g.scene.visual_direction||"")))&&g.scene.cg_url){
+ const changedShot=physicalChanged||(scene.visual_mode==="cg"&&(
+  previousDirection!==(g.scene.visual_direction||"")||
+  (typeof scene.image_prompts?.cg==="string"&&scene.image_prompts.cg.trim())));
+ // Revisions are part of the accepted CG fingerprint. A brand-new camera
+ // instruction must not reuse an old CG whose sprite layer assets are unchanged.
+ if(changedShot&&g.scene.auto_cg_requested)
+  g.scene.cg_revision=(Number.isSafeInteger(g.scene.cg_revision)?
+   g.scene.cg_revision:0)+1;
+ if(changedShot&&g.scene.cg_url){
   g.scene.cg_dirty=true;g.scene.mode="layered";
  }
  g.choices=(choices||[]).slice(0,6).map(x=>txt(x,200));
