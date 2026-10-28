@@ -30,3 +30,10 @@ export function latencyText(performance={},lastWeb=null){
   '«'+(x.action_preview||'Ход без текста')+'» — '+seconds(x.observed_roundtrip_ms)));
  return lines.join('\n');
 }
+
+/** Keyboard contract for the player action textarea (IME-safe). */
+export function inputEnterIntent(event){
+ if(!event||event.key!=="Enter"||event.isComposing||event.keyCode===229)return "";
+ if(event.ctrlKey||event.metaKey||event.shiftKey)return "newline";
+ return "send";
+}
