@@ -3,6 +3,7 @@
 The storyteller owns the composition; these additions prevent repeated
 diffusion artifacts (duplicate women, literal clock/camera props).
 """
+import re
 def neural_scene_guards(spec,attempts=1,error="",subject=""):
     if spec.get("composition")!="neural_story":
         return "", "", ""
@@ -28,11 +29,21 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
         exclude="duplicate people, cloned faces, twins, second copy of subject, collage, "
     # Shot framing terms are not physical photography equipment.
     lead+="The described shot angle is the viewer's virtual viewpoint only. "
-    exclude+=(
-        "DSLR, photography camera, camera body, camera lens, tripod, "
-        "film equipment, photographer, studio lights, wall-mounted clock, "
-        "giant clock face, oversized clock, grey studio cyclorama, "
-    )
+    # Suppress accidental physical props induced by camera-angle or
+    # shoulder-symbol wording, not props explicitly required by the narrator.
+    equipment_intent=bool(re.search(
+        r"\b(?:holding (?:a )?(?:camera|dslr)|photo(?:graphy)? equipment|"
+        r"photographer|tripod (?:stands|set|placed)|filming crew)\b",
+        subject.lower()))
+    clock_intent=bool(re.search(
+        r"\b(?:clock tower|tower clock|wall clock|grandfather clock|"
+        r"clock hanging on|clock mounted on)\b",subject.lower()))
+    if not equipment_intent:
+        exclude+=("DSLR, photography camera, camera body, camera lens, tripod, "
+                  "film equipment, photographer, studio lights, ")
+    if not clock_intent:
+        exclude+="wall-mounted clock, giant clock face, oversized clock, "
+    exclude+="grey studio cyclorama, "
     # A 'clock-like' shoulder mark had been hallucinated as a large wall clock.
     if any("clock" in str(x).lower() for x in [
             spec.get("world",""),subject,*(p.get("appearance","") for p in cast)]):
