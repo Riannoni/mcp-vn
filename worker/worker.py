@@ -34,8 +34,8 @@ def is_unclothed(spec):
 STYLES = {
     "anime": ("waiIllustriousSDXL_v170.safetensors", 24, 6.0),
     "animation": ("BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors", 8, 1.0),
-    "semireal": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 6.0),
-    "realistic": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 6.0),
+    "semireal": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
+    "realistic": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
     "poster": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
 }
 SESSION = None
@@ -294,12 +294,13 @@ def prompt_builder(job, background):
     elif kind=="scene":
         people=", ".join(c["name"]+": "+appearance_tags(c.get("appearance",""))+
                          ". "+str(c.get("appearance",""))[:140] for c in spec.get("characters",[]))
-        positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. Market square with brick buildings, stalls, open air. Character standing against brick wall of market building. Same physical location as input photograph. "
-           f"Preserve character identity: same hair color, hair style, body type as reference. Create an integrated visual novel cinematic frame with the following adult characters in the foreground: {people}. "
-           f"MUST BE FULLY NUDE, COMPLETELY UNCLOTHED, NO CLOTHING ANYWHERE, BARE SKIN ONLY, NAKED BODY, TOPLESS, BOTTOMLESS, NO SHIRT, NO TOP, NO DRESS, NO GARMENT. Story action: {subject}. Match the scene lighting ({lighting}), scale, perspective, shadows and colors. "
-           "Do not redraw buildings or alter the existing geometry outside the insertion area.")
+        positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. "
+           f"Preserve established character identity, natural hair and body proportions. "
+           f"Exactly {len(spec.get('characters') or [])} established adult principal characters: {people}. "
+           f"Story action and camera: {subject}. Match the scene lighting ({lighting}), "
+           "scale, perspective, shadows and colors. Coherent single frame.")
         negative=("split screen, collage, framed portraits, poster, isolated character card, borders, text, watermark, "
-                  f"clothing, shirt, top, dress, jacket, garment, fabric, cloth, wearing clothes, dressed, duplicated faces, disfigured hands, wrong hair color, wrong hair style, different body type, child, underage, {envnegative}")
+                  f"duplicated faces, disfigured hands, wrong hair color, wrong hair style, different body type, child, underage, {envnegative}")
     else:
         positive=(f"{stylehint}. Essential scene geometry: {envpositive}. "
            f"Open-air PUBLIC SQUARE with sky and buildings OUTSIDE if market square. "
@@ -337,7 +338,7 @@ def prompt_builder(job, background):
     if style in ("semireal","realistic","poster"):
         # CyberRealistic Pony v18: score ladder + source_photo + rating_explicit
         # Negative should include score_6/5/4 and anti-cartoon
-        positive="score_9, score_8_up, score_7_up, source_photo, photorealistic, rating_explicit. "+positive
+        positive="score_9, score_8_up, score_7_up. "+positive
         negative+=", score_6, score_5, score_4, cartoon, anime, 3d render, plastic skin, airbrushed"
     elif style=="anime":
         # WAI-Illustrious: masterpiece/best quality, not score tags
@@ -346,20 +347,9 @@ def prompt_builder(job, background):
     elif style=="animation":
         # Anima/BAS:NSFW: animation style, not Japanese anime screencap
         positive="masterpiece, best quality, highly detailed, sharp focus. "+positive
-    # Pose reinforcement for clear narrator poses
-    if kind=="scene" and subject:
-        subj_l = subject.lower()
-        pose_hints = []
-        if any(w in subj_l for w in ["bent forward","leaning forward","from behind","back view","rear view","buttock"]):
-            pose_hints.append("from behind, rear view, bent forward against wall, face turned away, looking away from camera, not looking at viewer, not facing camera")
-        sex_kw=["anal","sex","penetration","insert","cock","penis","fuck","oral","blowjob","suck","vaginal","pussy","cunt","ride","doggy","missionary","cowgirl","threesome","creampie","cum","orgasm"]
-        if any(w in subj_l for w in sex_kw):
-            pose_hints.append("explicit sex scene, penetration visible, nude bodies, genital contact, not looking at camera")
-        if any(w in subj_l for w in ["wall","masonry","bracing"]):
-            pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
-        if pose_hints:
-            positive = "MUST BE FROM BEHIND, REAR VIEW ONLY, BENT FORWARD, FACE TURNED AWAY, NOT FACING CAMERA. " + ", ".join(pose_hints) + ". " + positive
-            negative += ", facing camera, looking at viewer, looking at camera, portrait, front view, face visible, eye contact, front facing, looking over shoulder, holding camera, holding object, lying on ground, standing upright, not bent forward"
+    # The selected storyteller owns the exact camera and pose. Keyword-based
+    # rewriting used to force a rear view for unrelated mentions of "wall" or
+    # body parts, contradicting the actual scene and causing repeated rejects.
     # Teeth fix
     if kind in ("scene","sprite"):
         negative += ", bad teeth, ugly teeth, crooked teeth, missing teeth, deformed teeth, open mouth with bad teeth, extra teeth"
@@ -657,9 +647,17 @@ def image_graph(job):
     # For scene rear poses, map to OpenPose guide
     if kind=="scene" and spec.get("composition")=="neural_story":
         subj = str(job.get("prompt") or "").lower()
-        if any(w in subj for w in ["bent forward","from behind","rear","buttock"]):
+        # Only use a hard-coded OpenPose guide for a matching explicit
+        # camera+body configuration. Do not infer a rear pose from a location
+        # word ("rear door", "wall") or body-part mentions alone.
+        from_rear=any(w in subj for w in (
+            "from behind","rear view","back view","from the back"))
+        bent=any(w in subj for w in (
+            "bent forward","bending forward","leaning forward"))
+        wall=any(w in subj for w in ("against the wall","braced on the wall"))
+        if from_rear and bent:
             pose_kind = "bent_forward_rear"
-        elif any(w in subj for w in ["wall","leaning"]):
+        elif from_rear and wall:
             pose_kind = "leaning_wall_rear"
     pose_filename=pose_control_guide(pose_kind)
     env_enabled=os.environ.get("VN_POSE_CONTROL","1").lower() not in ("0","false","off")
@@ -682,7 +680,7 @@ def image_graph(job):
               "positive":graph["5"]["inputs"]["positive"],
               "negative":graph["5"]["inputs"]["negative"],
               "control_net":["23",0],"image":["24",0],
-              "strength":0.92,"start_percent":0.0,"end_percent":0.95}}
+              "strength":0.78,"start_percent":0.0,"end_percent":0.86}}
             graph["5"]["inputs"]["positive"]=["25",0]
             graph["5"]["inputs"]["negative"]=["25",1]
             print("POSE_CONTROL_ACTIVE",job["id"],pose_kind,flush=True)
