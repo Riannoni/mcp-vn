@@ -189,3 +189,6 @@ h1,h2,p{margin-top:0}
  #app .toolbar>.provider-badge{grid-column:1;grid-row:4}
  #app .toolbar>.auto-art-toggle{grid-column:2;grid-row:4}
 }
+
+.render-job .job-prompt-source{grid-column:1/-1;font-size:10px;color:#86caa9;
+ overflow-wrap:anywhere}
