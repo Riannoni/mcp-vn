@@ -20,8 +20,9 @@ def scene_caption_conflicts(characters,caption):
         reasons.append("VLM did not describe CG contents well enough to verify the scene")
     if len(people)==1 and _EXTRA_PERSON.search(desc):
         reasons.append("Neural CG contains an additional principal figure according to VLM")
-    # Wardrobe check disabled for explicit scenes: VLM captions are unreliable for nude detection
-    # if len(people)==1 and wants_unclothed(people[0].get("outfit","")):
-    #     if clothing_alignment(desc)=="failed":
-    #         reasons.append("Neural CG wardrobe contradicts requested unclothed state")
+    if len(people)==1 and wants_unclothed(people[0].get("outfit","")):
+        # A definite visible clothing contradiction is evidence; silence,
+        # ambiguous framing or uncertain captions are not.
+        if clothing_alignment(desc)=="failed":
+            reasons.append("Neural CG wardrobe contradicts requested unclothed state")
     return reasons
