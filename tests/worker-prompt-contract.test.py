@@ -22,7 +22,8 @@ class WorkerPromptContract(unittest.TestCase):
             "re":re,
             "background_context":lambda _:( "overcast", ""),
             "appearance_tags":lambda _: "adult with dark hair",
-            "neural_scene_guards":lambda *_:("SOLO SUBJECT. ","duplicate person, ","v1")
+            "neural_scene_guards":lambda *_:("SOLO SUBJECT. ","duplicate person, ","v1"),
+            "scene_constraints":lambda *_:("SCENE_CONTRACT. ","worn clothing")
         }
         exec(compile(module,str(WORKER),"exec"),namespace)
         cls.prompt_builder=staticmethod(namespace["prompt_builder"])
