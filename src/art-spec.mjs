@@ -1,5 +1,5 @@
 import {environmentFor} from "./environment.mjs";
-import {variantKey,visualFingerprint} from "./visual-state.mjs";
+import {variantKey,visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 import {requireStyle} from "./art-style.mjs";
 const permittedStyle=new Set(["anime","animation","semireal","realistic","poster"]);
 const qModes=new Set(["fast","standard","cinematic"]);
@@ -105,7 +105,7 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
   anchor_asset:base,face_asset:face,anchor_style:identity?.base_style||"",
   previous_sprite_asset:assetName(sprite?.image_url),
   variant,expected_variant_key:variantKey({art_style:style,...variant}),
-  cg_basis_snapshot:visualFingerprint(scene),
+  cg_basis_snapshot:kind==="scene"&&neural_scene?sceneIntentFingerprint(scene):visualFingerprint(scene),
   force:!!force,expected_location:kind==="local_cg"?
     compact(scene.location,180):location,
   output:kind==="sprite"?"rgba_sprite":kind==="scene"?"cg":kind,
@@ -143,13 +143,16 @@ export function currentSceneMatches(g,spec){
    }
   }
   if(spec.kind==="scene"){
-   if(g.scene?.sprites?.some(s=>s.visual_dirty))return false;
-   if(visualFingerprint(g.scene)!==spec.cg_basis_snapshot)return false;
+   const neural=spec.composition==="neural_story";
+   if(!neural&&g.scene?.sprites?.some(s=>s.visual_dirty))return false;
+   if((neural?sceneIntentFingerprint(g.scene):visualFingerprint(g.scene))!==
+      spec.cg_basis_snapshot)return false;
    const now=g.scene?.sprites||[];
    if(now.length!==spec.characters.length)return false;
    for(let i=0;i<now.length;i++){
-    if(now[i].name!==spec.characters[i].name||
-       assetName(now[i].image_url)!==spec.characters[i].sprite_asset)return false;
+    if(now[i].name!==spec.characters[i].name)return false;
+    if(!neural&&assetName(now[i].image_url)!==spec.characters[i].sprite_asset)
+     return false;
    }
   }
   // A separately rendered local CG never modifies the canonical image.
