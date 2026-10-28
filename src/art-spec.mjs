@@ -34,7 +34,7 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
  local_shot="",local_variant_jobs=[],
  local_visual_state=null,local_basis_asset="",local_basis_job_id="",
  local_basis_verified=false,local_fresh_composition=false,
- video_start_asset="",video_source_verified=false}){
+ video_start_asset="",video_source_verified=false,neural_scene=false}){
  requireStyle(style);
  if(style!==g.art_style)throw Error("Art style locked to "+g.art_style+" for this game");
  if(!qModes.has(quality))throw Error("Invalid quality preset");
@@ -110,7 +110,7 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
   output:kind==="sprite"?"rgba_sprite":kind==="scene"?"cg":kind,
   composition:kind==="local_cg"?"neural_story":
     (kind==="video"&&video_start_asset)?"story_video":
-    kind==="scene"?"anchored_composite":kind==="sprite"?"transparent_layer":"standalone",
+    kind==="scene"?(neural_scene?"neural_story":"anchored_composite"):kind==="sprite"?"transparent_layer":"standalone",
   // CPU scene previews use the compositor's fixed native canvas, but never
   // attach to the canonical game CG. Background/sprite previews are smaller.
   resolution:preview_only?(kind==="sprite"?[640,960]:
