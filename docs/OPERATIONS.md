@@ -1,4 +1,4 @@
-# Эксплуатация и восстановление mcp-vn 0.6.4
+# Эксплуатация и восстановление mcp-vn 0.7.0
 
 ## Быстрая проверка состояния
 
@@ -9,7 +9,7 @@ cd /opt/mcp-vn
 docker compose ps
 docker compose logs --tail=100 game
 curl -fsS http://HOME_SERVER_LAN_IP:3100/healthz
-# Ожидаемый ответ: {"ok":true,"name":"mcp-vn","version":"0.6.4"}
+# Ожидаемый ответ: {"ok":true,"name":"mcp-vn","version":"0.7.0"}
 ```
 
 На Bazzite ПК:
@@ -33,7 +33,7 @@ journalctl --user -u mcp-vn-kobold-gateway.service -n 100 --no-pager
 
 ```bash
 cd /opt/mcp-vn
-docker compose build game        # сборка + 98 Node tests
+docker compose build game        # сборка + полный набор Node tests
 python3 tests/scene-grounding.test.py
 python3 tests/visual-contract.test.py
 git diff --check
@@ -121,3 +121,30 @@ RAM-кэш worker хранит только байты неизменных ре
 3. Отсутствуют изменённые `.env`, `data/`, веса `.safetensors`/`.gguf`, ключи и приватные диалоги.
 4. После деплоя подтвердить `/healthz`, модельный backend и отображение одного сохранения; не менять его сюжет для smoke-test.
 5. Закоммитить документацию совместно с изменением кода и проверить актуальность версии на виджете ChatGPT.
+
+## Обновление VN Web
+
+Сначала сохрани резервную копию исходников на ПК и игрового `data/` на домашнем сервере. Обнови Node-приложение обычной сборкой Docker. Затем скопируй обновлённые `standalone-web/*.py` и `standalone-web/web/` в `~/.local/share/mcp-vn-model-lab/` на ПК и перезапусти только веб-сервис:
+
+```bash
+systemctl --user restart mcp-vn-model-lab.service
+systemctl --user is-active mcp-vn-model-lab.service
+journalctl --user -u mcp-vn-model-lab.service -n 40 --no-pager
+```
+
+Не копируй `.env`, cookie, proxy keys или OAuth-файлы в репозиторий. Не удаляй каталог `outputs/` Model Lab. После обновления перезагрузи страницу; статические файлы выдаются с `Cache-Control: no-store`.
+
+Проверки из каталога исходников:
+
+```bash
+npm test
+npm run check
+npm run build
+python3 -m unittest discover -s standalone-web -p 'test_*.py'
+```
+
+Набор Node требует возможность слушать loopback для локальных stub-серверов. Не запускай `npm test` внутри готового runtime-контейнера как проверку релиза: тестовые файлы туда намеренно не копируются, и результат «0 tests» ничего не проверяет. Используй build stage или отдельный контейнер с исходниками.
+
+После выкладки проверь вход, меню `/`, «История», читаемые задержки и загрузку изображения. Мутации `/retry`, `/undo`, `/roll` проверяй на отдельном временном сохранении. `/ooc` и `/recap` не должны менять его версию. Видео проверяется отдельно: наличие маршрута и моделей не доказывает качество полного GPU-рендера.
+
+Проверка релиза 0.7.0 (2026-10-28): 115/115 Node, 11/11 Python, Vite build. После выкладки подтверждены версия сервера и соответствие статических файлов VN Web. На временном сохранении проверены `/roll` → `/retry` с тем же броском → `/undo`, отказ неизвестной команды и API задержек. Ответы рассказчика в этой проверке были синтетическими; новый реальный LLM-ответ и полный GPU-рендер видео не запускались. Резервная копия перед выкладкой: `/opt/mcp-vn-backups/pre-v070-commands-20261028/`.

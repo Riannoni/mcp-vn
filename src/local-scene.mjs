@@ -10,6 +10,7 @@ import {activeGpuJobs,enqueue,getJob} from "./jobs.mjs";
 import {withLocalGpu,isLocalGpuReserved} from "./gpu-coordinator.mjs";
 import {groundedLocalFrame} from "./local-visual-qa.mjs";
 import {decideVisualRender,visualSignature,spriteSignature} from "./render-policy.mjs";
+import {prepareStoryCommand} from "./story-commands.mjs";
 
 const DIR=path.join(dataRoot,"local-scenes");
 const MODEL_URL=(process.env.VN_LOCAL_MODEL_URL||"http://172.19.0.1:28189").replace(/\/$/,"");
@@ -112,6 +113,8 @@ async function runLocal(gameId,requestId){
   const action=s.transcript.find(x=>x.request_id===requestId&&x.role==="player");
   if(!action)throw Error("Local player action is missing");
   const messages=narratorMessages(game,s,action);
+  const qualityOptions={allowHero:action.command?.name==="improvise"};
+  const selectedNarrator=String(s.pending?.model||NARRATOR_MODEL_ID);
   const prior=s.transcript.filter(x=>x.role==="narrator").at(-1)?.text||"";
   const response=await withLocalGpu({
    activeArtJobs:async()=>(await activeGpuJobs()).length,
@@ -119,9 +122,9 @@ async function runLocal(gameId,requestId){
    infer:async()=>{
     let result;
     try{result=await infer(messages,{num_ctx:4096,num_predict:500,
-      model:NARRATOR_MODEL_ID,temperature:0.72});}
+      model:selectedNarrator,temperature:0.72});}
     catch(error){
-      if(NARRATOR_MODEL_ID===NARRATOR_FALLBACK_ID)throw error;
+      if(selectedNarrator===NARRATOR_FALLBACK_ID)throw error;
       console.warn("Narrator fallback to Qwen:",String(error.message).slice(0,100));
       result=await infer(messages,{num_ctx:8192,num_predict:520,
         model:NARRATOR_FALLBACK_ID,temperature:0.72});
@@ -130,23 +133,23 @@ async function runLocal(gameId,requestId){
     }
     let parsed=extractLocalVisual(result.text,{
       action:action.text,previous:s.visual_state});
-    const judged=responseQuality(parsed.narration,prior);
+    const judged=responseQuality(parsed.narration,prior,qualityOptions);
     if(!judged.ok){
      const retry=[...messages,{
       role:"assistant",content:parsed.narration.slice(0,750)
      },{
       role:"user",content:"Предыдущий ответ нарушил правило: "+judged.reason+
-       ". Дай НОВЫЙ текст без реплик и действий Макса, закончи целым предложением."
+       ". Дай НОВЫЙ текст, соблюдая правило выбранной команды; закончи целым предложением."
      }];
-     const retryModel=result.metrics.model===NARRATOR_MODEL_ID&&
-      NARRATOR_MODEL_ID!==NARRATOR_FALLBACK_ID?
+     const retryModel=result.metrics.model===selectedNarrator&&
+      selectedNarrator!==NARRATOR_FALLBACK_ID?
       NARRATOR_FALLBACK_ID:result.metrics.model;
      const candidate=await infer(retry,{
       num_ctx:retryModel===NARRATOR_MODEL_ID?4096:8192,
       num_predict:420,model:retryModel});
      const corrected=extractLocalVisual(candidate.text,{
        action:action.text,previous:s.visual_state});
-     const second=responseQuality(corrected.narration,prior);
+     const second=responseQuality(corrected.narration,prior,qualityOptions);
      if(!second.ok)throw Error("Story quality check failed: "+second.reason);
      result={...candidate,metrics:{...candidate.metrics,retried:true,
        narrator_fallback:retryModel!==NARRATOR_MODEL_ID,
@@ -170,7 +173,7 @@ async function runLocal(gameId,requestId){
   });
   // Write and expose the narration BEFORE the second AI/director pass.
   // Image planning must never keep the player waiting for dialogue.
-  await gameLocalTurnComplete(gameId,requestId);
+  await gameLocalTurnComplete(gameId,requestId,{turnDelta:s.pending?.replace?0:1});
   dispatchVisualDirector(gameId,game.local_scene.session_id,requestId);
  }catch(e){
   const reason=String(e?.message||e).slice(0,200);
@@ -375,15 +378,64 @@ function dispatch(gameId,requestId){
  if(pendingTasks.has(requestId))return;
  pendingTasks.set(requestId,runLocal(gameId,requestId));
 }
-export async function submitLocalTurn(gameId,action,version){
+export async function submitLocalCommand(gameId,input,version,narratorModel=""){
+ const {text,command}=prepareStoryCommand(input);
+ return submitLocalTurn(gameId,text,version,narratorModel,command);
+}
+export async function reviseLocalTurn(gameId,{version,retry=false,note="",model=""}={}){
+ const g=await gameGet(gameId);
+ if(g.local_scene?.mode!=="local")throw Error("Локальный эпизод не открыт.");
+ if(g.local_scene.pending)throw Error("Дождись окончания текущего хода.");
+ if(typeof note!=="string"||note.length>2000)throw Error("Уточнение: не более 2000 символов.");
+ validateNarrator(model);
+ const current=getSession(await load(gameId),g.local_scene.session_id);
+ if(!current.undo_stack?.length)throw Error("Нет хода для отмены. Старые эпизоды поддерживают откат начиная со следующего хода.");
+ const last=current.transcript.filter(x=>x.role==="player").at(-1);
+ const hadAnswer=!!last&&current.transcript.some(x=>x.role==="narrator"&&x.request_id===last.request_id);
+ if(retry&&!last)throw Error("Нет ответа для повтора.");
+ const rec=await gameLocalTurnBegin(gameId,version);
+ try{
+  await edit(gameId,d=>{
+   const s=getSession(d,rec.session_id),stack=s.undo_stack;
+   const before=structuredClone(stack.at(-1));
+   const remaining=retry?stack:stack.slice(0,-1);
+   for(const key of Object.keys(s))delete s[key];
+   Object.assign(s,before,{undo_stack:remaining,pending:null,visual_pending:null});
+   if(retry){
+    s.transcript.push({...last,id:randomUUID(),request_id:rec.request_id,at:rec.submitted_at,
+     command:{...(last.command||{name:"action",argument:""}),retry_note:note.trim()}});
+    s.pending={request_id:rec.request_id,started_at:rec.submitted_at,model:model||NARRATOR_MODEL_ID,replace:hadAnswer};
+   }
+  });
+  if(retry){dispatch(gameId,rec.request_id);return {type:"local",request:rec};}
+  await gameLocalTurnComplete(gameId,rec.request_id,{turnDelta:hadAnswer?-1:0});
+  return {type:"undo",game:await gameGet(gameId)};
+ }catch(error){
+  await gameLocalTurnComplete(gameId,rec.request_id,{error:String(error.message)});
+  throw error;
+ }
+}
+function validateNarrator(narratorModel){
+ const chosen=String(narratorModel||"").trim();
+ if(chosen&&chosen!==MODEL_ID&&chosen!==NARRATOR_MODEL_ID&&
+    !/^(?:gpt|codex|grok|xai\/|o1|o3|o4)[a-z0-9._\/:\-]{0,90}$/i.test(chosen))
+  throw Error("Unsupported narrator model");
+ return chosen;
+}
+export async function submitLocalTurn(gameId,action,version,narratorModel="",command=null){
  const text=String(action||"").trim();
+ const chosen=validateNarrator(narratorModel);
  if(!text||text.length>2000)throw Error("Local action must have 1-2000 characters");
  const g=await gameGet(gameId),rec=await gameLocalTurnBegin(gameId,version);
  await edit(gameId,d=>{
   const s=getSession(d,rec.session_id);
+  const snapshot=structuredClone(s);delete snapshot.undo_stack;
+  s.undo_stack=[...(s.undo_stack||[]),snapshot].slice(-10);
   s.transcript.push({id:randomUUID(),request_id:rec.request_id,
-   role:"player",speaker:g.hero.name,text,at:rec.submitted_at});
-  s.pending={request_id:rec.request_id,started_at:rec.submitted_at};
+   role:"player",speaker:g.hero.name,text,at:rec.submitted_at,
+   ...(command?{command}:{} )});
+  s.pending={request_id:rec.request_id,started_at:rec.submitted_at,
+   model:chosen||NARRATOR_MODEL_ID};
  });
  dispatch(gameId,rec.request_id);
  return {game_id:gameId,version:rec.version,session_id:rec.session_id,
@@ -682,6 +734,7 @@ export async function getLocalEpisode(gameId,{session_id}={}){
   participants:s.participants,started_at:s.started_at,ended_at:s.ended_at,
   transcript:s.transcript.slice(-60),pending:s.pending,last_error:s.last_error||"",
   last_metrics:s.metrics.at(-1)||null,total_messages:s.transcript.length,
+  metrics:(s.metrics||[]).slice(-35),
   cg_previews:(s.cg_previews||[]).slice(-12),
   sprite_previews:(s.sprite_previews||[]).slice(-25),
   visual_display:display,

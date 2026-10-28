@@ -162,3 +162,16 @@ curl -fsS http://YOUR_HOME_LAN_IP:3100/healthz
 На ПК обновите `worker.py`, модельные/QA компоненты и пользовательские сервисы **только если изменились соответствующие файлы**. Зависимости image/LLM обновляйте отдельно с тестом neutral render. Старые веса не удаляйте до проверки новых.
 
 Сохранения `data/` ни при обновлении, ни при откате кода не следует перезаписывать старой копией без явного решения игрока.
+
+## Самостоятельный VN Web / Model Lab
+
+На игровом ПК нужны Python 3.9+, доступ к домашнему worker API и настроенный CLIProxyAPI. Node/npm для запуска самого веб-интерфейса не нужны. Исходники находятся в `standalone-web/`; общие сохранения остаются на домашнем сервере.
+
+1. Скопируй содержимое `standalone-web/` в `~/.local/share/mcp-vn-model-lab/` на ПК. Не заменяй каталог целиком: он также содержит результаты Model Lab и локальные данные.
+2. Для другой сети измени `HOST`, `LAN` в `server.py`, `HOME` в `vn_web.py` и адрес шлюза `ROUTER`. Текущие значения описаны в [VN-WEB.md](VN-WEB.md).
+3. Worker token читается из `~/.config/mcp-vn/worker.env`. CLIProxyAPI должен слушать localhost:8317; его ключ хранится в `~/.local/share/mcp-vn-universal-proxy/client-key`. Эти файлы не входят в Git.
+4. Только при первой установке выполни `python3 ~/.local/share/mcp-vn-model-lab/server.py --init`. Сохрани выданный пароль в менеджере паролей. При обновлении не используй `--reset-password`.
+5. Скопируй `deploy/mcp-vn-model-lab.service` в `~/.config/systemd/user/`, выполни `systemctl --user daemon-reload`, затем `systemctl --user enable --now mcp-vn-model-lab.service`.
+6. Открой `http://PC_LAN_IP:8190/vn/`, войди паролем Model Lab, выбери сохранение и рассказчика. Для внешнего аккаунта используй «Подключения» и код устройства.
+
+Сервис рассчитан на доверенную LAN. Не перенаправляй порт 8190 в интернет без отдельного проектирования защищённого доступа. Конфигурация CLIProxyAPI и его бинарный файл управляются отдельно от этого репозитория; должны поддерживаться `/v1/models`, `/v1/chat/completions`, `-codex-device-login` и `-xai-login`.

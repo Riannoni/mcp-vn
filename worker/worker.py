@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from PIL import Image, ImageEnhance, ImageFilter, ImageDraw, ImageOps, ImageStat, ImageChops
 from scene_compositor import compose as compose_cg
 from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
+from wardrobe_contract import wants_unclothed
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -27,7 +28,7 @@ COMFY = os.environ.get("COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
 OUTPUT = Path(os.environ.get("COMFY_OUTPUT", str(Path.home()/".local/share/mcp-vn-comfy/output")))
 def is_unclothed(spec):
     outfit=str((spec.get("variant") or {}).get("outfit","default")).strip().lower()
-    return outfit in ("unclothed","nude","naked","undressed","без одежды","обнажена","обнажён")
+    return wants_unclothed(outfit)
 
 STYLES = {
     "anime": ("waiIllustriousSDXL_v170.safetensors", 24, 6.0),
@@ -210,7 +211,7 @@ def prompt_builder(job, background):
         outfit=str(variant.get("outfit","default")).strip().lower()
         pose=variant.get("pose","standing")
         emotion=variant.get("emotion","neutral")
-        is_unclothed=outfit in ("unclothed","nude","naked","undressed","без одежды","обнажена","обнажён")
+        is_unclothed=wants_unclothed(outfit)
         # Clothing instructions must never leak out of the canonical face description.
         traits=appearance_tags(appearance)
         if outfit!="default":
@@ -220,7 +221,7 @@ def prompt_builder(job, background):
             "Use the attached canonical reference for the same adult person's face, hair, "
             "age and build. Previous wardrobe must not be copied.")
         wardrobe=("Non-erotic classical fine-art nude of a fictional adult; "
-                  "entirely unclothed with no garments or costume elements."
+                  "entirely unclothed with no garments or costume elements worn on the body; any carried clothes stay entirely off the body."
                    if is_unclothed else
                    f"Required wardrobe: {outfit}; do not retain previous clothing."
                    if outfit!="default" else "")

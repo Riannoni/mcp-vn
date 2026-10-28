@@ -2,6 +2,7 @@
 // Never includes asset URLs, previous image jobs, face crops or undo snapshots.
 // Full state remains available through get_game for interactive UI/debugging.
 import {queryMemory} from "./story-memory.mjs";
+import {commandInstruction} from "./story-commands.mjs";
 
 const clip=(v,n=500)=>String(v??"").trim().replace(/\s+/gu," ").slice(0,n);
 function profile(description=""){
@@ -40,6 +41,7 @@ export function makeNarrationPacket(game,{maxChars=11200}={}){
   protocol:"mcp-vn/narrator-packet-v1",game_id:game.id,expected_version:game.version,
   local_scene_mode:game.local_scene?.mode||"main",
   pending_narration:!!game.awaiting_narrator,
+  ...(game.awaiting_narrator&&action?.command?{command:{...action.command,instruction:commandInstruction(action.command)}}:{}),
   pending_action:{id:action?.id||"",speaker:clip(action?.speaker,80),text:clip(action?.text,1900)},
   story:{title:clip(game.title,120),summary:clip(game.story?.summary,330),
     lore:clip(game.story?.lore,450)},

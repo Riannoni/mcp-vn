@@ -1,9 +1,9 @@
 {
   "name": "mcp-vn",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "ChatGPT-driven visual novel with local ComfyUI worker",
+  "description": "Visual novel with MCP and standalone web clients, shared saves and local ComfyUI",
   "scripts": {
     "start": "node server.mjs",
     "build": "vite build",

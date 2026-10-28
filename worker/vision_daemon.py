@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
+from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -163,8 +164,9 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  first_anchor=kind=="sprite" and not spec.get("anchor_asset")
  outfit_change=kind=="sprite" and spec.get("variant",{}).get("outfit","default")!="default"
  pose_change=kind=="sprite" and spec.get("variant",{}).get("pose","standing")!="standing"
- wants_unclothed=kind=="sprite" and str(spec.get("variant",{}).get("outfit","")).lower() in (
-  "unclothed","nude","naked","undressed","без одежды","обнажена","обнажён")
+ requires_bare=kind=="sprite" and outfit_requires_bare(spec.get("variant",{}).get("outfit",""))
+ # A compound outfit can describe carried clothes, not worn garments.
+ wants_unclothed=requires_bare
  trusted_composite=(kind=="scene" and spec.get("composition")=="anchored_composite"
    and int(spec.get("visible_count") or 0)>0
    and int(spec.get("ready_count") or -1)==int(spec.get("visible_count") or 0))
@@ -212,22 +214,15 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     reasons.append("Sprite has no visible character")
    outfit=str(spec.get("variant",{}).get("outfit","")).lower()
    if wants_unclothed:
-    garments=r"\b(?:bra|bikini|dress|cloak|coat|shirt|jacket|armor|armour|robe|skirt|pants|trousers|boots|belt|vest|underwear|lingerie|shorts|swimsuit|top|bottoms)\b"
-    no_clothes=bool(re.search(
-      r"\b(?:no\s+(?:visible\s+)?(?:clothes|clothing|garments|apparel|attire)|"
-      r"without\s+(?:any\s+)?(?:clothes|clothing|garments|attire)|"
-      r"not\s+wearing\s+(?:any\s+)?(?:clothes|clothing|garments)|"
-      r"wearing\s+nothing|unclothed|nude|naked)\b",desc))
-    dressed=bool(re.search(garments,desc))
-    if dressed:
+    verdict=clothing_alignment(desc)
+    if verdict=="failed":
      reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
-    elif not no_clothes:
-     # Vague captions must not be treated as positive proof of the requested visual state.
+    elif verdict=="uncertain":
      reasons.append("Unclothed state could not be confirmed by visual inspection")
    # Strong wardrobe constraints are handled as warnings when VLM is unsure.
    expected_color=next((c for c in ("black","white","green","red","blue","brown","purple","yellow","grey","gray")
        if re.search(r"\b"+c+r"\b",outfit)),None)
-   if expected_color:
+   if expected_color and not wants_unclothed:
     same_color=expected_color in desc or (expected_color in ("grey","gray") and ("gray" in desc or "grey" in desc))
     observed=re.search(r"\b(black|white|green|red|blue|brown|purple|yellow|gray|grey)\s+"
        r"(?:\w+\s+){0,2}(?:cloak|coat|robe|jacket|dress|shirt)\b",desc)

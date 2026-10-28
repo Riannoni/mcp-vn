@@ -27,3 +27,6 @@ dist/
 .env.*.local
 **/*.db
 **/*.sqlite
+
+# Timestamped source backups are not distributable source.
+*.backup-*
