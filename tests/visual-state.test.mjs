@@ -111,6 +111,17 @@ test("neural CG claims and publishes even when its separate sprite is stale",asy
  assert.equal(current.scene.mode,"cg");
  assert.equal(current.scene.sprites[0].visual_dirty,true);
 });
+test("explicit forced neural CG regeneration queues without updating transparent sprites",async()=>{
+ const {gid}=await startReady();
+ const first=await jobs.enqueue({game_id:gid,kind:"scene",force:true,
+  neural_scene:true,narrator_prompt:true,prompt:"Current narrator-authored composition"});
+ assert.equal(first.spec.composition,"neural_story");
+ assert.equal(first.spec.force,true);
+ const second=await jobs.enqueue({game_id:gid,kind:"scene",force:true,
+  neural_scene:true,narrator_prompt:true,prompt:"Current narrator-authored composition"});
+ assert.equal(second.id,first.id);
+ assert.equal(second.deduplicated,true);
+});
 test("repeated unchanged neural-CG refresh deduplicates rather than superseding queued work",async()=>{
  const {gid}=await startReady();
  const req={game_id:gid,kind:"scene",quality:"standard",
