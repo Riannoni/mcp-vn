@@ -511,35 +511,42 @@ async function openLatency(){
   const rows=(currentLocalEpisode?.metrics||[]).slice(-8).reverse().map(x=>
    "Локальная модель: "+timingSeconds(x.overall_ms||0)+
    (x.eval_count?" · токенов: "+x.eval_count:""));
-  displayInfo("Диагностика задержек VN",report+(rows.length?"\n\n"+rows.join("\n"):""));return;
+  displayInfo("Диагностика задержек VN Web",report+
+   (rows.length?"\n\n"+rows.join("\n"):""));return;
  }
- const id=currentGame.id,epoch=displayInfo("Диагностика задержек VN","Загрузка…");
+ const id=currentGame.id;
+ const epoch=displayInfo("Диагностика задержек VN Web","Загрузка…");
  try{
-  const [result,traces]=await Promise.all([
-   api("/api/vn/performance?id="+encodeURIComponent(id)),
-   api("/api/vn/turn-trace?id="+encodeURIComponent(id)).catch(()=>({turn_trace:[]}))
-  ]);
+  const result=await api("/api/vn/performance?id="+encodeURIComponent(id));
   if(infoEpoch!==epoch||currentGame?.id!==id)return;
   const parts=[latencyText(result.performance,lastTurnWallSec)];
-  if(lastTurnBreakdown){
-   parts.push("\nПоследний ход VN Web (замеры отдельных этапов):",
-    "Ответ модели через прокси: "+timingSeconds(lastTurnBreakdown.narrator_model_ms),
-    "Сохранение на сервере по сети: "+timingSeconds(lastTurnBreakdown.commit_roundtrip_ms),
-    "Поставлено задач на рендер: "+(lastTurnBreakdown.visual_scheduled||0));
+  const show=(t,heading)=>{
+   parts.push("\n"+heading,
+    "Модель: "+(t.model||"неизвестно"),
+    "Приём и запись действия / получение контекста: "+timeOrDash(t.submit_ms),
+    "Подготовка запроса к рассказчику: "+timeOrDash(t.prepare_ms),
+    "Запрос к модели через прокси (включая ожидание и генерацию): "+timeOrDash(t.narrator_model_ms),
+    "Разбор и проверка JSON рассказчика: "+timeOrDash(t.parse_ms),
+    "Сохранение на игровом сервере: "+timeOrDash(t.commit_roundtrip_ms),
+    "Планирование изображений: "+timeOrDash(t.visual_schedule_ms),
+    "Итого в backend VN Web: "+timeOrDash(t.backend_total_ms),
+    "Полный HTTP-запрос браузера: "+timeOrDash(t.web_request_ms),
+    "Прочие накладные расходы (сеть, передача ответа): "+(
+     Number.isFinite(t.web_request_ms)&&Number.isFinite(t.backend_total_ms)?
+     timingSeconds(Math.max(0,t.web_request_ms-t.backend_total_ms)):"нет данных"),
+    "Заданий рендеринга поставлено: "+(t.visual_scheduled??"нет данных"));
+  };
+  if(lastTurnBreakdown)show(lastTurnBreakdown,"Последний ход · измеренные этапы");
+  if(webTurnHistory.length>1){
+   parts.push("\nИстория измеренных ходов браузера:");
+   for(const t of webTurnHistory.slice(-8).reverse()){
+    parts.push("• "+(t.action_preview||"Продолжение").slice(0,75)+
+     " · всего "+timeOrDash(t.web_request_ms)+
+     " · модель "+timeOrDash(t.narrator_model_ms)+
+     " · сохранение "+timeOrDash(t.commit_roundtrip_ms));
+   }
   }
-  const records=(traces.turn_trace||[]).slice(-5).reverse();
-  if(records.length){
-   parts.push("\nТрассировка ChatGPT/MCP (только доступные метки):");
-   for(const t of records)parts.push("Ход "+String(t.action_id||"").slice(0,8)+":",
-    "  Отправка MCP: "+timeOrDash(t.client_submit_rpc_ms),
-    "  Подтверждение ChatGPT: "+timeOrDash(t.host_message_ack_ms),
-    "  До вызова рассказчика: "+timeOrDash(t.action_to_gm_call_ms),
-    "  Обработка на сервере: "+timeOrDash(t.gm_tool_processing_ms),
-    "  До сохранения: "+timeOrDash(t.action_to_committed_ms),
-    "  До отображения после сохранения: "+timeOrDash(t.ui_delivery_after_commit_ms),
-    "  Метки: "+(t.stages_recorded||[]).join(", "));
-  }
-  parts.push("\nВремя инференса ChatGPT отдельно от платформы MCP недоступно.");
+  parts.push("\nПримечание: время модели включает обработку прокси и сетевые ожидания; отдельные внутренние этапы Grok/GPT недоступны. Старые ходы до обновления имеют только общую длительность.");
   $("info-body").textContent=parts.join("\n");
  }catch(e){if(infoEpoch===epoch)$("info-body").textContent=e.message;}
 }
