@@ -205,10 +205,26 @@ SYSTEM="""Ты независимый рассказчик интерактив�
 противоречить друг другу.
 Добавляй scene.location/time_of_day/weather только при реальном изменении,
 не переписывай текущую локацию автоматически. Не делай надуманной смены сцены.
-Для каждой существенной перемены внешности, позы, положения персонажей,
-новой локации или нового действия дай scene.visual_direction: короткий
-визуальный промпт для художника (кадр, действие, расположение, одежда, свет).
-Он идёт локальной графической модели, не попадает в реплики рассказчика.
+Ты также выступаешь режиссёром иллюстраций. Для значимого обновления
+сцены сам полностью составь детальные ГОТОВЫЕ английские SDXL промпты в
+scene.image_prompts: {"background":"...","sprites":{"Имя персонажа":"..."},
+"cg":"..."}. Все ключи необязательны; заполни только нужные для этого хода.
+Это итоговые positive prompts для локальной графической модели, а НЕ
+заметки или короткие подсказки, которые система должна переписывать.
+Описание CG: точная поза и ориентация людей в пространстве, действие в
+последнем абзаце, ракурс и дистанция камеры, одежда в текущий момент,
+количество действующих лиц, фон, освещение и идентичность персонажей.
+Запрещено добавлять непрошеные объекты, камеры, одежду, людей или позы;
+используй только подтверждённые факты канона и текущего действия.
+Для спрайта: один названный персонаж, актуальный наряд, поза, эмоция,
+полный рост на нейтральном фоне без декораций.
+Для фона: текущая локация без персонажей с правильным временем суток.
+Пиши конкретно, без перечисления альтернатив. Промпты не должны
+противоречить друг другу и репликам. Каждый нужный промпт — 1-3 точные
+английские фразы (до ~600 символов). Если действие только разговор,
+image_prompts не добавляй; не надо нового арта ради абзаца.
+Дополнительно scene.visual_direction можешь использовать для краткого
+резюме кадра; полные image_prompts имеют приоритет при генерации.
 Добавляй scene.visual_mode="cg" при значительном физическом действии,
 контакте, перемене одежды, композиции или локации; при небольшой эмоции
 или жесте scene.visual_mode="layers". Не проси CG для простого разговора.
@@ -267,6 +283,20 @@ def parse_answer(s):
    scene["visual_direction"]=visual["visual_direction"].strip()[:420]
   if visual.get("visual_mode") in ("cg","layers"):
    scene["visual_mode"]=visual["visual_mode"]
+  prompts=visual.get("image_prompts")
+  if isinstance(prompts,dict):
+   clean={}
+   for key in ("background","cg"):
+    if isinstance(prompts.get(key),str) and prompts[key].strip():
+     clean[key]=prompts[key].strip()[:2000]
+   sprites=prompts.get("sprites")
+   if isinstance(sprites,dict):
+    names={}
+    for name,prompt in list(sprites.items())[:5]:
+     if isinstance(name,str) and isinstance(prompt,str) and name.strip() and prompt.strip():
+      names[name.strip()[:100]]=prompt.strip()[:1600]
+    if names:clean["sprites"]=names
+   if clean:scene["image_prompts"]=clean
  if isinstance(d.get("scene"),dict) and isinstance(d["scene"].get("sprites"),list):
   sprites=[]
   for actor in d["scene"]["sprites"][:4]:
@@ -317,8 +347,8 @@ def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True
  if directive:system+="\nПриоритетное правило выбранной игроком команды для этого хода:\n"+directive
  messages=[{"role":"system","content":system},{"role":"user","content":"Канон, память и ожидающее действие:\n"+json.dumps(packet,ensure_ascii=False)}]
  request={"model":model,"messages":messages,"stream":False,
-   "max_tokens":(1400 if reasoning_effort=="auto" else
-    {"low":1800,"medium":2400,"high":3600,
+   "max_tokens":(2600 if reasoning_effort=="auto" else
+    {"low":2600,"medium":3000,"high":3900,
      "xhigh":5500,"max":7500}.get(reasoning_effort,1600))}
  if model.startswith("local-") or not levels:
   request["temperature"]=0.7
