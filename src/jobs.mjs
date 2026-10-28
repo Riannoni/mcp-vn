@@ -71,7 +71,7 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
    throw Error("CG needs characters present on the scene");
   if(kind==="scene"&&spec.composition!=="neural_story"&&
      spec.ready_count!==spec.characters.length)
-   throw Error("Layered CG requires accepted sprites; refresh the characters first.");
+   throw Error("Layered CG requires visually up-to-date accepted sprites; refresh the characters first.");
   if(kind==="scene"&&spec.composition==="neural_story"&&
      spec.characters.some(x=>!x.anchor_face_asset&&!x.anchor_asset))
    throw Error("Neural CG requires established canonical character references.");
