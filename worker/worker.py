@@ -352,8 +352,6 @@ def prompt_builder(job, background):
         pose_hints = []
         if any(w in subj_l for w in ["bent forward","leaning forward","from behind","back view","rear view","buttock"]):
             pose_hints.append("from behind, rear view, bent forward against wall, face turned away, looking away from camera, not looking at viewer, not facing camera")
-        if any(w in subj_l for w in ["pulls her","pulling","hand pulls","buttock aside","spread"]):
-            pose_hints.append("one hand pulling buttock aside, fingers gripping flesh, clear view of cleft, hand visible on buttock")
         if any(w in subj_l for w in ["wall","masonry","bracing"]):
             pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
         if pose_hints:
