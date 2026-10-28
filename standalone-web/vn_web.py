@@ -184,6 +184,14 @@ def manual_cg(game_id,expected_version):
  return home("visual-cg",{"game_id":game_id,"expected_version":expected_version,
   "force":True},timeout=20)
 
+def regenerate_cg(game_id,expected_version):
+ if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
+  raise VNError("Неверный ID сохранения")
+ if not isinstance(expected_version,int):
+  raise VNError("Требуется актуальная версия сохранения",409)
+ return home("visual-cg-regenerate",{"game_id":game_id,
+   "expected_version":expected_version},timeout=20)
+
 def visual_refresh(game_id,retry=False):
  if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
   raise VNError("Неверный ID сохранения")
