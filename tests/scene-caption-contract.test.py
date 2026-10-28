@@ -5,6 +5,9 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
 from scene_caption_contract import scene_caption_conflicts
 
 class SceneCaptionContractTest(unittest.TestCase):
+ def test_ambiguous_short_caption_is_not_accepted(self):
+  issues=scene_caption_conflicts([{"name":"Mira","outfit":"green cloak"}],"Two.")
+  self.assertIn("VLM did not describe CG contents well enough to verify the scene",issues)
  def test_exact_bad_cg_caption_is_rejected(self):
   caption=("One adult is standing with her back to us while another stands facing "
            "forward. The woman has long hair tied up in a bun. She's wearing a blue top")
