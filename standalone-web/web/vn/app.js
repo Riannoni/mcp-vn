@@ -233,7 +233,7 @@ function renderScene(g){
  stage.classList.toggle("fill",!fit);
  $("scene-location").textContent=scene.location||"Неизвестная локация";
  $("scene-style").textContent=g.art_style||"";
- $("stage-caption").textContent=isCG?"Иллюстрация сцены":
+ $("stage-caption").textContent=isCG?"CG · нажми на изображение, чтобы увидеть спрайты":
    onlyBackground?"Фон локации":
    (scene.sprites||[]).length?"Фон и персонажи":"Фон локации";
  const canCompose=!g.awaiting_narrator&&g.local_scene?.mode!=="local"&&
@@ -714,6 +714,19 @@ document.addEventListener("DOMContentLoaded",()=>{
  $("close-info").addEventListener("click",closeInfo);
  $("info-modal").addEventListener("click",e=>{
   if(e.target===$("info-modal"))closeInfo();
+ });
+ // The CG intentionally covers separate sprite layers. Inspect them
+ // without adding back a row of obsolete view-mode buttons.
+ const stage=$("stage");
+ stage.tabIndex=0;stage.setAttribute("role","button");
+ stage.setAttribute("aria-label","Переключить CG и спрайты");
+ const toggleArt=()=>{
+  if(!currentGame?.scene?.cg_url||currentGame.scene.cg_dirty)return;
+  stageView=stageView==="layers"?"auto":"layers";renderScene(currentGame);
+ };
+ stage.addEventListener("click",toggleArt);
+ stage.addEventListener("keydown",e=>{
+  if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleArt()}
  });
  $("manual-cg").addEventListener("click",requestCG);
  $("toggle-stage").addEventListener("click",()=>{
