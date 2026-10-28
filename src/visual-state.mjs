@@ -20,7 +20,9 @@ export function visualFingerprint(scene){
    norm(s.name,""),assetId(s.image_url),
    s.rendered_variant_key||"",s.visual_dirty===true?"dirty":"ready"
  ].join("#"));
- return [assetId(scene?.background_url),...sprites].join(";");
+ const revision=Number.isSafeInteger(scene?.cg_revision)&&scene.cg_revision>0?
+  "cg_revision:"+scene.cg_revision:"";
+ return [assetId(scene?.background_url),...sprites,...(revision?[revision]:[])].join(";");
 }
 export function normalizeSprite(sprite={},identity={},sceneBackground="",gameStyle=""){
  const s={...sprite};
