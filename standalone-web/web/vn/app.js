@@ -1,4 +1,4 @@
-import {COMMANDS,matchingCommands,latencyText,inputEnterIntent} from "./commands.js";
+import {COMMANDS,matchingCommands,latencyText,inputEnterIntent,preferredNarrator} from "./commands.js";
 const $=id=>document.getElementById(id);
 let currentGame=null,models=[],busy=false,oauthTimer=null,currentSave="";
 let fit=true,activeModel="local-cydonia-24b";
@@ -214,7 +214,7 @@ async function loadModels(){
   select.append(opt);
  }
  const available=models.map(x=>x.id);
- select.value=available.includes(old)?old:available.includes("local-cydonia-24b")?"local-cydonia-24b":(available[0]||"");
+ select.value=preferredNarrator(available,getSavedModel(),old);
  activeModel=select.value;
  if(!getSavedModel()&&activeModel)saveChosenModel(activeModel);
  updateReasoning();
