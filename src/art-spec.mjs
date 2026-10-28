@@ -34,7 +34,7 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
  local_shot="",local_variant_jobs=[],
  local_visual_state=null,local_basis_asset="",local_basis_job_id="",
  local_basis_verified=false,local_fresh_composition=false,
- video_start_asset="",video_source_verified=false,neural_scene=false}){
+ video_start_asset="",video_source_verified=false,neural_scene=false,narrator_prompt=false}){
  requireStyle(style);
  if(style!==g.art_style)throw Error("Art style locked to "+g.art_style+" for this game");
  if(!qModes.has(quality))throw Error("Invalid quality preset");
@@ -80,7 +80,7 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
    pose:compact(pose||sprite?.pose||"standing",280),
    emotion:compact(emotion||sprite?.emotion||"neutral",120)};
  const spec={
-  spec_version:10,kind,style,quality,preview_only:!!preview_only,
+  spec_version:10,kind,style,quality,preview_only:!!preview_only,\n  narrator_prompt:narrator_prompt===true,
   local_session_id:(kind==="local_cg"||video_start_asset)?
     (g.local_scene?.session_id||""):"",
   local_shot:kind==="local_cg"?compact(local_shot,48):"",
