@@ -30,10 +30,10 @@ def scene_action_conflicts(characters,caption,narrator_prompt):
     if not wants_brace:
         return []
     desc=str(caption).lower()
-    if re.search(r"\\b(?:lying|laying|reclining|crawling|sitting)\\b",desc):
+    if re.search(r"(?<![a-z])(?:lying|laying|reclining|crawling|sitting)(?![a-z])",desc):
         return ["CG physical pose contradicts intended standing wall contact"]
-    if re.search(r"\\b(?:hand|hands|elbow|elbows)\\b.{0,25}"
-                 r"\\b(?:ground|paving|pavement|street)\\b",desc):
+    if re.search(r"(?<![a-z])(?:hand|hands|elbow|elbows)(?![a-z]).{0,25}"
+                 r"(?<![a-z])(?:ground|paving|pavement|street)(?![a-z])",desc):
         return ["CG hands are on the ground instead of on the required wall"]
     return []
 
