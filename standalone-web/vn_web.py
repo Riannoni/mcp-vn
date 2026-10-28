@@ -340,15 +340,19 @@ def turn(game_id,model,action=None,version=None,reasoning_effort="auto",auto_vis
  if isinstance(action,str) and action.strip().startswith("/"):
   return command(game_id,model,action,version,reasoning_effort,auto_visual=auto_visual)
  levels=validate_model(game_id,model,reasoning_effort)
+ submit_started=time.monotonic()
  if action is not None:
   if not isinstance(action,str) or not 1<=len(action.strip())<=5000:raise VNError("Текст хода: 1–5000 символов")
   request={"game_id":game_id,"action":action.strip()}
   if version is not None:request["expected_version"]=int(version)
   packet=home("submit",request,timeout=12)["packet"]
  else:packet=home("packet/"+game_id,timeout=12)["packet"]
- return narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=auto_visual)
+ submit_ms=round((time.monotonic()-submit_started)*1000)
+ return narrate_packet(game_id,model,packet,reasoning_effort,levels,
+   auto_visual=auto_visual,submit_ms=submit_ms)
 
-def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True):
+def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True,submit_ms=0):
+ pipeline_start=time.monotonic()
  if not packet.get("pending_narration"):raise VNError("Нет ожидающего хода",409)
  system=SYSTEM
  directive=(packet.get("command") or {}).get("instruction","")
@@ -362,12 +366,15 @@ def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True
   request["temperature"]=0.7
  if reasoning_effort!="auto":
   request["reasoning_effort"]=reasoning_effort
+ prepare_ms=round((time.monotonic()-pipeline_start)*1000)
  model_started=time.monotonic()
  result=proxy("/v1/chat/completions",request,timeout=195)
  model_ms=round((time.monotonic()-model_started)*1000)
  content=(result.get("choices") or [{}])[0].get("message",{}).get("content","")
  if isinstance(content,list):content="\n".join(x.get("text","") for x in content if isinstance(x,dict))
+ parse_started=time.monotonic()
  parsed=parse_answer(content)
+ parse_ms=round((time.monotonic()-parse_started)*1000)
  if (packet.get("command") or {}).get("name")=="end":parsed["choices"]=[]
  commit_started=time.monotonic()
  committed=home("commit",{
@@ -376,14 +383,20 @@ def narrate_packet(game_id,model,packet,reasoning_effort,levels,auto_visual=True
  },timeout=28)
  commit_ms=round((time.monotonic()-commit_started)*1000)
  # Visuals are asynchronous and must never roll back a committed story turn.
+ visual_started=time.monotonic()
  visual={}
  if auto_visual:
   try:visual=visual_refresh(game_id).get("visual",{})
   except VNError as err:visual={"warning":str(err)}
+ visual_ms=round((time.monotonic()-visual_started)*1000)
+ backend_ms=round((time.monotonic()-pipeline_start)*1000)+submit_ms
  return {"game":rewrite_game(committed["game"]),"model":model,
    "reasoning_effort":reasoning_effort,"visual":visual,
-   "turn_timings":{"narrator_model_ms":model_ms,"commit_roundtrip_ms":commit_ms,
-                   "visual_scheduled":len(visual.get("scheduled",[]))},
+   "turn_timings":{"submit_ms":submit_ms,"prepare_ms":prepare_ms,
+     "narrator_model_ms":model_ms,"parse_ms":parse_ms,
+     "commit_roundtrip_ms":commit_ms,"visual_schedule_ms":visual_ms,
+     "backend_total_ms":backend_ms,
+     "visual_scheduled":len(visual.get("scheduled",[]))},
    "tokens":(result.get("usage") or {}).get("completion_tokens",0),
    "backend":result.get("vn_backend","")}
 COMMAND_NAMES={"continue","improvise","ooc","skip","cut","recap","end","video","roll","retry","undo"}
