@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import {normalizeVisualState,variantKey,assetId,visualFingerprint} from "./visual-state.mjs";
+import {normalizeVisualState,variantKey,assetId,visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 import {ensureGameStyle,requireStyle,STYLES} from "./art-style.mjs";
 import {ensureMemory,patchMemory,recordEvent,closeChapterIfNeeded,queryMemory} from "./story-memory.mjs";
 import {rememberScene,restoreScene} from "./scene-cache.mjs";
@@ -498,7 +498,7 @@ export async function gameUndo(gameId,expectedVersion){
  await save("games",gameId,before);return before});
 }
 export async function attachImage(gameId,{kind="background",character="",url,style="",
-  expected_location=null,face_url="",variant=null,preserve_mode=false}){
+  expected_location=null,face_url="",variant=null,preserve_mode=false,composition=""}){
  return serialize(async()=>{
  const g=await gameGet(gameId);
  if(style&&style!==g.art_style)
@@ -509,14 +509,17 @@ export async function attachImage(gameId,{kind="background",character="",url,sty
   g.scene.background_url=urls(url);
   g.scene.background_style=txt(style||g.scene.background_style||"realistic",40);
   rememberScene(g);
-  g.scene.cg_url="";g.scene.cg_basis="";g.scene.cg_dirty=false;g.scene.mode="layered";
+  g.scene.cg_url="";g.scene.cg_basis="";g.scene.cg_composition="";
+  g.scene.cg_dirty=false;g.scene.mode="layered";
  }else if(kind==="scene"){
   normalizeVisualState(g);
-  if(g.scene.sprites.some(s=>s.visual_dirty))
+  if(composition!=="neural_story"&&g.scene.sprites.some(s=>s.visual_dirty))
    return {applied:false,reason:"Stale character appearance; regenerate affected sprites first"};
   g.scene.cg_url=urls(url);
   g.scene.cg_style=txt(style||"realistic",40);
-  g.scene.cg_basis=visualFingerprint(g.scene);
+  g.scene.cg_composition=composition==="neural_story"?"neural_story":"anchored_composite";
+  g.scene.cg_basis=g.scene.cg_composition==="neural_story"?
+   sceneIntentFingerprint(g.scene):visualFingerprint(g.scene);
   g.scene.cg_dirty=false;
   g.scene.mode="cg";
  }else if(kind==="sprite"){
@@ -566,7 +569,10 @@ export async function attachImage(gameId,{kind="background",character="",url,sty
   if(pos>=0)g.scene.sprites[pos]=item;
   else (g.scene.sprites||=[]).push(item);
   // Every character revision invalidates the existing CG composition.
-  if(g.scene.cg_url){g.scene.cg_dirty=true;g.scene.cg_basis="";}
+  // Transparent layers are not part of an independent neural-CG fingerprint.
+  if(g.scene.cg_url&&g.scene.cg_composition!=="neural_story"){
+   g.scene.cg_dirty=true;g.scene.cg_basis="";
+  }
   if(!preserve_mode)g.scene.mode="layered";
  }else if(kind==="video")g.scene.video_url=urls(url);
  else throw Error("Unknown media kind");
