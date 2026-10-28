@@ -64,6 +64,12 @@
     <button id="open-looks" class="subtle" type="button" title="Посмотреть закреплённые изображения персонажей">◉ Образы</button>
     <button id="manual-cg" class="subtle" type="button" title="Вручную собрать CG из подтверждённых слоёв">✧ Собрать CG</button>
   </div>
+  <details id="render-jobs-panel" class="render-jobs-panel" open>
+   <summary><span>◷ Рендеринг</span><small id="render-jobs-title" aria-live="polite">Загрузка задач…</small></summary>
+   <div id="render-jobs-list" class="render-jobs-list" role="status" aria-live="polite">
+    <p class="render-jobs-empty">Нет активных задач.</p>
+   </div>
+  </details>
   <div id="scene-warning" class="notice" hidden></div>
  </section>
  <main class="story-panel">
@@ -81,6 +87,7 @@
    <div id="state-message" class="notice" hidden></div>
    <div id="command-menu" class="command-menu" role="listbox" aria-label="Команды истории" hidden></div>
    <textarea id="player-action" rows="3" aria-label="Действие или команда" aria-controls="command-menu" aria-expanded="false" placeholder="Что ты говоришь или делаешь? / — команды"></textarea>
+   <small class="keyboard-hint">Enter — отправить · Ctrl+Enter — новая строка</small>
    <div class="input-actions">
     <button id="open-commands" class="subtle commands-button" type="button" aria-controls="command-menu" aria-expanded="false">/ Команды</button>
     <button id="resume" class="subtle" type="button" hidden>Повторить ответ без нового хода</button>
