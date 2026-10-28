@@ -23,6 +23,7 @@ from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
 from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
 from scene_constraints import scene_constraints
+from pose_library import select_story_pose
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -665,6 +666,17 @@ def image_graph(job):
         elif from_rear and wall:
             pose_kind = "leaning_wall_rear"
     pose_filename=pose_control_guide(pose_kind)
+    use_pose_library_v2=False
+    # Draft library: opt-in only. A near-match must never silently override
+    # the storyteller's camera geometry or a previously approved guide.
+    if kind=="scene" and spec.get("composition")=="neural_story" and (
+        os.environ.get("VN_POSE_LIBRARY_V2","0").lower() in ("1","true","yes")
+    ):
+        suggested=select_story_pose(str(job.get("prompt") or ""))
+        if suggested:
+            pose_kind=suggested
+            pose_filename=suggested+".png"
+            use_pose_library_v2=True
     env_enabled=os.environ.get("VN_POSE_CONTROL","1").lower() not in ("0","false","off")
     previous_error=str(job.get("error","")).lower()
     if ((kind=="sprite" or (kind=="scene" and spec.get("composition")=="neural_story")) and not is_animation and env_enabled and pose_filename and
@@ -673,7 +685,14 @@ def image_graph(job):
         try:
             directory=Path(os.environ.get("VN_POSE_GUIDE_DIR",
                 str(Path.home()/".local/share/mcp-vn/pose-guides")))
+            if use_pose_library_v2:
+                directory=Path(os.environ.get("VN_POSE_LIBRARY_V2_DIR",
+                    str(Path.home()/".local/share/mcp-vn/pose-guides-v2/cg")))
             filename=directory/pose_filename
+            if use_pose_library_v2 and filename.is_file():
+                with Image.open(filename) as guide_image:
+                    if guide_image.size!=(width,height):
+                        raise ValueError("CG OpenPose guide has wrong canvas size")
             if not filename.is_file():
                 raise FileNotFoundError("Pose guide not available: "+str(filename))
             guide_upload=upload_to_comfy(filename.read_bytes(),
