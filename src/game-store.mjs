@@ -196,7 +196,11 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  if(expected_action_id!==undefined&&expected_action_id!==g.turn_metrics?.pending?.action_id)
   throw Error("Ответ относится к прежнему ходу; сохранение уже изменилось.");
  if(!Array.isArray(messages)||messages.length<1||messages.length>12)throw Error("Narration requires 1-12 messages");
- const oldLocation=g.scene.location,turn=++ensureMemory(g).turn;
+ const oldLocation=g.scene.location;
+ const oldVisual=new Map((g.scene.sprites||[]).map(x=>[x.name,{
+   outfit:x.outfit||"default",pose:x.pose||"standing",emotion:x.emotion||"neutral"
+ }]));
+ const turn=++ensureMemory(g).turn;
  for(const m of messages)g.messages.push({id:randomUUID(),role:"narrator",speaker:txt(m.speaker||"Рассказчик",100),text:txt(m.text,10000),at:new Date().toISOString()});
  if(scene.location!==undefined||scene.time_of_day!==undefined||scene.weather!==undefined){
   const next=scene.location!==undefined?txt(scene.location,180):g.scene.location;
@@ -229,6 +233,8 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
   g.scene.environment={id:txt(String(env.id||"custom"),80),positive:words(env.positive),
     negative:words(env.negative),indoor:env.indoor===true};
  }
+ if(typeof scene.visual_direction==="string")
+  g.scene.visual_direction=txt(scene.visual_direction,420);
  if(scene.background_url!==undefined)g.scene.background_url=urls(scene.background_url);
  if(scene.sprites!==undefined){
  if(!Array.isArray(scene.sprites)||scene.sprites.length>8)throw Error("Too many sprites");
@@ -253,6 +259,19 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
     rendered_background_asset:sameImage?old.rendered_background_asset||"":""
   };
  });
+ }
+ // The narrator owns the art direction, but the server decides when it is
+ // worth spending GPU time. No CG solely because the dialogue grew.
+ const physicalChanged=oldLocation!==g.scene.location||
+  oldVisual.size!==(g.scene.sprites||[]).length||
+  (g.scene.sprites||[]).some(x=>{
+   const prior=oldVisual.get(x.name);
+   return !prior||prior.outfit!==x.outfit||prior.pose!==x.pose;
+  });
+ g.scene.auto_cg_requested=scene.visual_mode==="cg"?true:
+  scene.visual_mode==="layers"?false:physicalChanged;
+ if(physicalChanged&&g.scene.cg_url){
+  g.scene.cg_dirty=true;g.scene.mode="layered";
  }
  g.choices=(choices||[]).slice(0,6).map(x=>txt(x,200));
  for(const x of inventory_add||[]){
