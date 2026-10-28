@@ -196,7 +196,7 @@ function showApp(){
 async function loadModels(){
  const catalog=await api("/api/vn/models");
  models=catalog.models||[];
- const select=$("narrator"),old=select.value||getSavedModel()||activeModel;
+ const select=$("narrator"),old=getSavedModel()||select.value||activeModel;
  select.replaceChildren();
  const groups={local:"Локальные · ROCm",openai:"ChatGPT / Codex · OAuth",grok:"Grok / xAI · OAuth"};
  for(const type of ["local","openai","grok"]){
@@ -384,9 +384,11 @@ async function runTurn(resume=false){
   const result=await api(name?"/api/vn/command":resume?"/api/vn/resume":local?"/api/vn/local-turn":"/api/vn/turn",body);
   if(currentGame?.id!==id)return;
   $("player-action").value="";
+  const renderStarted=performance.now();
   if(result.game)renderGame(result.game);
+  const browserRenderMs=Math.round(performance.now()-renderStarted);
   if(result.turn_timings){
-   const metrics={...result.turn_timings,
+   const metrics={...result.turn_timings,browser_render_ms:browserRenderMs,
     model:activeModel,at:new Date().toISOString(),
     action_preview:action.slice(0,100),
     web_request_ms:Math.round(performance.now()-start)};
@@ -530,7 +532,8 @@ async function openLatency(){
     "Сохранение на игровом сервере: "+timeOrDash(t.commit_roundtrip_ms),
     "Планирование изображений: "+timeOrDash(t.visual_schedule_ms),
     "Итого в backend VN Web: "+timeOrDash(t.backend_total_ms),
-    "Полный HTTP-запрос браузера: "+timeOrDash(t.web_request_ms),
+    "Обновление интерфейса после ответа: "+timeOrDash(t.browser_render_ms),
+    "Время от отправки до отображения в браузере: "+timeOrDash(t.web_request_ms),
     "Прочие накладные расходы (сеть, передача ответа): "+(
      Number.isFinite(t.web_request_ms)&&Number.isFinite(t.backend_total_ms)?
      timingSeconds(Math.max(0,t.web_request_ms-t.backend_total_ms)):"нет данных"),
@@ -752,7 +755,8 @@ document.addEventListener("DOMContentLoaded",()=>{
  });
  $("narrator").addEventListener("change",()=>{
   activeModel=$("narrator").value;
-    updateReasoning();
+  saveChosenModel(activeModel);
+  updateReasoning();
   $("provider-badge").textContent=activeModel.startsWith("local")?"На этом ПК":
    activeModel.startsWith("grok")?"Grok":"ChatGPT";
  });
@@ -808,13 +812,6 @@ document.addEventListener("DOMContentLoaded",()=>{
  $("oauth-cancel").addEventListener("click",cancelOAuth);
  $("oauth-copy-code").addEventListener("click",copyOAuthCode);
  $("reload-models").addEventListener("click",()=>loadModels().catch(e=>showToast(e.message)));
-  $("narrator").addEventListener("change",()=>{
-  activeModel=$("narrator").value;
-  saveChosenModel(activeModel);
-  updateReasoning();
-  $("provider-badge").textContent=activeModel.startsWith("local")?"На этом ПК":
-   activeModel.startsWith("grok")?"Grok":"ChatGPT";
- });
  $("reasoning").addEventListener("change",()=>{
     try{localStorage.setItem("vn-web-effort:"+activeModel,$("reasoning").value)}catch(_){}
   });
