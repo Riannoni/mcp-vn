@@ -155,11 +155,6 @@ def game_performance(game_id):
   raise VNError("Неверный ID сохранения")
  return home("performance/"+game_id,timeout=12)
 
-def game_turn_trace(game_id):
- if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
-  raise VNError("Неверный ID сохранения")
- return home("turn-trace/"+game_id,timeout=12)
-
 def game_undo(game_id,expected_version):
  if not isinstance(game_id,str) or not UUID.fullmatch(game_id):
   raise VNError("Неверный ID сохранения")
