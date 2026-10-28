@@ -47,7 +47,10 @@ test("manual retry of an accepted sprite bypasses the stale appearance cache",()
   pose:"standing",emotion:"resigned",image_url:"https://example.test/old.png",
   visual_dirty:false}]});
  assert.deepEqual(planStandaloneVisuals(g),[]);
- // Scheduling a manual retry is intentionally tested in the integration layer:
- // it must not be lost just because the planned automatic work is empty.
+ const wanted=planStandaloneVisuals(g,{retry:true});
+ assert.equal(wanted.length,1);
+ assert.equal(wanted[0].kind,"sprite");
+ assert.equal(wanted[0].character,"Мира");
+ assert.match(wanted[0].prompt,/fully undressed/);
  assert.equal(g.scene.sprites[0].visual_dirty,false);
 });
