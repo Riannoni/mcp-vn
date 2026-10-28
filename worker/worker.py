@@ -34,8 +34,8 @@ def is_unclothed(spec):
 STYLES = {
     "anime": ("waiIllustriousSDXL_v170.safetensors", 24, 6.0),
     "animation": ("BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors", 8, 1.0),
-    "semireal": ("ponyRealism_V23ULTRA.safetensors", 32, 6.0),
-    "realistic": ("ponyRealism_V23ULTRA.safetensors", 32, 6.0),
+    "semireal": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 6.0),
+    "realistic": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 6.0),
     "poster": ("CyberRealisticPony_V18.0_F16.safetensors", 32, 5.0),
 }
 SESSION = None
