@@ -35,7 +35,6 @@ ROUTER = "http://192.168.50.27:11434"
 ROUTER_ENV = Path.home() / ".config/mcp-vn/worker.env"
 MODELS = {
  "pony": ("CyberRealistic Pony v18 · Реализм / 2.5D", "SDXL · realistic / semireal", ["checkpoints/CyberRealisticPony_V18.0_F16.safetensors"], True),
- "ponyreal": ("Pony Realism v2.3 ULTRA · Реализм / позы", "SDXL · photoreal, better poses", ["checkpoints/ponyRealism_V23ULTRA.safetensors"], True),
  "wai": ("WAI-Illustrious SDXL v17 · Аниме", "SDXL · Japanese anime", ["checkpoints/waiIllustriousSDXL_v170.safetensors"], True),
  "anima": ("Anima BAS:NSFW v1.0 · Анимационная", "Anima · 2D animation", ["diffusion_models/BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors","text_encoders/qwen_3_06b_base.safetensors","vae/qwen_image_vae.safetensors"], False),
  "cyberz": ("CyberRealistic Z-Image v4 Q8 · Эксперимент", "Z-Image · experimental", ["diffusion_models/CyberRealistic_zit_v4.0-Q8_0.gguf","text_encoders/qwen_3_4b_fp4_mixed.safetensors","vae/ae.safetensors"], False),
@@ -98,7 +97,6 @@ def graph(model,prompt,negative,w,h,seed,ident):
  if model=="wai":positive="masterpiece, best quality, amazing quality, "+prompt
  sdxl={
   "pony":("CyberRealisticPony_V18.0_F16.safetensors",32,5,True),
-  "ponyreal":("ponyRealism_V23ULTRA.safetensors",32,6,True),
   "wai":("waiIllustriousSDXL_v170.safetensors",24,6,True)}
  if model in sdxl:
   ckpt,steps,cfg,skip=sdxl[model]
