@@ -271,8 +271,12 @@ export async function nextJob(pool="any"){
     try{
       const game=await gameGet(j.game_id);
       valid=!j.superseded_by&&currentSceneMatches(game,j.spec);
+      // Neural CG is conditioned on immutable face references, not on the
+      // transparent sprite. Reject stale sprites only for layered composites.
       if(j.kind==="scene"&&
-         (game.scene?.background_dirty||game.scene?.sprites?.some(s=>s.visual_dirty)))
+         (game.scene?.background_dirty||
+          (j.spec?.composition!=="neural_story"&&
+           game.scene?.sprites?.some(s=>s.visual_dirty))))
         valid=false;
     }catch{}
     if(!valid){
