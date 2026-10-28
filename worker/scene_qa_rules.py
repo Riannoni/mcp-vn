@@ -18,8 +18,8 @@ def principal_count_evidence(expected_count, scores):
     if n == 1:
         positive=solo
         competitors=pair+group+empty
-        verified=(positive>=0.12 and positive>pair*1.0 and
-                  positive>group*1.0 and positive>empty*1.0)
+        verified=(positive>=0.08 and positive>pair*0.8 and
+                  positive>group*0.8 and positive>empty*0.8)
     elif n == 2:
         positive=pair
         competitors=solo+group+empty
