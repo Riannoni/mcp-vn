@@ -145,3 +145,47 @@ h1,h2,p{margin-top:0}
 .render-job .job-warning{color:#e0bf9c}
 #toggle-stage{white-space:nowrap}
 @media(max-width:900px){#app.visual-hidden .story-panel{height:calc(100dvh - 190px)}}
+
+/* Stable toolbar slots: changing narrator/effort never shifts another control. */
+#app .toolbar{display:grid;grid-template-columns:minmax(280px,2.3fr)
+ minmax(220px,1.35fr) minmax(175px,190px) 124px 70px minmax(170px,190px);
+ align-items:end;gap:12px;min-width:0;position:sticky;top:0;z-index:12}
+#app .toolbar>.game-select,#app .toolbar>.model-select,
+#app .toolbar>.reasoning-select{min-width:0;max-width:none;width:100%}
+#app .toolbar>.reasoning-select[hidden]{display:block!important;visibility:hidden;
+ pointer-events:none;min-height:62px}
+#app .toolbar .provider-button{width:100%}
+#app .toolbar .provider-badge{width:100%;white-space:nowrap;padding-inline:4px;text-align:center}
+#app .toolbar>.auto-art-toggle{min-width:0;margin:0 0 13px;white-space:normal}
+#app .toolbar>div select{width:100%;min-width:0}
+.provider-actions{display:flex;flex-direction:column;align-items:center;
+ justify-content:center;gap:5px;min-width:122px}
+.provider-actions button{width:100%}
+.provider-actions .provider-state{display:block;text-align:center;margin:0;
+ font-size:12px;line-height:1.3;min-height:17px;color:#aea0bc}
+.provider-actions .provider-state.is-connected{color:#79d4a7;font-weight:700}
+@media(max-width:1280px){
+ #app .toolbar{grid-template-columns:minmax(220px,2.2fr)
+ minmax(180px,1.5fr) minmax(160px,190px) 122px 70px}
+ #app .toolbar>.auto-art-toggle{grid-column:4 / 6;grid-row:2;
+ margin:0;padding:4px 0}
+}
+@media(max-width:900px){
+ #app .toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 140px;
+ gap:9px}
+ #app .toolbar>.game-select{grid-column:1 / 3}
+ #app .toolbar>.model-select{grid-column:1 / 3}
+ #app .toolbar>.reasoning-select{grid-column:3;grid-row:2}
+ #app .toolbar>.provider-button{grid-column:1;grid-row:3}
+ #app .toolbar>.provider-badge{grid-column:2;grid-row:3}
+ #app .toolbar>.auto-art-toggle{grid-column:3;grid-row:3}
+}
+@media(max-width:540px){
+ #app .toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ position:sticky;top:0}
+ #app .toolbar>.game-select,#app .toolbar>.model-select{grid-column:1 / -1}
+ #app .toolbar>.reasoning-select{grid-column:1;grid-row:3}
+ #app .toolbar>.provider-button{grid-column:2;grid-row:3}
+ #app .toolbar>.provider-badge{grid-column:1;grid-row:4}
+ #app .toolbar>.auto-art-toggle{grid-column:2;grid-row:4}
+}
