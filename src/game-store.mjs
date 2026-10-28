@@ -7,6 +7,7 @@ import {ensureMemory,patchMemory,recordEvent,closeChapterIfNeeded,queryMemory} f
 import {rememberScene,restoreScene} from "./scene-cache.mjs";
 import {ensureRules,setRulesMode,resolveCheck,getRuleSummary} from "./game-rules.mjs";
 import {pushGameEvent} from "./live-events.mjs";
+import {prepareStoryCommand} from "./story-commands.mjs";
 const root=process.env.VN_DATA_DIR||"/data";
 const demo={
   id:"ash-gate",title:"Пепельные врата",author:"mcp-vn",source:"original",rights_confirmed:true,
@@ -167,7 +168,11 @@ export async function gameSkillCheck(gameId,check){
   return {game_id:gameId,version:g.version,check:result,rules:getRuleSummary(g)};
  });
 }
-export async function gameAction(gameId,action,version){
+export async function gameCommand(gameId,input,version){
+ const {text,command}=prepareStoryCommand(input);
+ return gameAction(gameId,text,version,command);
+}
+export async function gameAction(gameId,action,version,command=null){
  return serialize(async()=>{const g=await gameGet(gameId);
  if(g.local_scene?.mode==="local")throw Error("Local scene active; use local_turn_begin or exit local scene");
  if(g.awaiting_narrator)throw Error("Previous turn is awaiting narration");
@@ -175,7 +180,8 @@ export async function gameAction(gameId,action,version){
  const input=txt(action,5000);if(!input)throw Error("Empty action");
  g.undo_stack.push({...structuredClone(g),undo_stack:[]});g.undo_stack=g.undo_stack.slice(-10);
  const actionId=randomUUID(),submittedAt=new Date().toISOString();
- g.messages.push({id:actionId,role:"player",speaker:g.hero.name,text:input,at:submittedAt});
+ g.messages.push({id:actionId,role:"player",speaker:g.hero.name,text:input,at:submittedAt,
+  ...(command?{command:structuredClone(command)}:{})});
  g.turn_metrics ||= {recent:[],last:null};
  g.turn_metrics.pending={action_id:actionId,submitted_at:submittedAt};
  recordEvent(g,{kind:"action",text:input,turn:ensureMemory(g).turn+1});
@@ -183,10 +189,12 @@ export async function gameAction(gameId,action,version){
  await save("games",g.id,g);return g});
 }
 export async function gameNarrate({game_id,messages,scene={},choices=[],inventory_add=[],
- flags={},relationships={},memory_updates={}}){
+ flags={},relationships={},memory_updates={},expected_action_id}){
  return serialize(async()=>{const narratorCommitStarted=Date.now(),g=await gameGet(game_id);
  if(g.local_scene?.mode==="local")throw Error("Local scene active; ordinary GM narration is paused");
  if(!g.awaiting_narrator)throw Error("No player action pending");
+ if(expected_action_id!==undefined&&expected_action_id!==g.turn_metrics?.pending?.action_id)
+  throw Error("Ответ относится к прежнему ходу; сохранение уже изменилось.");
  if(!Array.isArray(messages)||messages.length<1||messages.length>12)throw Error("Narration requires 1-12 messages");
  const oldLocation=g.scene.location,turn=++ensureMemory(g).turn;
  for(const m of messages)g.messages.push({id:randomUUID(),role:"narrator",speaker:txt(m.speaker||"Рассказчик",100),text:txt(m.text,10000),at:new Date().toISOString()});
@@ -328,13 +336,13 @@ export async function gameLocalTurnBegin(gameId,expectedVersion){
   return {game_id:g.id,version:g.version,session_id:g.local_scene.session_id,...pending};
  });
 }
-export async function gameLocalTurnComplete(gameId,requestId,{error=""}={}){
+export async function gameLocalTurnComplete(gameId,requestId,{error="",turnDelta=1}={}){
  return serialize(async()=>{
   const g=await gameGet(gameId);
   if(g.local_scene?.mode!=="local"||g.local_scene.pending?.request_id!==requestId)
     throw Error("Stale local request; no changes committed");
   const at=new Date().toISOString(),started=Date.parse(g.local_scene.pending.submitted_at);
-  g.local_scene.turns+=error?0:1;
+  g.local_scene.turns=Math.max(0,g.local_scene.turns+(error?0:turnDelta));
   g.local_scene.last_duration_ms=Math.max(0,Date.now()-started);
   g.local_scene.last_error=String(error).slice(0,200);
   g.local_scene.pending=null;
@@ -382,8 +390,61 @@ export async function gameMemoryPatch(gameId,updates,expectedVersion){
 export async function gameMemorySearch(gameId,query){
  const g=await gameGet(gameId);return queryMemory(g,query);
 }
-export async function gameUndo(gameId){
+// Rebuild an initially empty canonical cast from established NPCs in
+// recent narration. Never invent a character or actions for the protagonist.
+export async function gameEnsureSceneCast(gameId){
+ return serialize(async()=>{
+  const g=await gameGet(gameId);
+  if(g.awaiting_narrator||g.local_scene?.mode==="local"||
+     (g.scene?.sprites||[]).length)return g;
+  const statements=(g.messages||[]).filter(x=>x.role==="narrator").slice(-3);
+  const recent=statements.map(m=>String(m.text||"")).join(" ");
+  const speakers=new Set(statements.map(m=>m.speaker).filter(Boolean));
+  const cast=(g.story?.characters||[]).filter(c=>{
+   const name=String(c?.name||"").trim();
+   if(!name||name===g.hero?.name)return false;
+   if(!speakers.has(name)&&!recent.includes(name))return false;
+   if([" ушла"," покинула"," исчезла"].some(s=>recent.includes(name+s)))
+    return false;
+   return true;
+  }).slice(0,3);
+  if(!cast.length)return g;
+  g.scene.sprites=cast.map(c=>({
+   name:c.name,image_url:"",transparent:false,art_style:g.art_style,
+   outfit:String(c.description||"travelling outfit").slice(0,80),
+   pose:"standing",emotion:"neutral",rendered_variant_key:"",
+   rendered_background_asset:""
+  }));
+  g.version++;g.updated_at=new Date().toISOString();
+  await save("games",g.id,g);
+  return normalizeVisualState(g);
+ });
+}
+export async function gameRetry(gameId,note="",expectedVersion){
+ if(typeof note!=="string"||note.length>2000)throw Error("Уточнение: не более 2000 символов");
+ return serialize(async()=>{
+  const g=await gameGet(gameId);
+  if(expectedVersion!==undefined&&expectedVersion!==g.version)throw Error("Версия сохранения изменилась. Обнови историю.");
+  if(g.local_scene?.mode==="local"||g.awaiting_narrator)throw Error("Дождись окончания текущего хода.");
+  const before=g.undo_stack.at(-1);
+  const action=g.messages.filter(x=>x.role==="player").at(-1);
+  if(!before||!action)throw Error("Нет завершённого ответа для повтора.");
+  const restored=structuredClone(before),at=new Date().toISOString();
+  restored.undo_stack=g.undo_stack;
+  const next={...structuredClone(action),id:randomUUID(),at,
+   command:{...(action.command||{name:"action",argument:""}),retry_note:note.trim()}};
+  restored.messages.push(next);
+  recordEvent(restored,{kind:"action",text:next.text,turn:ensureMemory(restored).turn+1});
+  restored.turn_metrics||={recent:[],last:null};
+  restored.turn_metrics.pending={action_id:next.id,submitted_at:at};
+  restored.choices=[];restored.awaiting_narrator=true;
+  restored.version=g.version+1;restored.updated_at=at;
+  await save("games",gameId,restored);return restored;
+ });
+}
+export async function gameUndo(gameId,expectedVersion){
  return serialize(async()=>{const g=await gameGet(gameId);
+ if(expectedVersion!==undefined&&expectedVersion!==g.version)throw Error("Версия сохранения изменилась. Обнови историю.");
  if(g.local_scene?.mode==="local")throw Error("Exit local scene before undo");
  if(g.awaiting_narrator)throw Error("Narration pending");
  const before=g.undo_stack.pop();if(!before)throw Error("Nothing to undo");

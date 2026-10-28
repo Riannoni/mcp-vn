@@ -48,6 +48,25 @@ async function waitUntil(fn,timeout=2400){
  }
  throw Error("Test local inference did not finish in time");
 }
+test("local command retry preserves dice and undo restores episode transcript",async()=>{
+ const g=await preparedGame();
+ const opened=await local.beginLocalScene(g.id,g.version);
+ const first=await local.submitLocalCommand(g.id,"/roll d20 dc 10 осмотреться",opened.version);
+ await waitUntil(async()=>(await local.getLocalEpisode(g.id)).transcript.some(x=>x.role==="narrator"));
+ await waitUntil(async()=>!(await game.gameGet(g.id)).local_scene.pending);
+ const before=await local.getLocalEpisode(g.id);
+ let current=await game.gameGet(g.id);
+ const roll=before.transcript[0].command.roll;
+ await local.reviseLocalTurn(g.id,{retry:true,note:"короче",version:current.version});
+ await waitUntil(async()=>!(await game.gameGet(g.id)).local_scene.pending);
+ const retried=await local.getLocalEpisode(g.id);
+ assert.equal(retried.transcript.filter(x=>x.role==="player").length,1);
+ assert.deepEqual(retried.transcript[0].command.roll,roll);
+ current=await game.gameGet(g.id);
+ await local.reviseLocalTurn(g.id,{version:current.version});
+ assert.equal((await local.getLocalEpisode(g.id)).transcript.length,0);
+ assert.equal((await game.gameGet(g.id)).local_scene.turns,0);
+});
 test("local scene text stays out of main ChatGPT context, but a neutral bridge remains",async()=>{
  const g=await preparedGame(),count=g.messages.length;
  const opened=await local.beginLocalScene(g.id,g.version);

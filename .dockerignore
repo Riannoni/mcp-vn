@@ -24,3 +24,6 @@ dist
 *.webp
 *.jpg
 *.jpeg
+
+# Timestamped source backups are not distributable source.
+*.backup-*

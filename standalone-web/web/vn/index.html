@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#110f1b">
+<title>VN Web · Пепельные врата</title>
+<link rel="stylesheet" href="/vn/style.css">
+<script type="module" src="/vn/app.js"></script>
+</head><body>
+<div id="login" class="login-screen" hidden>
+ <section class="login-card">
+  <span class="eyebrow">ВИЗУАЛЬНАЯ НОВЕЛЛА</span>
+  <h1>VN Web</h1>
+  <p>Продолжай свою историю.</p>
+  <form id="login-form">
+   <label for="login-password">Пароль Model Lab</label>
+   <input id="login-password" type="password" autocomplete="current-password" required>
+   <button class="primary" type="submit">Войти</button>
+   <p id="login-error" class="error" role="alert"></p>
+  </form>
+ </section>
+</div>
+<div id="app" hidden>
+<header class="top">
+ <div class="brand"><span class="mark">◈</span><div><strong>VN Web</strong><small>Твоя история</small></div></div>
+ <div class="nav-controls">
+  <span id="service-state" class="live">Проверка сервисов…</span>
+  <a class="quiet-link" href="/">Model Lab</a>
+  <button id="refresh" class="subtle" type="button">Обновить</button>
+ </div>
+</header>
+<div class="toolbar">
+ <div class="game-select">
+  <label for="save">Сохранение</label>
+  <select id="save"><option value="">Загрузка…</option></select>
+ </div>
+ <div class="model-select">
+  <label for="narrator">Ведущий истории</label>
+  <select id="narrator"></select>
+ </div>
+ <div id="reasoning-panel" class="reasoning-select" hidden>
+  <label for="reasoning">Глубина размышления</label>
+  <select id="reasoning" aria-label="Уровень размышления модели"><option value="auto">Авто</option></select>
+ </div>
+ <button id="providers-button" class="subtle provider-button" type="button">Подключения</button>
+ <span id="provider-badge" class="provider-badge">Локальный режим</span>
+</div>
+<div class="workspace">
+ <section class="scene-panel">
+  <div class="scene-media" id="stage">
+   <div id="scene-background" class="scene-background"></div>
+   <img id="scene-cg" class="scene-cg" alt="Текущая сцена" hidden>
+   <div class="sprites" id="scene-sprites"></div>
+   <div class="scene-caption"><span id="scene-location">Локация</span><small id="scene-style"></small></div>
+  </div>
+  <div class="scene-footer">
+   <button id="fit" class="subtle" type="button">▣ Вписать полностью</button>
+   <span id="stage-caption" class="hint">Иллюстрация сцены</span>
+   <button id="visual-retry" class="subtle" type="button" hidden>Повторить изображение</button>
+  </div>
+  <div class="scene-tool-row" role="group" aria-label="Слои и иллюстрации">
+    <button id="view-layers" class="subtle" type="button" title="Показать спрайты на фоне вместо CG">◈ Кадр / слои</button>
+    <button id="view-background" class="subtle" type="button" title="Показать только фон текущей локации">▤ Фон</button>
+    <button id="toggle-characters" class="subtle" type="button" title="Показать или скрыть персонажей">♙ Персонажи</button>
+    <button id="open-looks" class="subtle" type="button" title="Посмотреть закреплённые изображения персонажей">◉ Образы</button>
+    <button id="manual-cg" class="subtle" type="button" title="Вручную собрать CG из подтверждённых слоёв">✧ Собрать CG</button>
+  </div>
+  <div id="scene-warning" class="notice" hidden></div>
+ </section>
+ <main class="story-panel">
+  <div class="story-heading">
+   <div><span class="eyebrow">ИСТОРИЯ</span><h2 id="story-name">Выбери сохранение</h2></div>
+   <div class="story-tools">
+     <button id="open-history" class="subtle" type="button">◷ История</button>
+     <button id="open-latency" class="subtle" type="button">◴ Задержка</button>
+     <button id="local-exit" class="subtle" type="button" hidden>↩ Вернуться в сюжет</button>
+   </div>
+   <span id="turn-status" class="turn-status">Готово</span>
+  </div>
+  <div id="transcript" class="transcript"></div>
+  <div class="input-area">
+   <div id="state-message" class="notice" hidden></div>
+   <div id="command-menu" class="command-menu" role="listbox" aria-label="Команды истории" hidden></div>
+   <textarea id="player-action" rows="3" aria-label="Действие или команда" aria-controls="command-menu" aria-expanded="false" placeholder="Что ты говоришь или делаешь? / — команды"></textarea>
+   <div class="input-actions">
+    <button id="open-commands" class="subtle commands-button" type="button" aria-controls="command-menu" aria-expanded="false">/ Команды</button>
+    <button id="resume" class="subtle" type="button" hidden>Повторить ответ без нового хода</button>
+    <button id="send" class="primary" type="button">Отправить</button>
+   </div>
+
+  </div>
+ </main>
+</div>
+</div>
+<div id="providers-modal" class="modal" hidden>
+ <section class="dialog" role="dialog" aria-modal="true" aria-label="Подключения моделей">
+  <div class="dialog-header"><div><span class="eyebrow">UNIVERSAL PROXY</span><h2>Подключить рассказчиков</h2></div><button id="close-providers" class="subtle">Закрыть</button></div>
+  <p>Выбери локальную модель или подключи свой аккаунт ChatGPT либо Grok.</p>
+  <div class="provider-row"><div><strong>ChatGPT / Codex</strong><small>Код устройства · доступные GPT-модели</small><small id="oauth-openai-state" class="provider-state">Не подключено</small></div><button id="auth-openai" class="secondary" type="button">Войти</button></div>
+  <div class="provider-row"><div><strong>Grok / xAI</strong><small>Свой код устройства · доступ по тарифу xAI</small><small id="oauth-grok-state" class="provider-state">Не подключено</small></div><button id="auth-grok" class="secondary" type="button">Войти</button></div>
+  <div class="provider-row"><div><strong>Qwen и Cydonia</strong><small>Локальный ROCm · настроено</small></div><span class="ready">Подключено</span></div>
+  <div id="oauth-panel" class="oauth-panel" hidden>
+   <strong id="oauth-provider-name">Авторизация</strong>
+   <p>Используется <strong>код устройства</strong> — редирект на localhost не нужен. Можно войти с любого устройства. Открой ссылку, введи код и подтверди доступ в своём аккаунте.</p>
+   <div id="oauth-device-fields" hidden>
+    <a id="oauth-device-url" class="oauth-visit" target="_blank" rel="noopener noreferrer" href="#">Открыть страницу входа</a>
+    <label for="oauth-device-code">Код подтверждения:</label>
+    <div class="oauth-code-row"><code id="oauth-device-code" aria-live="polite"></code><button id="oauth-copy-code" class="subtle" type="button">Копировать код</button></div>
+   </div>
+   <p id="oauth-state-message" class="oauth-state-message" role="status" aria-live="polite">Ожидание запуска…</p>
+   <div class="oauth-actions"><button id="oauth-cancel" class="subtle" type="button">Отменить вход</button></div>
+  </div>
+  <p class="hint">Прокси хранит учётные данные локально на ПК. Код устройства кратковременный. Подписка сама по себе не гарантирует доступ к модели: после входа проверь список доступных моделей.</p>
+  <button id="reload-models" class="subtle" type="button">Обновить список моделей</button>
+ </section>
+</div>
+<div id="info-modal" class="modal" hidden>
+ <section class="dialog detail-dialog" role="dialog" aria-modal="true" aria-label="Информация о сцене">
+  <div class="dialog-header">
+   <div><span class="eyebrow">VN WEB</span><h2 id="info-title">Информация</h2></div>
+   <button id="close-info" class="subtle" type="button">Закрыть</button>
+  </div>
+  <div id="info-gallery" class="info-gallery" hidden></div>
+  <div id="info-body" class="info-body"></div>
+  <video id="info-video" class="info-video" controls playsinline preload="metadata" hidden></video>
+ </section>
+</div>
+<div id="notification" class="toast" hidden role="status"></div>
+</body></html>

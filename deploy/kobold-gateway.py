@@ -222,6 +222,73 @@ def generate(payload: dict):
             params, max_tokens, "cpu")
 
 
+# Only OpenAI/Codex and xAI/Grok subscription model identifiers may be
+# forwarded to the one local universal proxy. Local model aliases must
+# never round-trip back here, which would create a recursive proxy loop.
+CLOUD_PREFIXES=("gpt","codex","grok","xai/","o1","o3","o4")
+UNIVERSAL_PROXY="http://127.0.0.1:8317"
+UNIVERSAL_KEY=ROOT.parent/"mcp-vn-universal-proxy/client-key"
+
+
+def generate_cloud(payload:dict):
+    model=payload.get("model")
+    if not isinstance(model,str) or len(model)>95 or not model.startswith(CLOUD_PREFIXES):
+        raise ValueError("Unsupported cloud model")
+    if not UNIVERSAL_KEY.is_file():
+        raise RuntimeError("Universal subscription gateway is not installed")
+    key=UNIVERSAL_KEY.read_text().strip()
+    if len(key)<25:raise RuntimeError("Universal gateway client key unavailable")
+    headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"}
+    catalog=urllib.request.Request(UNIVERSAL_PROXY+"/v1/models",headers=headers)
+    try:
+        with urllib.request.urlopen(catalog,timeout=8) as r:
+            models=json.loads(r.read(160000)).get("data",[])
+    except Exception as e:
+        raise RuntimeError("Universal gateway model catalog unavailable") from e
+    if model not in {m.get("id") for m in models}:
+        raise ValueError("Cloud model is not connected. Sign in via VN Web")
+    messages=payload.get("messages")
+    if not isinstance(messages,list) or not 1<=len(messages)<=24:
+        raise ValueError("Expected 1-24 cloud messages")
+    clean=[]
+    for m in messages:
+        if not isinstance(m,dict) or m.get("role") not in ("system","user","assistant"):
+            raise ValueError("Invalid role")
+        value=m.get("content")
+        if not isinstance(value,str):raise ValueError("Invalid cloud message")
+        clean.append({"role":m["role"],"content":value[:20000]})
+    options=payload.get("options") or {}
+    tokens=max(64,min(512,int(options.get("num_predict",320))))
+    request=urllib.request.Request(UNIVERSAL_PROXY+"/v1/chat/completions",
+        data=json.dumps({
+            "model":model,"messages":clean,"temperature":float(options.get("temperature",0.7)),
+            "top_p":float(options.get("top_p",0.9)),
+            "max_tokens":tokens,"stream":False
+        }).encode(),headers=headers,method="POST")
+    started=time.monotonic()
+    try:
+        with urllib.request.urlopen(request,timeout=155) as r:
+            body=json.loads(r.read(150000))
+    except urllib.error.HTTPError as e:
+        # Report only a status, never dump credentials or private upstream
+        # response text into logs.
+        raise RuntimeError("Subscription model HTTP "+str(e.code)) from None
+    except Exception as e:
+        raise RuntimeError("Subscription model request failed") from e
+    content=((body.get("choices") or [{}])[0].get("message") or {}).get("content")
+    if not isinstance(content,str) or not content.strip():
+        raise RuntimeError("Subscription model returned no text")
+    duration=int((time.monotonic()-started)*1e9)
+    usage=body.get("usage") or {}
+    return {"message":{"role":"assistant","content":content},
+        "model":model,"backend":"cliproxyapi-subscription",
+        "total_duration":duration,"load_duration":0,
+        "eval_count":int(usage.get("completion_tokens") or 0),
+        "prompt_eval_count":int(usage.get("prompt_tokens") or 0),
+        "eval_duration":duration}
+
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -261,13 +328,22 @@ class Handler(BaseHTTPRequestHandler):
             })
         elif self.path == "/healthz":
             self.reply(200, {"ok": True, "name": "mcp-vn-local-kobold-router"})
+        elif self.path == "/v1/models":
+            self.reply(200, {"object": "list", "data": [
+                {"id": model, "object": "model", "created": 0,
+                 "owned_by": "mcp-vn-local"}
+                for model,(path,size,_,__) in OPTIONS.items()
+                if path.is_file() and path.stat().st_size == size
+            ]})
         else:
             self.reply(404, {"error": "not found"})
 
     def do_POST(self):
         if not self.authenticated():
             return self.reply(401, {"error": "Authentication required"})
-        if self.path != "/api/chat":
+        is_chat=self.path=="/api/chat"
+        is_openai=self.path=="/v1/chat/completions"
+        if not (is_chat or is_openai):
             return self.reply(404, {"error": "not found"})
         if not LOCK.acquire(blocking=False):
             return self.reply(409, {"error": "A local generation is already running"})
@@ -279,8 +355,43 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(size))
                 if not isinstance(payload, dict):
                     raise ValueError("Expected an object")
-                result = generate(payload)
-                self.reply(200, result)
+                if is_openai:
+                    if payload.get("stream"):
+                        raise ValueError("Local compatibility endpoint requires stream=false")
+                    model=payload.get("model")
+                    if model not in OPTIONS:
+                        raise ValueError("Unknown local LLM model")
+                    tokens=payload.get("max_completion_tokens",
+                                       payload.get("max_tokens",320))
+                    limit=max(64,min(512,int(tokens)))
+                    result=generate({
+                        "model":model,"messages":payload.get("messages"),
+                        "options":{
+                            "num_predict":limit,
+                            "temperature":payload.get("temperature",0.75),
+                            "top_p":payload.get("top_p",0.9)
+                        }})
+                    created=int(time.time())
+                    self.reply(200,{
+                        "id":"chatcmpl-local-"+str(created),
+                        "object":"chat.completion","created":created,
+                        "model":model,
+                        "choices":[{"index":0,"finish_reason":"stop",
+                           "message":{"role":"assistant",
+                                      "content":result["message"]["content"]}}],
+                        "usage":{
+                           "prompt_tokens":result.get("prompt_eval_count",0),
+                           "completion_tokens":result.get("eval_count",0),
+                           "total_tokens":result.get("prompt_eval_count",0)+
+                                result.get("eval_count",0)},
+                        "vn_backend":result.get("backend","unknown"),
+                        "vn_total_duration_ns":result.get("total_duration",0)
+                    })
+                else:
+                    model=payload.get("model")
+                    result=(generate_cloud(payload) if isinstance(model,str)
+                            and model not in OPTIONS else generate(payload))
+                    self.reply(200, result)
             except (ValueError, TypeError) as e:
                 self.reply(400, {"error": str(e)[:180]})
             except Exception as e:

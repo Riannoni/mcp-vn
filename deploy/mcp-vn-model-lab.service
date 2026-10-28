@@ -1,0 +1,16 @@
+[Unit]
+Description=VN Web and Model Lab
+After=network-online.target mcp-vn-comfy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/mcp-vn-model-lab
+ExecStart=/usr/bin/python3 -u %h/.local/share/mcp-vn-model-lab/server.py
+Restart=on-failure
+RestartSec=4
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

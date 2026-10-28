@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111626">
+  <title>Model Lab — локальные модели</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <section id="auth" class="auth-shell">
+    <div class="auth-card">
+      <div class="logo-icon">◈</div>
+      <h1>Model Lab</h1>
+      <p>Твоя локальная студия изображений на Radeon RX 9070 XT.</p>
+      <form id="login-form">
+        <label for="password">Пароль</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Пароль доступа" required>
+        <button type="submit" class="primary" id="login-button">Войти в студию</button>
+        <small id="login-error" role="alert"></small>
+      </form>
+      <div class="auth-note">Доступ только из домашней сети · ComfyUI остаётся локальным</div>
+    </div>
+  </section>
+  <div id="shell" class="shell" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-icon small-logo">◈</span>
+        <span><strong>Model Lab</strong><small>LOCAL AI STUDIO</small></span>
+      </div>
+      <div class="header-actions">
+        <span id="health" class="health"><span class="health-dot"></span>Подключаемся…</span>
+        <button class="subtle" id="logout" type="button">Выйти</button>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="studio-controls">
+        <div class="panel-heading">
+          <div><span class="eyebrow">PLAYGROUND</span><h2>Новая генерация</h2></div>
+          <span class="mini-chip">GPU LOCAL</span>
+        </div>
+        <form id="generate-form">
+          <label for="model">Модель</label>
+          <select id="model" required></select>
+          <div id="model-note" class="model-note"></div>
+
+          <div class="field-title">
+            <label for="prompt">Промпт</label>
+            <span id="prompt-count">0 / 3000</span>
+          </div>
+          <textarea id="prompt" maxlength="3000" rows="7" spellcheck="false" placeholder="Опиши сцену, стиль, героев, действия, свет, композицию…" required>Two adult fantasy adventurers at a medieval market square. A red-haired woman in a green cloak kneels beside a wooden bench, handing a folded map to a dark-haired man sitting on the bench. Exactly two people, both clearly visible, natural anatomy, warm cinematic light, detailed environment, one coherent frame.</textarea>
+
+          <label for="negative">Негативный промпт <span class="muted">(где поддерживается)</span></label>
+          <textarea id="negative" rows="2" maxlength="1500" spellcheck="false" placeholder="Чего не должно быть в кадре">extra people, fused bodies, duplicate characters, bad hands, collage, split panels, watermark</textarea>
+          <small id="negative-note" class="form-hint"></small>
+
+          <div class="field-grid">
+            <div>
+              <label for="size">Разрешение</label>
+              <select id="size">
+                <option value="1024x768">1024 × 768 · 4:3</option>
+                <option value="768x1024">768 × 1024 · 3:4</option>
+                <option value="1024x1024">1024 × 1024 · 1:1</option>
+                <option value="768x768">768 × 768 · быстро</option>
+                <option value="896x512">896 × 512 · 16:9</option>
+                <option value="1216x704">1216 × 704 · кино</option>
+              </select>
+            </div>
+            <div>
+              <label for="seed">Seed</label>
+              <div class="seed-wrap">
+                <input id="seed" type="number" min="0" max="9007199254740991" placeholder="Случайный">
+                <button type="button" id="random-seed" class="icon-button" aria-label="Случайный seed" title="Случайный seed">↻</button>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="primary generate-button" id="generate">✦ Сгенерировать</button>
+          <button type="button" class="secondary compare-button" id="compare">▦ Сравнить модели</button>
+        </form>
+
+        <details class="comparison-details">
+          <summary>Какие модели участвуют в сравнении?</summary>
+          <div class="comparison-options" id="compare-options"></div>
+          <p>Один промпт и seed для всех моделей. Обработка последовательная, чтобы не перегружать VRAM.</p>
+        </details>
+        <details class="comparison-details" id="llm-lab">
+          <summary>◉ Тест локальных LLM · Qwen / Cydonia</summary>
+          <p>Отдельный тест рассказчика. Основной сюжет новеллы не меняется. История беседы хранится только в этой вкладке браузера.</p>
+          <label for="llm-model">Языковая модель</label>
+          <select id="llm-model"><option value="qwen3.5:9b-q4_K_M">Qwen3.5 9B</option><option value="cydonia:24b-v4.3-iq4_xs">Cydonia 24B</option></select>
+          <div id="llm-history" class="llm-history" role="log" aria-live="polite"></div>
+          <label for="llm-prompt">Сообщение или продолжение сцены</label>
+          <textarea id="llm-prompt" rows="4" maxlength="2500" placeholder="Опиши продолжение эпизода или задай вопрос модели…"></textarea>
+          <div class="llm-actions">
+            <button type="button" id="llm-send" class="primary">Отправить</button>
+            <button type="button" id="llm-clear" class="subtle">Сбросить контекст</button>
+          </div>
+          <small id="llm-status" class="form-hint">Модель запускается по запросу и освобождает GPU после ответа.</small>
+        </details>
+        <div class="sidebar-footer">
+          <div class="info-icon">ⓘ</div>
+          <span>Генерации остаются на твоём ПК. Модели имеют разные архитектуры и могут по-разному трактовать один промпт.</span>
+        </div>
+      </aside>
+
+      <main class="gallery-panel">
+        <div class="gallery-heading">
+          <div><span class="eyebrow">YOUR RESULTS</span><h2>Галерея генераций</h2><p>Изображения, результаты сравнения и история запросов.</p></div>
+          <div class="gallery-filters">
+            <select id="filter" aria-label="Фильтр по модели"><option value="all">Все модели</option></select>
+            <button type="button" class="subtle" id="refresh">Обновить</button>
+          </div>
+        </div>
+        <div id="queue-summary" class="queue-summary" hidden></div>
+        <div id="empty" class="empty-state">
+          <div class="empty-symbol">✦</div>
+          <h3>Холст пока пуст</h3>
+          <p>Выбери модель и запусти первую генерацию. Результаты появятся здесь и сохранятся на ПК.</p>
+        </div>
+        <div id="gallery" class="gallery-grid" role="list"></div>
+      </main>
+    </div>
+    <footer class="footer">Model Lab · Локальный ComfyUI · Без публикации в интернет</footer>
+  </div>
+
+  <div id="viewer" class="viewer" hidden>
+    <button id="close-viewer" class="viewer-close" type="button" aria-label="Закрыть">×</button>
+    <img id="viewer-image" alt="Просмотр результата генерации">
+    <div class="viewer-caption">
+      <div><strong id="viewer-name"></strong><small id="viewer-meta"></small></div>
+      <a id="viewer-download" class="secondary" download>Сохранить PNG</a>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
