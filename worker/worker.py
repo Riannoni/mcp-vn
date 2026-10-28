@@ -563,7 +563,7 @@ def image_graph(job):
             face_weight = 0.74
             subj = str(job.get("prompt") or "").lower()
             if any(w in subj for w in ["from behind","rear","bent forward","buttock","back view","not facing"]):
-                face_weight = 0.12
+                face_weight = 0.38
             adapter={"model":model_ref,"ipadapter":["61",0],"image":[img_node,0],
                 "clip_vision":["60",0],"weight":face_weight,"weight_type":"linear",
                 "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
