@@ -1,16 +1,31 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>mcp-vn — визуальная новелла</title></head>
+<title>mcp-vn — visual novel v6.4</title></head>
 <body><div id="root">
 <header class="topbar">
- <div class="brand"><strong>mcp-vn</strong><small>v3 · Живые истории</small></div>
+ <div class="brand"><strong>mcp-vn</strong><small>v6.4 · Умный рендер и кэш</small></div>
+ <span id="live-indicator" class="live-indicator">◌ Подключение</span>
  <div class="toolbar">
   <label class="toolbar-field" for="games"><span>Сохранение</span><select id="games" aria-label="Выбрать сохранение"></select></label>
   <details id="new-game-controls" class="new-game-menu">
    <summary>+ Новая игра</summary>
    <div class="new-game-popover">
-    <label for="stories">Выбрать сюжет</label>
-    <select id="stories" aria-label="Сюжет для новой игры"></select>
+    <label for="stories">Сюжет</label>
+    <select id="stories" aria-label="Сюжет"></select>
+    <label for="new-game-style">Стиль на всю игру</label>
+    <select id="new-game-style" aria-label="Стиль новой игры">
+     <option value="realistic">Фотореализм</option>
+     <option value="semireal">2.5D</option>
+     <option value="anime">Аниме · WAI-Illustrious</option>
+     <option value="animation">Анимационная рисовка · Anima</option>
+     <option value="poster">Кинопостер</option>
+    </select>
+    <small>Выбранный стиль нельзя изменить после начала игры.</small>
+    <label for="new-game-rules">Правила игры</label>
+    <select id="new-game-rules" aria-label="Режим игры">
+     <option value="narrative" selected>Свободная история</option>
+     <option value="adventure">Приключение с проверками</option>
+    </select>
     <button id="new-game" type="button">Начать игру</button>
    </div>
   </details>
@@ -19,39 +34,101 @@
 </header>
 <main class="layout">
  <section class="scene-panel">
-  <div id="background" class="background"></div>
-  <div id="sprites" class="sprites"></div>
-  <div class="scene-overlay">
-   <div id="location" class="location">Локация</div>
-   <div class="scene-foot">
-     <span id="hero" class="hero"></span>
-     <button id="art" class="scene-button" title="Создать изображение сцены">✦ Арт</button>
-     <button id="video" class="scene-button" title="Короткая анимация">▶ Видео</button>
+  <div class="scene-stage" id="scene-stage">
+   <div id="background" class="background"></div>
+   <img id="scene-cg" class="scene-cg" alt="Единый кинематографический кадр" hidden>
+   <div id="local-sprites" class="sprites local-sprites" hidden></div>
+   <img id="local-scene-cg" class="local-scene-cg" alt="Локальный CG по событиям сцены" hidden>
+   <video id="local-scene-video" class="local-scene-video" controls playsinline preload="metadata" hidden></video>
+   <span id="local-cg-indicator" class="local-cg-indicator" hidden>Локальная сцена · ИИ-режиссёр</span>
+   <div id="sprites" class="sprites"></div>
+   <div class="scene-overlay">
+    <span id="location" class="location">Локация</span>
+    <div class="scene-foot"><strong id="hero" class="hero"></strong><span id="mode-indicator" class="mode-indicator">Слои</span></div>
    </div>
+   <video id="scene-video" muted loop playsinline controls hidden></video>
   </div>
-  <video id="scene-video" muted loop playsinline controls hidden></video>
+  <div class="scene-controls" aria-label="Генерация медиа">
+   <button id="cg-fit-mode" title="Вместить картинку целиком или заполнить сцену с обрезкой" type="button">▣ Вписать кадр</button>
+   <button id="layer-mode" title="Переключить общий кадр и спрайты" disabled>◈ Кадр / слои</button>
+   <button id="art" title="Вписать всех персонажей в текущую локацию через inpainting">✦ CG-сцена</button>
+   <button id="background-art" title="Создать новый фон локации">▧ Фон</button>
+   <button id="sprites-art" title="Создать прозрачные спрайты персонажей">♙ Персонажи</button>
+   <button id="warm-variants" title="Заранее создать варианты эмоций персонажей на низком приоритете">☼ Образы</button>
+   <button id="preview-art" title="Быстрый эскиз без замены принятого арта">◌ Эскиз</button>
+   <button id="video" title="Сгенерировать короткое видео">▶ Видео</button>
+  </div>
+  <div class="art-hint" id="art-hint">Фон привязан к локации. Лица закрепляются каноническими референсами; CG строится из принятых персонажей.</div>
+  <div id="identity-state" class="art-hint" aria-live="polite">Референсы персонажей: пока нет</div>
  </section>
  <section class="dialog-panel">
   <div class="dialog-top">
    <div><div id="title" class="title">История</div><small id="turn-count"></small></div>
    <div class="top-actions">
-     <label title="Показывать варианты действий"><input type="checkbox" id="show-choices"> Подсказки</label>
-     <button id="undo" title="Отменить последний ход">↶</button>
+    <label title="Показывать варианты действий"><input type="checkbox" id="show-choices"> Подсказки</label>
+    <button id="story-memory" title="Память мира, главы и проверенные факты">◈ Память</button>
+    <button id="local-mode" title="Переключить локальную романтическую сцену без отправки реплик в ChatGPT">♡ Локальная сцена</button>
+    <button id="turn-diagnostics" title="Показать точную трассировку задержек">◷ Задержка</button>
+    <button id="rules-mode" title="Переключить между свободной историей и RPG-проверками">✧ История</button>
+    <button id="undo" title="Отменить последний ход">↶</button>
    </div>
   </div>
   <div id="transcript" class="transcript" role="log" aria-live="polite"></div>
+  <section id="local-panel" class="local-panel" hidden>
+   <div class="local-explanation">
+    <strong>Локальная сцена · Cydonia 24B (рассказчик) + Qwen 9B (визуальный режиссёр)</strong>
+    <small>Обычный диалог: фон и обновление только нужного спрайта. Существенная смена позы, действия или локации: единый CG с каноническими референсами. Неизменный кадр используется повторно; видео — вручную.</small>
+   </div>
+   <div id="local-transcript" class="transcript local-transcript" role="log" aria-live="polite"></div>
+   <div class="local-cg-stage" id="local-cg-stage" hidden>
+     <img id="local-cg-preview" class="local-cg-preview" alt="Новый CG-кадр с изменёнными позами" hidden>
+   </div>
+   <div id="local-status" class="local-status">Готово</div>
+   <div class="local-cg-controls">
+    <span class="local-auto-label" id="render-decision" title="Последняя причина выбора визуального режима">◈ Режим кадра: ожидание</span>
+    <details id="local-cg-advanced" class="local-cg-advanced">
+     <summary>Дополнительный ракурс (необязательно)</summary>
+     <div class="local-cg-advanced-fields">
+      <label for="local-cg-direction">Своими словами: ракурс, композиция</label>
+      <textarea id="local-cg-direction" rows="2" maxlength="320"
+       placeholder="Например: низкая камера, персонаж лежит у двери, меч рядом"></textarea>
+     </div>
+    </details>
+    <button id="local-replan" type="button" title="Обновить состояние внешности и поз без нового сюжетного хода">✦ Пересогласовать сцену</button>
+    <button id="local-cg" type="button"
+      title="Сгенерировать целый кадр ComfyUI из последнего состояния сцены">↻ Новый CG</button>
+    <button id="local-video" type="button"
+      title="По желанию анимировать последний готовый CG через Wan2.2">▶ Видео</button>
+    <button id="local-cg-toggle" type="button" title="Скрыть или показать картинку в ленте чата — кадр слева останется" disabled>◈ Показать CG в чате</button>
+   </div>
+  </section>
   <div id="jobs" class="jobs"></div>
   <div id="choices" class="choices"></div>
   <div class="compose">
    <textarea id="action" rows="3" placeholder="Напиши, что ты говоришь или делаешь..."></textarea>
+   <div id="narration-timing" class="narration-timing" aria-live="off"></div>
    <div class="compose-foot">
-     <div><span id="status">Подключение…</span><select id="style" aria-label="Стиль изображений">
-       <option value="semireal">2.5D</option><option value="anime">Аниме</option>
-       <option value="realistic">Реализм</option><option value="poster">Постер</option>
-     </select></div>
-     <button id="send" class="primary">Отправить ↵</button>
+    <div><span id="status">Подключение…</span>
+     <label class="inline-control" title="Автоматически создавать фон и первые спрайты при смене места"><input id="auto-art" type="checkbox" checked> Автоарт</label>
+     <select id="quality" aria-label="Качество изображений">
+      <option value="fast">Быстро</option>
+      <option value="standard" selected>Баланс</option>
+      <option value="cinematic">Кино</option>
+     </select>
+     <span id="locked-style" class="locked-style" title="Стиль закреплён за сохранением">Стиль: определяется сохранением</span>
+    </div><button id="send" class="primary">Отправить ↵</button>
    </div>
   </div>
  </section>
 </main>
+<dialog id="turn-trace-modal" class="memory-modal">
+  <div class="preview-header"><strong>Диагностика задержек VN</strong><button id="turn-trace-close">Закрыть</button></div>
+  <div id="turn-trace-content" class="memory-content">Ожидаем данные...</div>
+ </dialog>
+ <dialog id="memory-modal" class="memory-modal">
+  <div class="preview-header"><strong>Память истории</strong><button id="memory-close">Закрыть</button></div>
+  <input id="memory-search" placeholder="Поиск по главам, решениям и фактам..." aria-label="Поиск воспоминаний">
+  <div id="memory-content" class="memory-content"></div>
+ </dialog>
+ <dialog id="art-preview-modal" class="art-preview-modal"><div class="preview-header"><strong>Быстрый эскиз — не установлен в игру</strong><button id="preview-close" type="button">Закрыть</button></div><img id="preview-image" alt="Предпросмотр результата генерации"><video id="preview-video" controls playsinline preload="metadata" hidden></video></dialog>
 </div><script type="module" src="/game.js"></script></body></html>

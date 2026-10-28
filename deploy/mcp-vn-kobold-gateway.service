@@ -1,0 +1,20 @@
+[Unit]
+Description=mcp-vn on-demand KoboldCpp ROCm inference gateway (CPU fallback)
+Wants=network-online.target
+After=network-online.target mcp-vn-comfy.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/mcp-vn-kobold
+ExecStart=/usr/bin/python3 -u %h/.local/share/mcp-vn-kobold/gateway.py
+Restart=on-failure
+RestartSec=8
+TimeoutStopSec=25
+NoNewPrivileges=true
+LimitNOFILE=8192
+Environment=PYTHONUNBUFFERED=1
+Environment=VN_KOBOLD_BIND_HOST=192.168.50.27
+EnvironmentFile=%h/.config/mcp-vn/worker.env
+
+[Install]
+WantedBy=default.target
