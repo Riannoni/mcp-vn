@@ -1,4 +1,5 @@
 import copy
+import json
 import unittest
 from unittest.mock import patch
 import vn_web as vn
@@ -45,6 +46,15 @@ class CommandsTests(unittest.TestCase):
    vn.turn(GAME,'local-test')
   self.assertNotIn('submit',calls)
   self.assertIn('Разрешено описать действия героя.',requests[0]['messages'][0]['content'])
+
+ def test_narration_preserves_flags_and_only_explicit_appearance_fields(self):
+  answer=vn.parse_answer(json.dumps({'messages':[{'text':'Мира снимает плащ.'}],
+   'scene':{'sprites':[{'name':'Мира','outfit':'undressed'}]},
+   'flags':{'mira_fully_undressed':True,'mira_dressed_again':False,
+            'bad flag!':True,'not_a_scalar':{'x':1}}},ensure_ascii=False))
+  self.assertEqual(answer['flags'],{'mira_fully_undressed':True,'mira_dressed_again':False})
+  self.assertEqual(answer['scene']['sprites'],[{'name':'Мира','outfit':'undressed'}])
+  self.assertEqual(vn.parse_answer('{"messages":[{"text":"Тест"}],"scene":{"sprites":[]}}')['scene']['sprites'],[])
 
  def test_video_assets_are_same_origin_and_invalid_names_are_rejected(self):
   self.assertEqual(vn.asset_url('https://xavoks.jo3.org/vn/assets/'+GAME+'.mp4?sig=x'),'/api/vn/assets/'+GAME+'.mp4')
