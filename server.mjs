@@ -555,16 +555,26 @@ const service=http.createServer(async(req,res)=>{
         const name=String(actor.name||"").trim().slice(0,100);
         if(!known.has(name)||seen.has(name))continue;
         seen.add(name);
-        visible.push({name,
-         pose:String(actor.pose||"standing").slice(0,80),
-         outfit:String(actor.outfit||"default").slice(0,80),
-         emotion:String(actor.emotion||"neutral").slice(0,60)});
+        const item={name};
+       for(const [key,limit] of [["pose",80],["outfit",80],["emotion",60]])
+        if(typeof actor[key]==="string"&&actor[key].trim())
+         item[key]=actor[key].trim().slice(0,limit);
+       visible.push(item);
        }
-       if(visible.length)safeScene.sprites=visible;
+       if(visible.length||input.scene.sprites.length===0)safeScene.sprites=visible;
       }
     }
+    const safeFlags={};
+    if(input.flags&&typeof input.flags==="object"&&!Array.isArray(input.flags)){
+     for(const [key,value] of Object.entries(input.flags).slice(0,80)){
+      if(/^[a-zA-Z0-9_-]{1,80}$/.test(key)&&(
+       typeof value==="boolean"||
+       (typeof value==="number"&&Number.isFinite(value)&&Math.abs(value)<=1e9)||
+       (typeof value==="string"&&value.length<=180)))safeFlags[key]=value;
+     }
+    }
     const committed=await games.gameNarrate({game_id:gameId,expected_action_id:input.action_id,
-      messages:input.messages,scene:safeScene,
+      messages:input.messages,scene:safeScene,flags:safeFlags,
       choices:Array.isArray(input.choices)?
         input.choices.filter(x=>typeof x==="string").slice(0,6):[]});
     return json(res,200,{game:committed});
