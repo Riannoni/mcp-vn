@@ -474,14 +474,43 @@ async function openHistory(){
 async function openLatency(){
  if(!currentGame)return;
  if(currentGame.local_scene?.mode==="local"){
-  displayInfo("Время ответа",latencyText(localLatency()));return;
+  const report=latencyText(localLatency());
+  const rows=(currentLocalEpisode?.metrics||[]).slice(-8).reverse().map(x=>
+   "Локальная модель: "+timingSeconds(x.overall_ms||0)+
+   (x.eval_count?" · токенов: "+x.eval_count:""));
+  displayInfo("Диагностика задержек VN",report+(rows.length?"\n\n"+rows.join("\n"):""));return;
  }
- const id=currentGame.id,epoch=displayInfo("Время ответа","Загрузка…");
+ const id=currentGame.id,epoch=displayInfo("Диагностика задержек VN","Загрузка…");
  try{
-  const result=await api("/api/vn/performance?id="+encodeURIComponent(id));
-  if(infoEpoch===epoch&&currentGame?.id===id)$("info-body").textContent=latencyText(result.performance,lastTurnWallSec);
+  const [result,traces]=await Promise.all([
+   api("/api/vn/performance?id="+encodeURIComponent(id)),
+   api("/api/vn/turn-trace?id="+encodeURIComponent(id)).catch(()=>({turn_trace:[]}))
+  ]);
+  if(infoEpoch!==epoch||currentGame?.id!==id)return;
+  const parts=[latencyText(result.performance,lastTurnWallSec)];
+  if(lastTurnBreakdown){
+   parts.push("\nПоследний ход VN Web (замеры отдельных этапов):",
+    "Ответ модели через прокси: "+timingSeconds(lastTurnBreakdown.narrator_model_ms),
+    "Сохранение на сервере по сети: "+timingSeconds(lastTurnBreakdown.commit_roundtrip_ms),
+    "Поставлено задач на рендер: "+(lastTurnBreakdown.visual_scheduled||0));
+  }
+  const records=(traces.turn_trace||[]).slice(-5).reverse();
+  if(records.length){
+   parts.push("\nТрассировка ChatGPT/MCP (только доступные метки):");
+   for(const t of records)parts.push("Ход "+String(t.action_id||"").slice(0,8)+":",
+    "  Отправка MCP: "+timeOrDash(t.client_submit_rpc_ms),
+    "  Подтверждение ChatGPT: "+timeOrDash(t.host_message_ack_ms),
+    "  До вызова рассказчика: "+timeOrDash(t.action_to_gm_call_ms),
+    "  Обработка на сервере: "+timeOrDash(t.gm_tool_processing_ms),
+    "  До сохранения: "+timeOrDash(t.action_to_committed_ms),
+    "  До отображения после сохранения: "+timeOrDash(t.ui_delivery_after_commit_ms),
+    "  Метки: "+(t.stages_recorded||[]).join(", "));
+  }
+  parts.push("\nВремя инференса ChatGPT отдельно от платформы MCP недоступно.");
+  $("info-body").textContent=parts.join("\n");
  }catch(e){if(infoEpoch===epoch)$("info-body").textContent=e.message;}
 }
+const timeOrDash=v=>Number.isFinite(v)?timingSeconds(v):"нет данных";
 function openLooks(){
  if(!currentGame)return;
  displayInfo("Канонические образы персонажей","",true);
