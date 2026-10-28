@@ -80,7 +80,8 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
    pose:compact(pose||sprite?.pose||"standing",280),
    emotion:compact(emotion||sprite?.emotion||"neutral",120)};
  const spec={
-  spec_version:10,kind,style,quality,preview_only:!!preview_only,\n  narrator_prompt:narrator_prompt===true,
+  spec_version:10,kind,style,quality,preview_only:!!preview_only,
+  narrator_prompt:narrator_prompt===true,
   local_session_id:(kind==="local_cg"||video_start_asset)?
     (g.local_scene?.session_id||""):"",
   local_shot:kind==="local_cg"?compact(local_shot,48):"",
