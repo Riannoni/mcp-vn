@@ -2,6 +2,27 @@ import {COMMANDS,matchingCommands,latencyText,inputEnterIntent} from "./commands
 const $=id=>document.getElementById(id);
 let currentGame=null,models=[],busy=false,oauthTimer=null,currentSave="";
 let fit=true,activeModel="local-cydonia-24b";
+const MODEL_PREF="vn-web-last-narrator";
+const getSavedModel=()=>{
+ try{return localStorage.getItem(MODEL_PREF)||""}catch(_){return ""}
+};
+function saveChosenModel(model){
+ try{localStorage.setItem(MODEL_PREF,model)}catch(_){}
+}
+const turnTimingKey=id=>"vn-web-turn-timings:"+id;
+let webTurnHistory=[];
+function loadWebTurnHistory(id){
+ try{webTurnHistory=JSON.parse(localStorage.getItem(turnTimingKey(id))||"[]")}
+ catch(_){webTurnHistory=[]}
+ if(!Array.isArray(webTurnHistory))webTurnHistory=[];
+ lastTurnBreakdown=webTurnHistory.at(-1)||null;
+}
+function recordWebTurnTiming(id,timing){
+ webTurnHistory=[...webTurnHistory,timing].slice(-12);
+ lastTurnBreakdown=timing;
+ try{localStorage.setItem(turnTimingKey(id),JSON.stringify(webTurnHistory))}catch(_){}
+}
+
 let currentLocalEpisode=null,localPollBusy=false;
 let visualPollActive=false,visualPollBusy=false,lastVisualGame="",visualPollOnce=false;
 let lastVisualJobs=[],stageView="auto",castVisible=true,lastTurnWallSec=null;
@@ -175,7 +196,7 @@ function showApp(){
 async function loadModels(){
  const catalog=await api("/api/vn/models");
  models=catalog.models||[];
- const select=$("narrator"),old=select.value||activeModel;
+ const select=$("narrator"),old=select.value||getSavedModel()||activeModel;
  select.replaceChildren();
  const groups={local:"Локальные · ROCm",openai:"ChatGPT / Codex · OAuth",grok:"Grok / xAI · OAuth"};
  for(const type of ["local","openai","grok"]){
@@ -195,6 +216,7 @@ async function loadModels(){
  const available=models.map(x=>x.id);
  select.value=available.includes(old)?old:available.includes("local-cydonia-24b")?"local-cydonia-24b":(available[0]||"");
  activeModel=select.value;
+ if(!getSavedModel()&&activeModel)saveChosenModel(activeModel);
  updateReasoning();
  $("provider-badge").textContent=activeModel.startsWith("local")?"На этом ПК":activeModel.startsWith("grok")?"Grok":"ChatGPT";
  status(catalog.connected?"Готово":"Модели недоступны");
@@ -240,6 +262,8 @@ function renderScene(g){
    !!scene.background_url&&!scene.background_dirty&&
    !!(scene.sprites||[]).length&&!(scene.sprites||[]).some(x=>x.visual_dirty);
  $("manual-cg").disabled=!canCompose;
+ $("regenerate-cg").disabled=g.local_scene?.mode==="local"||busy||
+  !scene.background_url||!!scene.background_dirty||!(scene.sprites||[]).length;
  $("visual-retry").hidden=g.local_scene?.mode==="local"||!(scene.sprites||[]).length;
 
 }
@@ -307,6 +331,7 @@ async function loadGame(id){
  if(!id)return;
  currentSave=id;
  restoreVisualPreference(id);
+ loadWebTurnHistory(id);
  const d=await api("/api/vn/game?id="+encodeURIComponent(id));
  if(currentSave!==id)return;
  closeInfo();closeCommandMenu();
@@ -360,7 +385,13 @@ async function runTurn(resume=false){
   if(currentGame?.id!==id)return;
   $("player-action").value="";
   if(result.game)renderGame(result.game);
-  if(result.turn_timings)lastTurnBreakdown=result.turn_timings;
+  if(result.turn_timings){
+   const metrics={...result.turn_timings,
+    model:activeModel,at:new Date().toISOString(),
+    action_preview:action.slice(0,100),
+    web_request_ms:Math.round(performance.now()-start)};
+   recordWebTurnTiming(id,metrics);
+  }
   if(result.type==="ooc"||result.type==="recap"){
    displayInfo(result.type==="ooc"?"Вне сюжета":"Краткий пересказ",result.text);
   }else if(result.type==="video"){
@@ -558,6 +589,18 @@ async function exitLocalStory(){
  }catch(e){showToast(e.message)}
  finally{busy=false;if(currentGame)renderGame(currentGame)}
 }
+async function regenerateCG(){
+ if(!currentGame||busy)return;
+ if(!confirm("Создать новый нейронный CG по текущему кадру рассказчика? Спрайты не перерисовываются."))return;
+ try{
+  const id=currentGame.id;
+  const result=await api("/api/vn/visual-cg-regenerate",{
+   game_id:id,expected_version:currentGame.version});
+  visualPollActive=true;visualPollOnce=true;
+  showToast(result.job?.deduplicated?"Этот CG уже генерируется":"Новая генерация CG поставлена в очередь");
+  await pollVisualJobs();
+ }catch(e){showToast(e.message)}
+}
 async function requestCG(){
  if(!currentGame||busy)return;
  if(!confirm("Собрать CG из подтверждённых фона и спрайтов? Графика будет обновляться асинхронно."))return;
@@ -729,6 +772,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleArt()}
  });
  $("manual-cg").addEventListener("click",requestCG);
+ $("regenerate-cg").addEventListener("click",regenerateCG);
  $("toggle-stage").addEventListener("click",()=>{
   imagesHidden=!imagesHidden;syncImageVisibility();
  });
@@ -757,7 +801,14 @@ document.addEventListener("DOMContentLoaded",()=>{
  $("oauth-cancel").addEventListener("click",cancelOAuth);
  $("oauth-copy-code").addEventListener("click",copyOAuthCode);
  $("reload-models").addEventListener("click",()=>loadModels().catch(e=>showToast(e.message)));
-  $("reasoning").addEventListener("change",()=>{
+  $("narrator").addEventListener("change",()=>{
+  activeModel=$("narrator").value;
+  saveChosenModel(activeModel);
+  updateReasoning();
+  $("provider-badge").textContent=activeModel.startsWith("local")?"На этом ПК":
+   activeModel.startsWith("grok")?"Grok":"ChatGPT";
+ });
+ $("reasoning").addEventListener("change",()=>{
     try{localStorage.setItem("vn-web-effort:"+activeModel,$("reasoning").value)}catch(_){}
   });
   $("visual-retry").addEventListener("click",async()=>{
