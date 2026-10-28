@@ -14,7 +14,7 @@ import {prepareStoryCommand} from "./story-commands.mjs";
 
 const DIR=path.join(dataRoot,"local-scenes");
 const MODEL_URL=(process.env.VN_LOCAL_MODEL_URL||"http://172.19.0.1:28189").replace(/\/$/,"");
-const MODEL_ID=process.env.VN_LOCAL_MODEL_ID||"qwen3.5:9b-q4_K_M";
+const MODEL_ID=process.env.VN_LOCAL_MODEL_ID||"cydonia:24b-v4.3-iq4_xs";
 const NARRATOR_MODEL_ID=process.env.VN_LOCAL_NARRATOR_MODEL||MODEL_ID;
 const NARRATOR_FALLBACK_ID=process.env.VN_LOCAL_NARRATOR_FALLBACK||MODEL_ID;
 const MODEL_TOKEN=process.env.VN_LOCAL_ROUTER_TOKEN||"";
@@ -125,7 +125,7 @@ async function runLocal(gameId,requestId){
       model:selectedNarrator,temperature:0.72});}
     catch(error){
       if(selectedNarrator===NARRATOR_FALLBACK_ID)throw error;
-      console.warn("Narrator fallback to Qwen:",String(error.message).slice(0,100));
+      console.warn("Narrator fallback:",String(error.message).slice(0,100));
       result=await infer(messages,{num_ctx:8192,num_predict:520,
         model:NARRATOR_FALLBACK_ID,temperature:0.72});
       result.metrics.narrator_fallback=true;

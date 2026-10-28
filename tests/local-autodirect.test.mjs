@@ -14,7 +14,7 @@ const llm=http.createServer(async(req,res)=>{
  for await(const part of req)raw+=part.toString();
  res.setHeader("content-type","application/json");
  if(req.url==="/api/tags"){
-  res.end(JSON.stringify({models:[{name:"qwen3.5:9b-q4_K_M"}]}));return;
+  res.end(JSON.stringify({models:[{name:"cydonia:24b-v4.3-iq4_xs"}]}));return;
  }
  const msg=JSON.parse(raw);
  const isDirector=msg.messages?.[0]?.content?.includes("You are the visual continuity director");
@@ -35,7 +35,7 @@ const llm=http.createServer(async(req,res)=>{
 });
 await new Promise(resolve=>llm.listen(0,"127.0.0.1",resolve));
 process.env.VN_LOCAL_MODEL_URL="http://127.0.0.1:"+llm.address().port;
-process.env.VN_LOCAL_MODEL_ID="qwen3.5:9b-q4_K_M";
+process.env.VN_LOCAL_MODEL_ID="cydonia:24b-v4.3-iq4_xs";
 
 const game=await import("../src/game-store.mjs");
 const local=await import("../src/local-scene.mjs");

@@ -12,7 +12,7 @@ const server=http.createServer(async(req,res)=>{
  for await(const c of req)body+=c.toString();
  res.setHeader("Content-Type","application/json");
  if(req.url==="/api/tags"){
-  res.end(JSON.stringify({models:[{name:"qwen3.5:9b-q4_K_M"}]}));return;
+  res.end(JSON.stringify({models:[{name:"cydonia:24b-v4.3-iq4_xs"}]}));return;
  }
  if(req.url==="/api/chat"){
   await new Promise(r=>setTimeout(r,70));
@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,"127.0.0.1",r));
 process.env.VN_LOCAL_MODEL_URL="http://127.0.0.1:"+server.address().port;
-process.env.VN_LOCAL_MODEL_ID="qwen3.5:9b-q4_K_M";
+process.env.VN_LOCAL_MODEL_ID="cydonia:24b-v4.3-iq4_xs";
 const game=await import("../src/game-store.mjs");
 const local=await import("../src/local-scene.mjs");
 const {makeNarrationPacket}=await import("../src/narration-packet.mjs");
