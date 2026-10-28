@@ -88,7 +88,7 @@ async function pollVisualJobs(){
       warn.hidden=false;
       warn.textContent="Не удалось создать иллюстрацию: "+(error.error||"ошибка генерации");
       $("visual-retry").hidden=false;
-    }else{warn.hidden=true;$("visual-retry").hidden=true}
+    }else{warn.hidden=true;$("visual-retry").hidden=!((currentGame?.scene?.sprites||[]).length>0&&currentGame?.local_scene?.mode!=="local")}
     // Once a missing location background completes, schedule the character
     // layers against its accepted final URL, never against a stale image.
     if(!currentGame.awaiting_narrator)
@@ -216,6 +216,7 @@ function renderScene(g){
    !!scene.background_url&&!scene.background_dirty&&
    !!(scene.sprites||[]).length&&!(scene.sprites||[]).some(x=>x.visual_dirty);
  $("manual-cg").disabled=!canCompose;
+ $("visual-retry").hidden=g.local_scene?.mode==="local"||!(scene.sprites||[]).length;
 
 }
 function renderGame(g){
@@ -694,7 +695,7 @@ document.addEventListener("DOMContentLoaded",()=>{
     if(!currentGame)return;
     try{
       await scheduleMissingVisuals(currentGame,{retry:true});
-      $("visual-retry").hidden=true;
+      $("visual-retry").hidden=!((currentGame?.scene?.sprites||[]).length>0&&currentGame?.local_scene?.mode!=="local");
       await pollVisualJobs();
     }catch(e){showToast(e.message)}
   });
