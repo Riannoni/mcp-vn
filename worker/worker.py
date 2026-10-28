@@ -873,9 +873,7 @@ def assess(job,raw,background):
     spec=job.get("spec") or {}
     environment=(spec.get("environment") or {}).get("id","unclassified")
     if kind in ("background","scene","local_cg") and environment!="unclassified" and semantic=="unavailable":
-        prompt_text = str(job.get("prompt","") or "").lower()
-        if not any(w in prompt_text for w in ["nude","naked","nsfw","explicit","обнаж","раздет"]):
-            reasons.append("Location QA unavailable: canonical scene unchanged")
+        reasons.append("Scene verification unavailable: canonical scene unchanged")
     qa_ms=(time.monotonic()-qa_t0)*1000
 
     return output,{"passed":not reasons,"reasons":reasons,"warnings":warnings,
@@ -934,15 +932,10 @@ def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
         if (job.get("spec") or {}).get("spec_version",0)>=4:
             response=request(SERVER,"/worker/qa/"+job["id"],"POST",report,timeout=30)
             if response["job"]["status"]!="working":
-                attempts=int(job.get("attempts",1))
-                if attempts>=2:
-                    print("QUALITY_ACCEPTED_FALLBACK",job["id"],"after",attempts,"attempts",flush=True)
-                    report["passed"]=True
-                    report["reasons"]=[]
-                    request(SERVER,"/worker/qa/"+job["id"],"POST",report,timeout=30)
-                else:
-                    print("QUALITY_REJECTED",job["id"],report.get("reasons"),flush=True)
-                    return
+                # A failed QA verdict must never be rewritten as passed.
+                # The game server owns retries and preserves all failure evidence.
+                print("QUALITY_REJECTED",job["id"],report.get("reasons"),flush=True)
+                return
         mime="video/mp4" if job["kind"]=="video" else "image/png"
         published=request(SERVER,"/worker/complete/"+job["id"],"POST",final,
                           {"Content-Type":mime},timeout=90)
