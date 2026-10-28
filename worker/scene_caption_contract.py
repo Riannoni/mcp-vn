@@ -22,6 +22,6 @@ def scene_caption_conflicts(characters,caption):
         reasons.append("Neural CG contains an additional principal figure according to VLM")
     if len(people)==1 and wants_unclothed(people[0].get("outfit","")):
         # Relax for explicit NSFW requests: do not hard-reject on VLM wardrobe guess
-        if clothing_alignment(desc)=="failed" and not any(w in desc.lower() for w in ["nude","naked","unclothed","bare","nsfw","explicit","topless","bottomless","undressed"]):
+        if clothing_alignment(desc)=="failed" and not any(w in desc.lower() for w in ["nude","naked","unclothed","bare","nsfw","explicit","topless","bottomless","undressed","skin","body","chest","breast"]):
             reasons.append("Neural CG wardrobe contradicts requested unclothed state")
     return reasons
