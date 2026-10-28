@@ -20,6 +20,21 @@ class CommandsTests(unittest.TestCase):
    self.assertEqual(result['text'],'Краткий ответ.')
    self.assertEqual(calls,[('context/'+GAME,None)])
 
+ def test_native_web_turn_exposes_detailed_stage_timings(self):
+  def home(path,payload=None,timeout=35):
+   if path=="submit":return {"packet":PACKET}
+   if path=="commit":return {"game":{"id":GAME}}
+   return {"visual":{"scheduled":[]}}
+  completion={'choices':[{'message':{'content':'{"messages":[{"text":"Мира посмотрела на площадь."}]}'}}]}
+  with patch.object(vn,'models',return_value=CATALOG),patch.object(vn,'home',side_effect=home),patch.object(vn,'proxy',return_value=completion):
+   result=vn.turn(GAME,'local-test',action="Я осматриваюсь",version=1)
+  metrics=result["turn_timings"]
+  for name in ("submit_ms","prepare_ms","narrator_model_ms","parse_ms",
+       "commit_roundtrip_ms","visual_schedule_ms","backend_total_ms"):
+   self.assertIsInstance(metrics[name],int)
+   self.assertGreaterEqual(metrics[name],0)
+  self.assertEqual(metrics["visual_scheduled"],0)
+
  def test_unknown_and_empty_commands_fail_before_any_request(self):
   for text in ['/bad', '/skip', '/ooc', '/undo extra', '/recap extra']:
    with patch.object(vn,'home') as home,patch.object(vn,'proxy') as proxy:
