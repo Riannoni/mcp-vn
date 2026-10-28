@@ -5,6 +5,12 @@ import {enqueue,jobsForGame} from "./jobs.mjs";
 import {visualFingerprint} from "./visual-state.mjs";
 
 const clean=x=>String(x??"").trim().slice(0,180);
+const narratorPrompt=(g,kind,name="")=>{
+ const all=g?.scene?.image_prompts||{};
+ const p=kind==="sprite"?(all.sprites||{})[name]:all[kind];
+ return typeof p==="string"&&p.trim()?p.trim().slice(0,2000):"";
+};
+
 const backgroundPrompt=g=>{
  const s=g.scene||{};
  return [
@@ -56,19 +62,25 @@ export function planStandaloneVisuals(g,{retry=false}={}){
  if(!s.background_url||s.background_dirty)
   return [{
    kind:"background",style:g.art_style,quality:"standard",
-   prompt:backgroundPrompt(g),reason:"background_missing_or_changed"
+   prompt:narratorPrompt(g,"background")||backgroundPrompt(g),
+   narrator_prompt:!!narratorPrompt(g,"background"),
+   reason:"background_missing_or_changed"
   }];
  const sprites=(s.sprites||[]).filter(p=>p?.name&&
    (retry||!p.image_url||p.visual_dirty)).slice(0,4);
  if(sprites.length)return sprites.map(s=>({
   kind:"sprite",style:g.art_style,quality:"standard",
   character:s.name,outfit:s.outfit||"default",pose:s.pose||"standing",
-  emotion:s.emotion||"neutral",prompt:spritePrompt(g,s),
+  emotion:s.emotion||"neutral",
+  prompt:narratorPrompt(g,"sprite",s.name)||spritePrompt(g,s),
+  narrator_prompt:!!narratorPrompt(g,"sprite",s.name),
   reason:"sprite_missing_or_changed"
  }));
  if(!retry&&sceneCGRequired(g))
   return [{kind:"scene",style:g.art_style,quality:"standard",neural_scene:true,
-   prompt:sceneCGPrompt(g),reason:"narrator_material_scene_change"}];
+   prompt:narratorPrompt(g,"cg")||sceneCGPrompt(g),
+   narrator_prompt:!!narratorPrompt(g,"cg"),
+   reason:"narrator_material_scene_change"}];
  return [];
 }
 export async function scheduleStandaloneVisuals(g,{retry=false}={}){
