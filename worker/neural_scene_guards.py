@@ -13,8 +13,12 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
     location=(spec.get("environment") or {}).get("id","")
     count=len(cast)
     if count==1:
+        actor=cast[0]
+        described=" ".join([subject,str(actor.get("appearance",""))]).lower()
+        woman=bool(re.search(r"\\b(?:woman|female|girl)\\b",described))
         lead=(
-            "SOLO FEMALE SUBJECT, solo, 1girl, one adult woman only, "
+            ("SOLO FEMALE SUBJECT, solo, 1girl, one adult woman only, "
+             if woman else "SOLO ADULT SUBJECT, one adult person only, ") +
             "exactly one human body, exactly one head, one face, "
             "one continuous physical person, NOT two poses in the same frame. "
         )
@@ -54,8 +58,8 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
     if location=="outdoor_market_square":
         lead+=(
             "SETTING MUST BE CLEARLY VISIBLE: open-air outdoor market square "
-            "with storefronts, cobblestone street, daylight, market stalls "
-            "and distant facades; not a featureless grey stone wall. "
+            "with storefronts, cobblestone street, and market stalls "
+            "visible when camera framing permits; match the narrated time of day. "
         )
         exclude+="plain grey studio background, empty room, solid grey backdrop, "
     if attempts>1:
@@ -63,7 +67,7 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
         # just reseeding the exact same contradictory conditioning.
         lead+=(
             "CORRECTION TO PRIOR FAILED ATTEMPT: keep the correct number of "
-            "physical people and show the required outdoor environment. "
+            "physical people and match the narrated location and camera angle. "
         )
     if "principal" in str(error).lower() or "competing=" in str(error).lower():
         lead+="REJECT DUPLICATION: no second body or copy of the subject. "
