@@ -56,6 +56,16 @@ class CommandsTests(unittest.TestCase):
   self.assertEqual(answer['scene']['sprites'],[{'name':'Мира','outfit':'undressed'}])
   self.assertEqual(vn.parse_answer('{"messages":[{"text":"Тест"}],"scene":{"sprites":[]}}')['scene']['sprites'],[])
 
+ def test_narrator_art_prompts_survive_parse_with_bounds(self):
+  payload={'messages':[{'text':'Мира остановилась у стены.'}],
+   'scene':{'visual_mode':'cg','image_prompts':{
+    'cg':'Exact cinematic composition: one character next to a stone wall.',
+    'background':'Empty market square in early evening.',
+    'sprites':{'Мира':'Single character, correct current pose and clothing.'}}}}
+  response=vn.parse_answer(json.dumps(payload,ensure_ascii=False))
+  self.assertEqual(response['scene']['image_prompts'],payload['scene']['image_prompts'])
+  self.assertEqual(response['scene']['visual_mode'],'cg')
+
  def test_video_assets_are_same_origin_and_invalid_names_are_rejected(self):
   self.assertEqual(vn.asset_url('https://xavoks.jo3.org/vn/assets/'+GAME+'.mp4?sig=x'),'/api/vn/assets/'+GAME+'.mp4')
   with self.assertRaises(vn.VNError):vn.asset_bytes('../secret.mp4')
