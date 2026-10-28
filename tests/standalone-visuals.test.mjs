@@ -78,3 +78,29 @@ test("narrator pending turn never launches visual jobs even when CG requested",(
   name:"Мира",image_url:"https://example.test/a.png",visual_dirty:false}]},
   {awaiting_narrator:true})),[]);
 });
+
+test("narrator-authored visual prompts are passed intact as job positive text",()=>{
+ const sprites=[{name:"Мира",outfit:"traveller outfit",pose:"leaning against wall",
+  emotion:"calm",image_url:"https://example.test/accepted.png",visual_dirty:false}];
+ const cg="One adult character leaning against an old brick wall at sunset, eye-level side shot.";
+ const g=game({auto_cg_requested:true,visual_direction:"old directions",
+  sprites,image_prompts:{cg,sprites:{"Мира":"A single adult character in a traveller outfit, leaning against a wall."},
+   background:"An empty stone town square at dawn."}});
+ const cgJob=planStandaloneVisuals(g);
+ assert.equal(cgJob.length,1);
+ assert.equal(cgJob[0].narrator_prompt,true);
+ assert.equal(cgJob[0].prompt,cg);
+ const sp=planStandaloneVisuals(game({...g.scene,sprites:[{...sprites[0],visual_dirty:true}]}));
+ assert.equal(sp[0].kind,"sprite");
+ assert.equal(sp[0].narrator_prompt,true);
+ assert.equal(sp[0].prompt,g.scene.image_prompts.sprites["Мира"]);
+ const bg=planStandaloneVisuals(game({...g.scene,background_url:""}));
+ assert.equal(bg[0].kind,"background");
+ assert.equal(bg[0].narrator_prompt,true);
+ assert.equal(bg[0].prompt,g.scene.image_prompts.background);
+});
+test("missing full prompt falls back without falsely claiming narrator authorship",()=>{
+ const j=planStandaloneVisuals(game({background_url:""}))[0];
+ assert.equal(j.narrator_prompt,false);
+ assert.match(j.prompt,/Cinematic establishing/);
+});
