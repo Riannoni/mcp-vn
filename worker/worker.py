@@ -296,7 +296,7 @@ def prompt_builder(job, background):
                          ". "+str(c.get("appearance",""))[:140] for c in spec.get("characters",[]))
         positive=(f"{stylehint}. REQUIRED LOCATION: {envpositive}. Location: {place}. Market square with brick buildings, stalls, open air. Character standing against brick wall of market building. Same physical location as input photograph. "
            f"Preserve character identity: same hair color, hair style, body type as reference. Create an integrated visual novel cinematic frame with the following adult characters in the foreground: {people}. "
-           f"Nude, unclothed, no clothing, bare skin, naked body. Story action: {subject}. Match the scene lighting ({lighting}), scale, perspective, shadows and colors. "
+           f"Fully nude, completely unclothed, no clothing, no shirt, no top, bare skin, naked body, topless, bottomless. Story action: {subject}. Match the scene lighting ({lighting}), scale, perspective, shadows and colors. "
            "Do not redraw buildings or alter the existing geometry outside the insertion area.")
         negative=("split screen, collage, framed portraits, poster, isolated character card, borders, text, watermark, "
                   f"clothing, shirt, top, dress, jacket, duplicated faces, disfigured hands, wrong hair color, wrong hair style, different body type, child, underage, {envnegative}")
@@ -563,7 +563,7 @@ def image_graph(job):
             face_weight = 0.74
             subj = str(job.get("prompt") or "").lower()
             if any(w in subj for w in ["from behind","rear","bent forward","buttock","back view","not facing"]):
-                face_weight = 0.38
+                face_weight = 0.55
             adapter={"model":model_ref,"ipadapter":["61",0],"image":[img_node,0],
                 "clip_vision":["60",0],"weight":face_weight,"weight_type":"linear",
                 "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
