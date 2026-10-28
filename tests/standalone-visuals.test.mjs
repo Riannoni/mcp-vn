@@ -141,13 +141,13 @@ test("neural CG integrity is independent of sprite PNG but rejects changed wardr
  const sprite={name:"Мира",outfit:"cloak",pose:"standing",emotion:"calm",
   image_url:"https://example.test/sprite.png",transparent:true,
   visual_dirty:true};
- const scene={location:"Tirren market",background_url:"https://example.test/bg.png",
+ const scene={location:"Tirren market",background_url:"https://example.test/11111111-2222-3333-4444-555555555555.png",
   background_style:"anime",cg_style:"anime",sprites:[sprite],
   cg_composition:"neural_story",cg_url:"https://example.test/cg.png"};
  const g=game(scene);
  g.scene.cg_basis=sceneIntentFingerprint(g.scene);
  const spec={kind:"scene",style:"anime",composition:"neural_story",
-  expected_location:"Tirren market",background_asset:"bg.png",
+  expected_location:"Tirren market",background_asset:"11111111-2222-3333-4444-555555555555.png",
   cg_basis_snapshot:g.scene.cg_basis,characters:[{name:"Мира",sprite_asset:"sprite.png"}]};
  assert.equal(currentSceneMatches(g,spec),true);
  normalizeVisualState(g);
