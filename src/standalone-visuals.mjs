@@ -2,7 +2,7 @@
 // Does not generate CG on every dialogue turn: a missing/new background and
 // visible changed sprites are the only automatically scheduled assets.
 import {enqueue,jobsForGame} from "./jobs.mjs";
-import {visualFingerprint} from "./visual-state.mjs";
+import {visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 
 const clean=x=>String(x??"").trim().slice(0,180);
 const narratorPrompt=(g,kind,name="")=>{
@@ -48,12 +48,18 @@ export function sceneCGPrompt(g){
   "Use existing accepted canonical sprites and background. No extra characters.",
   "Locked art style:",clean(g.art_style)+"."].join(" ").slice(0,2000);
 }
+export function hasCanonicalReferences(g){
+ return !!g?.scene?.sprites?.length&&(g.scene.sprites||[]).every(s=>{
+  const id=g.identities?.[s.name]||{};
+  return !!(id.face_url||id.base_sprite_url);
+ });
+}
 export function sceneCGRequired(g){
  const s=g?.scene||{};
  return s.auto_cg_requested===true&&!g.awaiting_narrator&&
-  !!s.background_url&&!s.background_dirty&&(s.sprites||[]).length>0&&
-  !(s.sprites||[]).some(p=>p.visual_dirty||!p.image_url)&&
-  (!s.cg_url||s.cg_dirty||s.cg_basis!==visualFingerprint(s));
+  !!s.background_url&&!s.background_dirty&&hasCanonicalReferences(g)&&
+  (!s.cg_url||s.cg_dirty||s.cg_composition!=="neural_story"||
+    s.cg_basis!==sceneIntentFingerprint(s));
 }
 export function planStandaloneVisuals(g,{retry=false}={}){
  if(!g||g.local_scene?.mode==="local"||g.awaiting_narrator)
@@ -66,6 +72,16 @@ export function planStandaloneVisuals(g,{retry=false}={}){
    narrator_prompt:!!narratorPrompt(g,"background"),
    reason:"background_missing_or_changed"
   }];
+ // The independent neural CG uses canonical face anchors directly.
+ // Do not spend GPU time on a disposable transparent sprite beneath it.
+ if(!retry&&s.auto_cg_requested===true&&hasCanonicalReferences(g)){
+  if(sceneCGRequired(g))
+   return [{kind:"scene",style:g.art_style,quality:"standard",
+    neural_scene:true,prompt:narratorPrompt(g,"cg")||sceneCGPrompt(g),
+    narrator_prompt:!!narratorPrompt(g,"cg"),
+    reason:"narrator_direct_cg"}];
+  return [];
+ }
  const sprites=(s.sprites||[]).filter(p=>p?.name&&
    (retry||!p.image_url||p.visual_dirty)).slice(0,4);
  if(sprites.length)return sprites.map(s=>({
@@ -76,6 +92,8 @@ export function planStandaloneVisuals(g,{retry=false}={}){
   narrator_prompt:!!narratorPrompt(g,"sprite",s.name),
   reason:"sprite_missing_or_changed"
  }));
+ // If an identity has no anchor yet, make that first sprite as a
+ // canonical reference. The next refresh will generate the CG directly.
  if(!retry&&sceneCGRequired(g))
   return [{kind:"scene",style:g.art_style,quality:"standard",neural_scene:true,
    prompt:narratorPrompt(g,"cg")||sceneCGPrompt(g),
@@ -92,7 +110,8 @@ export async function scheduleStandaloneVisuals(g,{retry=false}={}){
     (item.kind!=="sprite"||j.character===item.character)&&
     (j.spec?.expected_location===g.scene?.location)&&
     (item.kind==="background"||item.kind==="scene"?
-      j.spec?.cg_basis_snapshot===visualFingerprint(g.scene):
+      j.spec?.cg_basis_snapshot===(item.kind==="scene"&&item.neural_scene?
+       sceneIntentFingerprint(g.scene):visualFingerprint(g.scene)):
       j.spec?.expected_variant_key===[g.art_style,item.outfit,item.pose,item.emotion].join("|"))&&
     (j.status==="failed")&&!j.spec?.preview_only);
   if(old&&!retry){
