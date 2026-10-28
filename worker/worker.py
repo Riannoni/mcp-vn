@@ -357,8 +357,8 @@ def prompt_builder(job, background):
         if any(w in subj_l for w in ["wall","masonry","bracing"]):
             pose_hints.append("standing against brick wall of market building, hands bracing on wall, not in street, not on ground")
         if pose_hints:
-            positive = "POSE: " + ", ".join(pose_hints) + ". " + positive
-            negative += ", facing camera, looking at viewer, looking at camera, portrait, front view, face visible, eye contact, holding camera, holding object, lying on ground"
+            positive = "MUST BE FROM BEHIND, REAR VIEW ONLY, BENT FORWARD, FACE TURNED AWAY, NOT FACING CAMERA. " + ", ".join(pose_hints) + ". " + positive
+            negative += ", facing camera, looking at viewer, looking at camera, portrait, front view, face visible, eye contact, front facing, looking over shoulder, holding camera, holding object, lying on ground, standing upright, not bent forward"
     # Teeth fix
     if kind in ("scene","sprite"):
         negative += ", bad teeth, ugly teeth, crooked teeth, missing teeth, deformed teeth, open mouth with bad teeth, extra teeth"
