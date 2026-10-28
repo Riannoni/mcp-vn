@@ -58,8 +58,9 @@ export function sceneCGRequired(g){
  const s=g?.scene||{};
  return s.auto_cg_requested===true&&!g.awaiting_narrator&&
   !!s.background_url&&!s.background_dirty&&hasCanonicalReferences(g)&&
-  (!s.cg_url||s.cg_dirty||s.cg_composition!=="neural_story"||
-    s.cg_basis!==sceneIntentFingerprint(s));
+  (!s.cg_url||s.cg_dirty||
+   (s.cg_composition==="neural_story"&&
+    s.cg_basis!==sceneIntentFingerprint(s)));
 }
 export function planStandaloneVisuals(g,{retry=false}={}){
  if(!g||g.local_scene?.mode==="local"||g.awaiting_narrator)
