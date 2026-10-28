@@ -1,4 +1,4 @@
-import {COMMANDS,matchingCommands,latencyText} from "./commands.js";
+import {COMMANDS,matchingCommands,latencyText,inputEnterIntent} from "./commands.js";
 const $=id=>document.getElementById(id);
 let currentGame=null,models=[],busy=false,oauthTimer=null,currentSave="";
 let fit=true,activeModel="local-cydonia-24b";
@@ -24,8 +24,38 @@ function updateReasoning(){
    "Grok 4.7: auto обычно соответствует высокой глубине; на других версиях уровни могут отличаться.":
    "Поддержка конкретных уровней зависит от GPT-модели. Более глубокий анализ требует больше токенов.";
 }
+const JOB_KINDS={background:"Фон",sprite:"Спрайт",scene:"CG сцены",local_cg:"Локальный CG",video:"Видео"};
+const JOB_STAGES={queued:"В очереди",working:"В работе",preparing:"Подготовка",
+ generating:"Генерация",generated:"Сгенерировано",postprocess:"Обработка",
+ publishing:"Публикация",done:"Готово",failed:"Ошибка"};
+function renderVisualJobs(jobs){
+ const active=jobs.filter(j=>j.status==="queued"||j.status==="working");
+ $("render-jobs-title").textContent=active.length?
+  "Активных: "+active.length+" · последние задачи":"Нет активных · последние задачи";
+ const list=$("render-jobs-list");list.replaceChildren();
+ if(!jobs.length){
+  list.append(label("p","Задач пока нет","render-jobs-empty"));return;
+ }
+ for(const j of jobs.slice(0,10)){
+  const row=label("div","","render-job "+(j.status||""));
+  const name=(JOB_KINDS[j.kind]||j.kind||"Арт")+(j.character?" · "+j.character:"");
+  row.append(label("strong",name));
+  const stage=j.status==="done"?"Готово":
+   j.status==="failed"?"Ошибка":JOB_STAGES[j.stage]||JOB_STAGES[j.status]||"В работе";
+  const pct=Number.isFinite(Number(j.progress))?
+   Math.max(0,Math.min(100,Math.round(Number(j.progress)))):0;
+  row.append(label("span",stage+(j.status==="working"?" · "+pct+"%":""),"job-state"));
+  if(j.status==="working"||j.status==="queued"){
+   const progress=document.createElement("progress");
+   progress.max=100;progress.value=pct;progress.setAttribute("aria-label",name);
+   row.append(progress);
+  }
+  if(j.status==="failed"&&j.error)row.append(label("div",j.error,"job-error"));
+  list.append(row);
+ }
+}
 async function pollVisualJobs(){
- if(visualPollBusy||busy||!currentGame||currentGame.local_scene?.mode==="local")return;
+ if(visualPollBusy||busy||!currentGame)return;
  const id=currentGame.id;
  visualPollBusy=true;
  try{
@@ -33,6 +63,8 @@ async function pollVisualJobs(){
   if(currentGame?.id!==id)return;
   const jobs=result.jobs||[];
   lastVisualJobs=jobs;
+  renderVisualJobs(jobs);
+  if(currentGame.local_scene?.mode==="local")return;
 
   const active=jobs.filter(x=>x.status==="queued"||x.status==="working");
   if(active.length){
@@ -254,9 +286,9 @@ async function loadGame(id){
  closeInfo();closeCommandMenu();
  currentLocalEpisode=null;
  visualPollActive=false;visualPollOnce=true;lastVisualGame=id;
- lastVisualJobs=[];stageView="auto";castVisible=true;lastTurnWallSec=null;
+ lastVisualJobs=[];renderVisualJobs([]);stageView="auto";castVisible=true;lastTurnWallSec=null;
  renderGame(d.game);
- if(d.game.local_scene?.mode==="local")await refreshLocalEpisode();
+ if(d.game.local_scene?.mode==="local"){await refreshLocalEpisode();await pollVisualJobs();}
  else {
   await scheduleMissingVisuals(d.game).catch(e=>console.warn("visual schedule:",e.message));
   await pollVisualJobs();
@@ -595,8 +627,10 @@ async function startup(){
   await Promise.all([loadModels(),loadGames()]);
   setInterval(async()=>{
    if($("app").hidden||busy||!currentGame)return;
-   if(currentGame.local_scene?.mode==="local")await refreshLocalEpisode();
-   else if(visualPollActive||visualPollOnce)
+   if(currentGame.local_scene?.mode==="local"){
+    await refreshLocalEpisode();
+    await pollVisualJobs();
+   }else if(visualPollActive||visualPollOnce||$("render-jobs-panel").open)
     await pollVisualJobs();
   },3800);
  }catch(e){showLogin();$("login-error").textContent=e.message}
@@ -671,12 +705,23 @@ document.addEventListener("DOMContentLoaded",()=>{
  });
  $("player-action").addEventListener("input",()=>{commandManual=false;updateCommandMenu()});
  $("player-action").addEventListener("keydown",e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();runTurn(false);return}
+  const intent=inputEnterIntent(e);
+  if(intent==="newline"){
+   e.preventDefault();
+   const input=$("player-action");
+   input.setRangeText("\n",input.selectionStart,input.selectionEnd,"end");
+   commandManual=false;updateCommandMenu();return;
+  }
+  if(intent==="send"){
+   e.preventDefault();
+   if(!e.repeat)runTurn(false);
+   return;
+  }
   if(e.key==="Escape"){closeCommandMenu();return}
   if($("command-menu").hidden||!commandItems.length)return;
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){
    e.preventDefault();commandIndex=(commandIndex+(e.key==="ArrowDown"?1:-1)+commandItems.length)%commandItems.length;paintCommandMenu();
-  }else if(e.key==="Enter"){e.preventDefault();selectCommand(commandItems[commandIndex]);}
+  }else if(e.key==="Tab"){e.preventDefault();selectCommand(commandItems[commandIndex]);}
  });
  document.addEventListener("click",e=>{if(!e.target.closest(".input-area"))closeCommandMenu()});
  document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeCommandMenu();closeInfo();closeProviders();}});
