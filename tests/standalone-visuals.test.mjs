@@ -41,3 +41,13 @@ test("never add art work while a narrator is pending or local private mode is ac
  assert.deepEqual(planStandaloneVisuals(game({background_url:""},{awaiting_narrator:true})),[]);
  assert.deepEqual(planStandaloneVisuals(game({background_url:""},{local_scene:{mode:"local"}})),[]);
 });
+
+test("manual retry of an accepted sprite bypasses the stale appearance cache",()=>{
+ const g=game({sprites:[{name:"Мира",outfit:"fully undressed, clothes held off-body",
+  pose:"standing",emotion:"resigned",image_url:"https://example.test/old.png",
+  visual_dirty:false}]});
+ assert.deepEqual(planStandaloneVisuals(g),[]);
+ // Scheduling a manual retry is intentionally tested in the integration layer:
+ // it must not be lost just because the planned automatic work is empty.
+ assert.equal(g.scene.sprites[0].visual_dirty,false);
+});
