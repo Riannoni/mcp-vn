@@ -243,10 +243,12 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    if hasattr(embed,"pooler_output"):embed=embed.pooler_output
    embed=torch.nn.functional.normalize(embed,dim=-1)
    similarity=round(float((embed[0]*embed[1]).sum()),4)
-  if similarity<.75:
-   reasons.append(f"Character identity changed substantially (CLIP face similarity {similarity:.2f})")
-  elif similarity<.84:
-   warnings.append(f"Character appearance differs from canonical anchor (similarity {similarity:.2f})")
+  # In the observed regression 0.77 was passed with only a warning,
+  # despite a visibly different face. Do not publish such a variant.
+  if similarity<.80:
+   reasons.append(f"Character identity differs from canonical anchor (CLIP face similarity {similarity:.2f}, required 0.80)")
+  elif similarity<.86:
+   warnings.append(f"Character resemblance is borderline (similarity {similarity:.2f})")
  scores={k:round(float(v),3) for k,v in probs.items()}
  return {"status":"failed" if reasons else "passed","reasons":reasons[:8],
    "warnings":warnings[:8],"caption":caption,
