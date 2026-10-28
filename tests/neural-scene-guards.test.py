@@ -34,6 +34,14 @@ class NeuralSceneGuardsTests(unittest.TestCase):
   self.assertNotIn("SOLO FEMALE SUBJECT",positive)
   self.assertNotIn("2girls",negative)
 
+ def test_requested_physical_props_are_respected(self):
+  p,n,_=neural_scene_guards({
+   "composition":"neural_story",
+   "characters":[{"name":"Mira"}]},
+   subject="Mira is a photographer holding a camera under a tower clock")
+  self.assertNotIn("camera body",n)
+  self.assertNotIn("wall-mounted clock",n)
+
  def test_layered_CG_is_untouched(self):
   self.assertEqual(neural_scene_guards({
    "composition":"anchored_composite","characters":[{"name":"Mira"}]}),("","",""))
