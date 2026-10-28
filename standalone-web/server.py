@@ -442,6 +442,9 @@ class Handler(BaseHTTPRequestHandler):
      if path=="/api/vn/visual-refresh":
       return self.send_json(200,vn_web.visual_refresh(
        str(x.get("game_id","")),x.get("retry") is True))
+     if path=="/api/vn/visual-cg-regenerate":
+      return self.send_json(202,vn_web.regenerate_cg(
+       str(x.get("game_id","")),x.get("expected_version")))
      if path=="/api/vn/visual-cg":
       return self.send_json(202,vn_web.manual_cg(
        str(x.get("game_id","")),x.get("expected_version")))
