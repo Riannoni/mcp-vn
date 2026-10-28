@@ -207,7 +207,7 @@ async function loadModels(){
    unavailable.disabled=true;opt.append(unavailable);
   }else{
    for(const m of entries){
-    const name=m.id==="local-qwen-9b"?"Qwen 9B · локальная":m.id==="local-cydonia-24b"?"Cydonia 24B · локальная":m.name;
+    const name=m.id==="local-cydonia-24b"?"Cydonia 24B · локальная":m.name;
     opt.append(new Option(name,m.id));
    }
   }
