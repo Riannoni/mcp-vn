@@ -200,6 +200,7 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  const oldVisual=new Map((g.scene.sprites||[]).map(x=>[x.name,{
    outfit:x.outfit||"default",pose:x.pose||"standing",emotion:x.emotion||"neutral"
  }]));
+ const previousDirection=g.scene.visual_direction||"";
  const turn=++ensureMemory(g).turn;
  for(const m of messages)g.messages.push({id:randomUUID(),role:"narrator",speaker:txt(m.speaker||"Рассказчик",100),text:txt(m.text,10000),at:new Date().toISOString()});
  if(scene.location!==undefined||scene.time_of_day!==undefined||scene.weather!==undefined){
@@ -270,7 +271,8 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
   });
  g.scene.auto_cg_requested=scene.visual_mode==="cg"?true:
   scene.visual_mode==="layers"?false:physicalChanged;
- if(physicalChanged&&g.scene.cg_url){
+ if((physicalChanged||(scene.visual_mode==="cg"&&
+    previousDirection!==(g.scene.visual_direction||"")))&&g.scene.cg_url){
   g.scene.cg_dirty=true;g.scene.mode="layered";
  }
  g.choices=(choices||[]).slice(0,6).map(x=>txt(x,200));
