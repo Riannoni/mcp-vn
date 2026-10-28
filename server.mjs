@@ -13,7 +13,7 @@ import {makeGameDelta,compactJob} from "./src/game-delta.mjs";
 import {measureTurnPerformance} from "./src/turn-performance.mjs";
 import {appendTrace,makeTraceReport} from "./src/turn-trace.mjs";
 import * as local from "./src/local-scene.mjs";
-import {scheduleStandaloneVisuals} from "./src/standalone-visuals.mjs";
+import {scheduleStandaloneVisuals,sceneCGPrompt} from "./src/standalone-visuals.mjs";
 import {executeStandaloneCommand,standaloneContext} from "./src/standalone-commands.mjs";
 
 const PORT=Number(process.env.VN_PORT||3100),HOST=process.env.VN_HOST||"127.0.0.1";
@@ -459,6 +459,30 @@ const service=http.createServer(async(req,res)=>{
     return json(res,200,{local_scene:await local.exitLocalScene(
       id,Number.isSafeInteger(input.expected_version)?
       input.expected_version:undefined)});
+   }
+   if(req.method==="POST"&&sub==="visual-cg-regenerate"){
+    const input=JSON.parse((await body(req,4096)).toString());
+    const id=String(input.game_id||"");
+    if(!/^[a-f0-9-]{36}$/i.test(id))
+     return json(res,400,{error:"Invalid game ID"});
+    const g=await games.gameGet(id);
+    if(!Number.isSafeInteger(input.expected_version)||g.version!==input.expected_version)
+     return json(res,409,{error:"Version changed; refresh before regenerating CG"});
+    if(g.awaiting_narrator||g.local_scene?.mode==="local")
+     return json(res,409,{error:"Finish current turn before regenerating CG"});
+    if(!g.scene?.background_url||g.scene.background_dirty||!(g.scene.sprites||[]).length)
+     return json(res,409,{error:"Generate a background and establish the scene first"});
+    if(g.scene.sprites.some(actor=>{
+     const identity=g.identities?.[actor.name]||{};
+     return !identity.face_url&&!identity.base_sprite_url;
+    }))return json(res,409,{error:"Canonical character face references are required"});
+    const authored=g.scene.image_prompts?.cg;
+    const prompt=typeof authored==="string"&&authored.trim()?authored.trim():sceneCGPrompt(g);
+    const job=await jobs.enqueue({game_id:id,kind:"scene",neural_scene:true,
+     narrator_prompt:!!(typeof authored==="string"&&authored.trim()),
+     style:g.art_style,quality:"standard",force:true,prompt,priority:75});
+    return json(res,200,{job:{id:job.id,kind:job.kind,status:job.status,
+     deduplicated:!!job.deduplicated}});
    }
    if(req.method==="POST"&&sub==="visual-cg"){
     const input=JSON.parse((await body(req,4096)).toString());
