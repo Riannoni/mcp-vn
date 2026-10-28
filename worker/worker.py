@@ -21,6 +21,7 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageDraw, ImageOps, ImageStat
 from scene_compositor import compose as compose_cg
 from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
 from wardrobe_contract import wants_unclothed
+from neural_scene_guards import neural_scene_guards
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -325,6 +326,13 @@ def prompt_builder(job, background):
         else:
             positive+=(f" Environment only, no identifiable named characters. "
                       f"Required location: {place}.")
+    if kind=="scene" and spec.get("composition")=="neural_story":
+        lead,extra_negative,_=neural_scene_guards(
+            spec,int(job.get("attempts",1)),job.get("error",""),subject)
+        # Put the cardinality/location first; SDXL may otherwise treat
+        # a reference identity as a request for multiple appearances.
+        positive=lead+positive
+        negative=extra_negative+negative
     if style in ("semireal","realistic","poster"):
         positive="score_9, score_8_up, score_7_up. "+positive
     elif style=="anime":
