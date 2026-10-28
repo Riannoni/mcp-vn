@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {planStandaloneVisuals,sceneCGPrompt,sceneCGRequired} from "../src/standalone-visuals.mjs";
+import {sceneIntentFingerprint} from "../src/visual-state.mjs";
 
 const game=(scene={},other={})=>({
  id:"11111111-1111-4111-8111-111111111111",
@@ -61,7 +62,7 @@ test("substantial narrator visual change schedules neural CG only after accepted
   rendered_variant_key:"anime|green cloak|kneeling|serious"}],
   auto_cg_requested:true,visual_direction:"Mira kneels by the ancient gate, side view",
   cg_url:"",cg_dirty:false};
- const g=game(scene,{messages:[{role:"narrator",text:"Мира опускается на колено."}]});
+ const g=game(scene,{identities:{"Мира":{base_sprite_url:"https://example.test/anchor.png"}},messages:[{role:"narrator",text:"Мира опускается на колено."}]});
  assert.equal(sceneCGRequired(g),true);
  const jobs=planStandaloneVisuals(g);
  assert.equal(jobs.length,1);
@@ -71,7 +72,8 @@ test("substantial narrator visual change schedules neural CG only after accepted
  assert.match(sceneCGPrompt(g),/Мира/);
  assert.equal(planStandaloneVisuals(game({...scene,auto_cg_requested:false})).length,0);
  assert.equal(planStandaloneVisuals(game({...scene,
-  sprites:scene.sprites.map(p=>({...p,visual_dirty:true}))}))[0].kind,"sprite");
+  sprites:scene.sprites.map(p=>({...p,visual_dirty:true}))},
+  {identities:g.identities}))[0].kind,"scene");
 });
 test("narrator pending turn never launches visual jobs even when CG requested",()=>{
  assert.deepEqual(planStandaloneVisuals(game({auto_cg_requested:true,sprites:[{
@@ -85,12 +87,13 @@ test("narrator-authored visual prompts are passed intact as job positive text",(
  const cg="One adult character leaning against an old brick wall at sunset, eye-level side shot.";
  const g=game({auto_cg_requested:true,visual_direction:"old directions",
   sprites,image_prompts:{cg,sprites:{"Мира":"A single adult character in a traveller outfit, leaning against a wall."},
-   background:"An empty stone town square at dawn."}});
+   background:"An empty stone town square at dawn."}},
+   {identities:{"Мира":{face_url:"https://example.test/face.png"}}});
  const cgJob=planStandaloneVisuals(g);
  assert.equal(cgJob.length,1);
  assert.equal(cgJob[0].narrator_prompt,true);
  assert.equal(cgJob[0].prompt,cg);
- const sp=planStandaloneVisuals(game({...g.scene,sprites:[{...sprites[0],visual_dirty:true}]}));
+ const sp=planStandaloneVisuals(game({...g.scene,auto_cg_requested:false,sprites:[{...sprites[0],visual_dirty:true}]}));
  assert.equal(sp[0].kind,"sprite");
  assert.equal(sp[0].narrator_prompt,true);
  assert.equal(sp[0].prompt,g.scene.image_prompts.sprites["Мира"]);
@@ -103,4 +106,32 @@ test("missing full prompt falls back without falsely claiming narrator authorshi
  const j=planStandaloneVisuals(game({background_url:""}))[0];
  assert.equal(j.narrator_prompt,false);
  assert.match(j.prompt,/Cinematic establishing/);
+});
+
+test("direct neural CG skips even dirty intermediate sprites once a canonical face exists",()=>{
+ const image="https://example.test/old.png";
+ const sprite={name:"Мира",outfit:"different outfit",pose:"new pose",
+  emotion:"tense",image_url:image,visual_dirty:true};
+ const g=game({sprites:[sprite],auto_cg_requested:true,cg_url:"",
+   image_prompts:{cg:"new shot"}},{identities:{
+    "Мира":{face_url:"https://example.test/face.png"}}});
+ assert.deepEqual(planStandaloneVisuals(g).map(x=>x.kind),["scene"]);
+ assert.equal(planStandaloneVisuals(g)[0].prompt,"new shot");
+ const intent=sceneIntentFingerprint(g.scene);
+ const g2=game({...g.scene,cg_url:"https://example.test/cg.png",
+  cg_composition:"neural_story",cg_basis:intent,cg_dirty:false},
+  {identities:g.identities});
+ assert.deepEqual(planStandaloneVisuals(g2),[]);
+ const g3=game({...g.scene,cg_url:"https://example.test/cg.png",
+  cg_composition:"neural_story",cg_basis:intent,cg_dirty:false,
+  sprites:[{...sprite,image_url:"https://example.test/new_sprite.png"}]},
+  {identities:g.identities});
+ assert.equal(sceneIntentFingerprint(g3.scene),intent);
+ assert.deepEqual(planStandaloneVisuals(g3),[]);
+ assert.deepEqual(planStandaloneVisuals(g,{retry:true}).map(x=>x.kind),["sprite"]);
+});
+test("without canonical identity, fall back to initial sprite before CG",()=>{
+ const g=game({auto_cg_requested:true,sprites:[{name:"Мира",outfit:"cloak",
+  pose:"standing",visual_dirty:true,image_url:""}]});
+ assert.deepEqual(planStandaloneVisuals(g).map(j=>j.kind),["sprite"]);
 });
