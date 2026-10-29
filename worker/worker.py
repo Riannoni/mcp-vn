@@ -930,6 +930,17 @@ def assess(job,raw,background):
         except (OSError,ValueError,TimeoutError,URLError,HTTPError) as error:
             semantic="unavailable"
             metrics["vlm_error"]=str(error)[:140]
+    # Never trust a generic "passed" verdict if a required action was not
+    # affirmatively verified by vision. This check is independent of QA's
+    # status field so future VLM changes cannot accidentally bypass it.
+    action_spec={**(job.get("spec") or {}),
+                 "prompt":job.get("prompt") or (job.get("spec") or {}).get("prompt")}
+    if kind=="scene" and wall_brace_required(action_spec):
+        if metrics.get("scene_action_verified") is not True:
+            reason="CG wall-contact action not independently verified"
+            if reason not in reasons:
+                reasons.append(reason)
+    # Pose similarity is independently measured from the generated frame.
     # Pose similarity is independently measured from the generated frame.
     # It is a veto, not a substitute for verifying real wall contact.
     spec=job.get("spec") or {}
