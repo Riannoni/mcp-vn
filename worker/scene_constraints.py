@@ -5,6 +5,7 @@ but the wardrobe/physical action recorded in the game state must not be lost
 inside a long positive prompt or the canonical face reference.
 """
 from wardrobe_contract import wants_unclothed
+from scene_action_contract import action_prompt_contract
 
 def scene_constraints(spec, prompt):
     if spec.get("composition") != "neural_story":
@@ -36,25 +37,8 @@ def scene_constraints(spec, prompt):
                 "instead of the garments from the old character reference: "+
                 outfit[:160]+"."
             )
-    # Put structured physical contact ahead of environment decoration.
-    # The old output repeatedly placed a person reclining on street paving
-    # instead of bracing against the requested wall.
-    subj=str(prompt or "").lower()
-    poses=" ".join(str(p.get("pose","")) for p in people).lower()
-    if len(people)==1 and (
-        ("wall" in subj or "masonry" in subj or "стен" in subj) and
-        ("palm" in subj or "hand" in subj or "brac" in subj or
-         "lean" in subj or "lean" in poses)
-    ):
-        positive.append(
-            "PHYSICAL ACTION: hands touch a VERTICAL stone wall, torso "
-            "leans forward from the waist, feet and legs remain on the ground "
-            "supporting the body. The wall is directly beside the character, "
-            "with the market in the background, not a freestanding portrait."
-        )
-        negative.append(
-            "lying on ground, lying on stomach, reclining on paving stones, "
-            "prone pose, crawling, elbows resting on cobblestone ground, "
-            "standing alone in middle of street, hands on ground"
-        )
+    # The same resolved contract now governs pose selection, conditioning and QA.
+    action_positive,action_negative=action_prompt_contract(spec,prompt)
+    if action_positive:positive.insert(0,action_positive)
+    if action_negative:negative.insert(0,action_negative)
     return " ".join(positive), ", ".join(negative)
