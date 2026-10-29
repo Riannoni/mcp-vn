@@ -13,7 +13,7 @@ DEFAULT_ROOT=Path.home()/".local/share/mcp-vn/pose-references-v1"
 
 def scene_action_key(prompt, characters=None):
     s=str(prompt or "").lower()
-    rear=any(x in s for x in ("rear view","from behind","view from the back"))
+    rear=any(x in s for x in ("rear view","from behind","view from the back", "rear three-quarter", "three-quarter rear", "back three-quarter"))
     side=any(x in s for x in ("side view","from the side","profile view"))
     wall=any(x in s for x in ("stone wall","brick wall","against the wall",
         "palms on the wall","hands on the wall","wall push-up","wall pushup"))
@@ -21,9 +21,18 @@ def scene_action_key(prompt, characters=None):
         "hands braced","hands on the wall","palms on the wall"))
     bending=any(x in s for x in ("leaning forward","leans forward",
         "bending forward","bent forward","inclines toward the wall","wall push"))
+    hip_hinge=any(x in s for x in (
+        "bent at the waist","bend at the waist","bends at the waist",
+        "hinged at the hips","hinges at the hips","bends forward at the hips", "bending forward at the hips",
+        "torso horizontal","folded forward at the waist",
+        "folds forward at the waist","forward fold",
+        "bending forward at the waist", "leaning forward at the waist",
+        "hip hinge", "hip-hinge",
+    ))
     if wall and palms and bending:
-        if rear:return ("palms_on_wall","rear")
-        if side:return ("palms_on_wall","side")
+        action="palms_on_wall_hip_hinge" if hip_hinge else "palms_on_wall"
+        if rear:return (action,"rear")
+        if side:return (action,"side")
     if (any(x in s for x in ("forward bend","bent forward","bending forward")) and
         side and not wall):
         return ("bend_forward","side_or_oblique")
