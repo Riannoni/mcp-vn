@@ -26,6 +26,13 @@ class RefTests(unittest.TestCase):
    "One adult bending forward at the waist, both palms on the stone wall, rear three-quarter view"),
    ("palms_on_wall_hip_hinge","rear"))
 
+ def test_narrator_actual_wall_brace_prompt(self):
+  prompt=("Semireal view from behind at medium distance: adult Mira "
+          "leans forward with both palms on the inner stone wall of the "
+          "Ash Gate arch, legs straight and back slightly arched.")
+  self.assertEqual(scene_action_key(prompt),
+                   ("palms_on_wall_hip_hinge","rear"))
+
  def test_unapproved_cannot_be_selected(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d)
