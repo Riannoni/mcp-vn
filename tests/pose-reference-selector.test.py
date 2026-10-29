@@ -19,6 +19,12 @@ class RefTests(unittest.TestCase):
    ("palms_on_wall","rear"))
   self.assertEqual(scene_action_key(
    "Someone standing near the rear door"),(None,None))
+  self.assertEqual(scene_action_key(
+   "One adult bending forward at the hips, both palms on the stone wall, rear view"),
+   ("palms_on_wall_hip_hinge","rear"))
+  self.assertEqual(scene_action_key(
+   "One adult bending forward at the waist, both palms on the stone wall, rear three-quarter view"),
+   ("palms_on_wall_hip_hinge","rear"))
 
  def test_unapproved_cannot_be_selected(self):
   with tempfile.TemporaryDirectory() as d:
