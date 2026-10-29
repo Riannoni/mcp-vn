@@ -43,6 +43,38 @@ class PoseGeometryTests(unittest.TestCase):
   r=inspect_approved_pose(frame(BASE),[{"people":[{"pose_keypoints_2d":[0]*54},
                               {"pose_keypoints_2d":[0]*54}]}])
   self.assertFalse(r["verified"])
-  self.assertEqual(r["reason"],"expected_one_detected_person")
+  self.assertEqual(r["reason"],"no_complete_foreground_person")
+
+def shifted_person(scale=1.0,xoffset=0,yoffset=0):
+ points={i:(x*scale+xoffset,y*scale+yoffset) for i,(x,y) in BASE.items()}
+ return frame(points)[0]["people"][0]
+
+class PrincipalSelectionTests(unittest.TestCase):
+ def test_many_tiny_background_detections_do_not_hide_principal(self):
+  principal=shifted_person()
+  tiny=shifted_person(.12,-5,3)
+  people=[principal]+[tiny]*8
+  result=inspect_approved_pose(frame(BASE),[{"people":people}])
+  self.assertTrue(result["verified"],result)
+  self.assertEqual(result["principal_index"],0)
+  self.assertEqual(result["candidate_people"],9)
+
+ def test_second_similarly_large_foreground_figure_is_ambiguous(self):
+  people=[shifted_person(),shifted_person(.9,30,10)]
+  result=inspect_approved_pose(frame(BASE),[{"people":people}])
+  self.assertFalse(result["verified"])
+  self.assertEqual(result["reason"],"ambiguous_foreground_people")
+
+ def test_wrong_main_pose_cannot_be_excused_by_matching_tiny_bystander(self):
+  standing={1:(500,170),2:(530,190),4:(550,400),5:(480,190),
+   7:(450,395),8:(505,440),9:(500,590),10:(505,710),
+   11:(480,440),12:(470,590),13:(470,710)}
+  main=frame(standing)[0]["people"][0]
+  bystander=shifted_person(.12)
+  result=inspect_approved_pose(frame(BASE),
+       [{"people":[bystander,main]}])
+  self.assertFalse(result["verified"])
+  self.assertIn("torso",result["failed_parts"])
+  self.assertEqual(result["principal_index"],1)
 
 if __name__=="__main__":unittest.main()
