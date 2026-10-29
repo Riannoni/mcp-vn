@@ -64,3 +64,5 @@ Grok отдаёт полные английские промпты. Для ло�
 
 - [docs/MODELS.md](docs/MODELS.md) — модели, Cydonia как fallback, роль Grok.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/VN-WEB.md](docs/VN-WEB.md), [docs/RENDER-POLICY-v64.md](docs/RENDER-POLICY-v64.md).
+- [Текущий конвейер фонов, спрайтов и CG](docs/RENDER-PIPELINE.md) — статус реализации и оставшиеся проверки качества.
+- [Общий движок и будущий каталог игр](docs/ENGINE-CATALOG.md) — проектирование следующего этапа; дальнейшая разработка каталога приостановлена.

@@ -8,6 +8,7 @@ import concurrent.futures
 import subprocess
 import tempfile
 import json
+import hashlib
 import os
 import re
 import sys
@@ -26,6 +27,8 @@ from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
 from actor_layout import region_for_actor, assert_cast_supported
+from render_invariants import narrator_invariants
+from render_retry import retry_plan,permanent_render_failure
 from engine_policy import assert_engine_snapshot
 from scene_action_contract import wall_brace_required,resolve_scene_action
 from pose_geometry_runtime import verify_with_comfy
@@ -330,6 +333,12 @@ def prompt_builder(job, background):
         else:
             positive+=(f" Environment only, no identifiable named characters. "
                       f"Required location: {place}.")
+    if spec.get("narrator_prompt") is True and kind in ("background","sprite","scene"):
+        essential_positive, essential_negative = narrator_invariants(job)
+        if essential_positive:
+            positive=essential_positive+" "+positive
+        if essential_negative:
+            negative=essential_negative+", "+negative
     if kind=="scene" and spec.get("composition")=="neural_story":
         lead,extra_negative,_=neural_scene_guards(
             spec,int(job.get("attempts",1)),job.get("error",""),subject)
@@ -379,6 +388,11 @@ def prompt_builder(job, background):
             expected_color,wrong_color=color_error.groups()
             positive+=f" Correct the previous color mistake: prominent {expected_color} cloak, natural clearly {expected_color} fabric, not {wrong_color}."
             negative+=f", {wrong_color} cloak, {wrong_color} robe, {wrong_color} outerwear"
+    retry=retry_plan(job)
+    if retry["positive"]:
+        positive=retry["positive"]+" "+positive
+    if retry["negative"]:
+        negative=retry["negative"]+", "+negative
     return positive[:5500],negative[:1000]
 
 def image_graph(job):
@@ -732,7 +746,8 @@ def image_graph(job):
               "positive":graph["5"]["inputs"]["positive"],
               "negative":graph["5"]["inputs"]["negative"],
               "control_net":["23",0],"image":["24",0],
-              "strength":0.78,"start_percent":0.0,"end_percent":0.86}}
+              "strength":retry_plan(job)["control_strength"],
+              "start_percent":0.0,"end_percent":retry_plan(job)["control_end"]}}
             graph["5"]["inputs"]["positive"]=["25",0]
             graph["5"]["inputs"]["negative"]=["25",1]
             if approved_reference:
@@ -851,6 +866,7 @@ def assess(job,raw,background):
     if (width,height)!=expected:
         reasons.append(f"Wrong size {width}x{height}, expected {expected[0]}x{expected[1]}")
     metrics.update({"width":width,"height":height,"bytes":len(raw)})
+    metrics["retry_category"]=retry_plan(job)["category"]
     if kind=="scene" and (job.get("spec") or {}).get("composition")=="neural_story":
         metrics["visual_action_contract"]=resolve_scene_action(
             job.get("spec") or {},job.get("prompt") or (job.get("spec") or {}).get("prompt"))
@@ -1015,7 +1031,9 @@ def stage(job,step,timings=None):
 
 def fail(job,error):
     print("JOB_ERROR",job["id"],repr(error),flush=True)
-    try:request(SERVER,"/worker/fail/"+job["id"],"POST",{"error":str(error)},timeout=20)
+    terminal=permanent_render_failure(error)
+    try:request(SERVER,"/worker/fail/"+job["id"],"POST",
+                {"error":str(error),"permanent":terminal},timeout=20)
     except Exception as exc:print("REPORT_ERROR",job["id"],repr(exc),flush=True)
 
 def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
@@ -1056,13 +1074,26 @@ def generate_gpu(job):
         graph=video_graph(job);background=None
     else:
         graph,background=image_graph(job)
+    sampler=(graph.get("5") if job["kind"]!="video" else graph.get("3")) or {}
+    settings=sampler.get("inputs") or {}
+    positive=(graph.get("3",{}).get("inputs",{}).get("text") or "")
+    negative=(graph.get("4",{}).get("inputs",{}).get("text") or "")
+    checkpoint=graph.get("1",{}).get("inputs",{}).get("ckpt_name") or ""
+    fingerprint=lambda value:hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:16]
+    trace={"render_seed":settings.get("seed",0),
+        "render_model":checkpoint[:110],
+        "render_retry":retry_plan(job)["category"],
+        "prompt_positive_sha":fingerprint(positive),
+        "prompt_negative_sha":fingerprint(negative),
+        "render_pose_strength":(graph.get("25") or {}).get("inputs",{}).get("strength",0)}
+    print("RENDER_GRAPH_TRACE",job["id"],job["kind"],trace,flush=True)
     prep_ms=(time.monotonic()-t0)*1000
     stage(job,"generating",{"prepare_ms":prep_ms})
     t1=time.monotonic()
     raw,_=run_comfy(job,graph)
     elapsed=(time.monotonic()-t1)*1000
     stage(job,"generated",{"prepare_ms":prep_ms,"generation_ms":elapsed})
-    return raw,background,elapsed
+    return raw,background,elapsed,trace
 
 def cpu_scene(job):
     try:
@@ -1101,8 +1132,8 @@ def main():
             if row.get("job"):
                 job=row["job"]
                 try:
-                    raw,bg,ms=generate_gpu(job)
-                    submit(finalize,job,raw,bg,ms,None)
+                    raw,bg,ms,trace=generate_gpu(job)
+                    submit(finalize,job,raw,bg,ms,trace)
                 except Exception as err:fail(job,err)
             else:time.sleep(1.5)
         except (HTTPError,URLError,TimeoutError,KeyError) as err:

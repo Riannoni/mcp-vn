@@ -5,9 +5,16 @@ Stdlib-only: extract prompt_builder rather than importing GPU runtime modules.
 import ast
 import re
 import unittest
+import sys
 from pathlib import Path
 
 WORKER=Path(__file__).resolve().parents[1]/"worker"/"worker.py"
+sys.path.insert(0,str(WORKER.parent))
+from render_invariants import narrator_invariants
+from render_retry import retry_plan
+from pose_presets import pose_prompt
+from engine_policy import assert_engine_snapshot
+from wardrobe_contract import wants_unclothed
 
 
 class WorkerPromptContract(unittest.TestCase):
@@ -20,6 +27,11 @@ class WorkerPromptContract(unittest.TestCase):
         module=ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[]))
         namespace={
             "re":re,
+            "assert_engine_snapshot":assert_engine_snapshot,
+            "retry_plan":retry_plan,
+            "narrator_invariants":narrator_invariants,
+            "pose_prompt":pose_prompt,
+            "wants_unclothed":wants_unclothed,
             "background_context":lambda _:( "overcast", ""),
             "appearance_tags":lambda _: "adult with dark hair",
             "neural_scene_guards":lambda *_:("SOLO SUBJECT. ","duplicate person, ","v1"),

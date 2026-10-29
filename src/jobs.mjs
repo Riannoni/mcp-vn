@@ -467,12 +467,12 @@ function extractHeadCrop(bytes){
  }
  return PNG.sync.write(out);
 }
-export async function failJob(id,error){
+export async function failJob(id,error,{permanent=false}={}){
  return exclusive(async()=>{
   const j=await read(id);
   if(j.status!=="working")return j;
   j.status=j.superseded_by?"superseded":
-    j.attempts>=(j.spec?.max_attempts||3)?"failed":"queued";
+    (permanent===true||j.attempts>=(j.spec?.max_attempts||3))?"failed":"queued";
   j.error=j.superseded_by?"Superseded by newer art request":String(error||"Generation failed").slice(0,400);
   j.quality_status="failed";j.stage=j.status;j.progress=0;j.lease_until=null;
   finishAttempt(j,j.status==="queued"?"retry":j.status);

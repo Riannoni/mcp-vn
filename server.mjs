@@ -309,7 +309,7 @@ const service=http.createServer(async(req,res)=>{
   }
   const match=u.pathname.match(/^\/worker\/(complete|fail|qa|stage)\/([a-f0-9-]{36})$/);
   if(req.method!=="POST"||!match)return json(res,404,{error:"Not found"});
-  if(match[1]==="fail"){const b=await body(req,8192);const d=JSON.parse(b.toString());return json(res,200,{job:await jobs.failJob(match[2],d.error)})}
+  if(match[1]==="fail"){const b=await body(req,8192);const d=JSON.parse(b.toString());return json(res,200,{job:await jobs.failJob(match[2],d.error,{permanent:d.permanent===true})})}
   if(match[1]==="qa"){const b=await body(req,16384);const d=JSON.parse(b.toString());return json(res,200,{job:await jobs.reportQA(match[2],d)})}
   if(match[1]==="stage"){const b=await body(req,8192);const d=JSON.parse(b.toString());return json(res,200,{job:await jobs.stageJob(match[2],d)})}
   const mime=(req.headers["content-type"]||"").split(";")[0],bytes=await body(req,104857600);

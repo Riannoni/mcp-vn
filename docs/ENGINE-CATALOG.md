@@ -31,3 +31,17 @@ The import never overwrites an existing story ID or modifies an active save. No 
 Next: catalog UI to start and resume independent sessions; structured narrator shot plan shared by every game; explicit named cast versus background extras; real multi-person ControlNet regions and staged rendering beyond four principals; stronger visual grounding QA benchmark; per-source import adapters with attribution and provenance.
 
 An authenticated standalone client may start another independent session using POST /worker/standalone/start with story_id, hero, hero_description, style, and rules_mode. The response gives the new game UUID and global engine snapshot. This is not exposed as an unauthenticated public endpoint.
+
+## Workstream status — deferred after 29 October 2026
+
+The engine contract and data-only offline story catalog already exist and are
+tested, but **further multi-game development is deliberately paused**. Do not
+start a KageSekai connector, implement web scraping, change save directories,
+migrate existing saves, or add a catalog UI until a separate future decision.
+The authenticated catalog/start APIs remain in place.
+
+Before resuming imports, finish and benchmark the common rendering pipeline on
+the existing Ash Gate test game. All graphics and QA improvements must live
+in common engine/worker code, never in story-specific branches or pose rules
+that recognize one fictional character's name. All new game packages inherit
+the same tested renderer and strict QA policy.
