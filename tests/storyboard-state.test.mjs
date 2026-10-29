@@ -32,5 +32,9 @@ test("narration preserves actor region and contact without mutating another game
    prompt:"Mira walks alone",neural_scene:true});
  assert.equal(snap.visual_contract.principals.length,1);
  assert.equal(snap.visual_contract.principals[0].region,null);
+ assert.equal(snap.max_attempts,2,"interactive neural CG should not do a third blind GPU retry");
+ const layered=artSnapshot(b,{kind:"scene",style:b.art_style,
+   prompt:"Mira walks alone",neural_scene:false});
+ assert.equal(layered.max_attempts,3,"non-neural composition retains standard retries");
 });
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));
