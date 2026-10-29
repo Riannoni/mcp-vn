@@ -1,0 +1,13 @@
+# Install into /data/vendor-python in the EXISTING ROCm ComfyUI container.
+# Use pip --no-deps --target /data/vendor-python; do not replace torch/torchvision.
+onnxruntime==1.23.2
+opencv-python-headless==4.11.0.86
+scikit-image==0.25.2
+lazy-loader
+imageio
+tifffile
+addict==2.4.0
+yacs==0.1.8
+ftfy==6.3.1
+yapf==0.43.0
+fvcore==0.1.5.post20221221
