@@ -17,6 +17,9 @@ This master roadmap plus linked Issues is the source of truth after any chat end
 - #5 Shared explicit actor region/mask treatment for Scene and Local CG.
 - #6 Isolated live GPU/temp-game validation including retry, replacement, publishing, restart and rollback.
 
+- #21 P0-06 Required CG location must be verified, not merely absence of hard contradiction; live E2E caught a gray studio portrait mispublished as a market.
+- #23 P0-07 Per-character outfit/wardrobe continuity QA for CG, including exposed body/cloak mismatches, without blanket filtering.
+
 ## P1 — reliability
 - #7 Face observability / ambiguous identity and physical-contact evidence: never assert exact hand/object contact from mere proximity.
 - #8 GitHub Actions Node/Python/security/schema CI.
@@ -24,6 +27,8 @@ This master roadmap plus linked Issues is the source of truth after any chat end
 - #10 durable render manifest, prompt IDs, retries, post-restart recovery and fault injection.
 - #11 declarative environment, style, workflow configuration; no game-specific code changes.
 - #12 performance and quality budget: TTFT, completion, queue wait, GPU, CLIP/VLM and repair P50/P90, error/uncertain ratios.
+
+- #22 P1-07 Background-grounded neural CG, identity-mask localization for solo principals, detection of duplicated named actors in crowd. Live E2E still required.
 
 ## P2 — after render-v1
 - #13 **Narration streaming**: player action → prompt LLM with moderate/low thinking and token streaming → provisional text in UI → validate complete structured output → atomic canonical commit with action ID, optimistic version and idempotency → separate asynchronously completed visual plan → ComfyUI and QA. Partial JSON, connection loss, cancellation or browser reconnect must never corrupt canon. Goal first provisional words **2–5 seconds**, ordinary complete turn **10–20 seconds**: engineering targets, not claims of provider performance; measure TTFT and p90.

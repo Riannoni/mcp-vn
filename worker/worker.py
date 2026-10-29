@@ -139,6 +139,11 @@ def background_context(image):
 def regional_face_attention_mask(index,width,height,count=2,region=None):
     """Comfy LoadImage alpha mask for each principal, not a fixed two-way split."""
     layer=Image.new("RGBA",(width,height),(0,0,0,255))
+    # For a single principal, applying the identity reference to the whole
+    # canvas can clone that same person on incidental background figures.
+    # Without explicit blocking, bias the face reference to central foreground.
+    if count==1 and region is None:
+        region=[.18,.04,.64,.92]
     x0,y0,x1,y1=region_for_actor(index,count,region)
     ImageDraw.Draw(layer).rectangle(
         (int(width*x0),int(height*y0),int(width*x1),int(height*y1)),
@@ -552,6 +557,22 @@ def image_graph(job):
             graph["5"]["inputs"]["model"]=["1",0]
             print("STORY_IDENTITY_FALLBACK",job["id"],str(error)[:140],flush=True)
     elif kind=="scene" and spec.get("composition")=="neural_story" and not is_animation:
+        # A neural CG must inherit the established location, not start as an
+        # isolated portrait on a generic studio latent. Base image is an
+        # independently accepted canonical background, never a failed CG.
+        if background is None:
+            raise ValueError("Accepted location background required for neural CG")
+        prepared=ImageOps.fit(background.convert("RGB"),(width,height),
+            method=Image.Resampling.LANCZOS)
+        bg_name=upload_to_comfy(pil_png(prepared),
+            "mcp_vn_scene_environment_"+job["id"]+".png")
+        graph["10"]={"class_type":"LoadImage","inputs":{"image":bg_name}}
+        graph["11"]={"class_type":"VAEEncode","inputs":{
+            "pixels":["10",0],"vae":vae_ref}}
+        graph["5"]["inputs"].update({"latent_image":["11",0],"denoise":0.78})
+        graph["3"]["inputs"]["text"]+=(
+            " Wide environmental shot, recognizable detailed location behind the "
+            "characters, not a studio portrait or flat backdrop, a single camera view.")
         # A neural CG replaces the whole shot, so it must be conditioned on
         # immutable identity anchors, NOT on a disposable pose/outfit sprite.
         people=(spec.get("characters") or [])
@@ -589,14 +610,13 @@ def image_graph(job):
                 "clip_vision":["60",0],"weight":face_weight,"weight_type":"linear",
                 "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
                 "embeds_scaling":"V only"}
-            if len(people)>1:
-                mask=regional_face_attention_mask(
-                    i,width,height,len(people),actor.get("actor_region"))
-                mask_file=upload_to_comfy(pil_png(mask),
-                    "mcp_vn_cg_face_region_"+str(i)+"_"+job["id"]+".png")
-                mask_node=str(63+i*3)
-                graph[mask_node]={"class_type":"LoadImage","inputs":{"image":mask_file}}
-                adapter["attn_mask"]=[mask_node,1]
+            mask=regional_face_attention_mask(
+                i,width,height,len(people),actor.get("actor_region"))
+            mask_file=upload_to_comfy(pil_png(mask),
+                "mcp_vn_cg_face_region_"+str(i)+"_"+job["id"]+".png")
+            mask_node=str(63+i*3)
+            graph[mask_node]={"class_type":"LoadImage","inputs":{"image":mask_file}}
+            adapter["attn_mask"]=[mask_node,1]
             graph[apply_node]={"class_type":"IPAdapterAdvanced","inputs":adapter}
             model_ref=[apply_node,0]
         graph["5"]["inputs"]["model"]=model_ref
@@ -1040,6 +1060,12 @@ def assess(job,raw,background):
          spec.get("composition")!="anchored_composite"))
     if semantic_required and semantic=="unavailable":
         reasons.append("Semantic QA unavailable: keeping last accepted asset")
+    if (kind in ("scene","local_cg") and
+        spec.get("composition")=="neural_story" and environment!="unclassified"
+        and semantic=="passed" and
+        metrics.get("scene_location_verified") is not True):
+        # Location unknown is not permission to publish a wrong landscape.
+        reasons.append("Required CG location not independently verified")
     # Versioned, bounded evidence is persisted separately from scalar metrics.
     def verdict(value,violation=False):
         return "verified" if value is True else ("violated" if violation else "unobservable")
