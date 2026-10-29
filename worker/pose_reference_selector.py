@@ -28,6 +28,7 @@ def scene_action_key(prompt, characters=None):
         "folds forward at the waist","forward fold",
         "bending forward at the waist", "leaning forward at the waist",
         "hip hinge", "hip-hinge",
+        "legs straight", "straight legs", "knees straight",
     ))
     if wall and palms and bending:
         action="palms_on_wall_hip_hinge" if hip_hinge else "palms_on_wall"
