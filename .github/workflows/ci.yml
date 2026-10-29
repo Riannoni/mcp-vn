@@ -1,0 +1,39 @@
+name: mcp-vn CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - name: Python test dependencies (CPU only)
+        run: python -m pip install 'Pillow>=11,<13' 'numpy>=2,<3'
+      - name: Python syntax and unit tests
+        run: |
+          python -m compileall -q worker scripts standalone-web
+          for file in tests/*.py; do python "$file"; done
+          python -m unittest discover -s standalone-web -p 'test_*.py'
+        env:
+          VN_WORKER_TOKEN: test-only-not-production
+      - name: Ensure no runtime files or secrets are tracked
+        run: |
+          if git ls-files | grep -E '(^data/|^\.env$|\.pem$|\.key$|\.safetensors$|\.gguf$)'; then
+            echo 'Unexpected runtime/secrets file in repository'
+            exit 1
+          fi

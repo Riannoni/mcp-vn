@@ -89,6 +89,8 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
    emotion:compact(emotion||sprite?.emotion||"neutral",120)};
  const spec={
   spec_version:10,engine:engineSnapshot(),story_id:g.story_id||"",
+  qa_profile:["fantasy-medieval-v1","modern-v1","science-fiction-v1"]
+    .includes(g.story?.qa_profile)?g.story.qa_profile:"fantasy-medieval-v1",
   kind,style,quality,preview_only:!!preview_only,
   narrator_prompt:narrator_prompt===true,
   local_session_id:(kind==="local_cg"||video_start_asset)?

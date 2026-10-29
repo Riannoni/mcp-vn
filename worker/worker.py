@@ -25,6 +25,7 @@ from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
 from panel_guard import detect_four_panel_collage
 from local_repair import archive_rejected_candidate,apply_inpaint_graph,cleanup as cleanup_repair
+from comfy_manifest import load as load_manifest,persist as persist_manifest,digest as workflow_digest
 from scene_constraints import scene_constraints
 from scene_contract import scene_contract,crowd_condition
 from pose_library import select_story_pose
@@ -515,8 +516,8 @@ def image_graph(job):
         # without constraining body poses to canned silhouettes.
         people=(spec.get("characters") or [])
         try:
-            if (not is_animation and len(people)==2 and
-                all(c.get("sprite_asset") for c in people)):
+            if (not is_animation and 1<=len(people)<=4 and
+                all(c.get("anchor_face_asset") or c.get("sprite_asset") for c in people)):
                 graph["60"]={"class_type":"CLIPVisionLoader","inputs":{
                     "clip_name":"CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"}}
                 graph["61"]={"class_type":"IPAdapterModelLoader","inputs":{
@@ -530,7 +531,8 @@ def image_graph(job):
                         method=Image.Resampling.LANCZOS))
                     head_name=upload_to_comfy(pil_png(head),
                         "mcp_vn_story_face_"+str(i)+"_"+job["id"]+".png")
-                    mask=regional_face_attention_mask(i,width,height)
+                    mask=regional_face_attention_mask(
+                        i,width,height,len(people),actor.get("actor_region"))
                     mask_name=upload_to_comfy(pil_png(mask),
                         "mcp_vn_story_region_"+str(i)+"_"+job["id"]+".png")
                     face_node,region_node,apply_node=str(62+i*3),str(63+i*3),str(64+i*3)
@@ -545,7 +547,7 @@ def image_graph(job):
                 graph["5"]["inputs"]["model"]=source_model
                 print("STORY_REGIONAL_FACES",job["id"],len(people),flush=True)
         except (OSError,HTTPError,URLError,TimeoutError,ValueError) as error:
-            for key in ("60","61","62","63","64","65","66","67"):
+            for key in ["60","61"]+[str(62+i*3+j) for i in range(len(people)) for j in range(3)]:
                 graph.pop(key,None)
             graph["5"]["inputs"]["model"]=["1",0]
             print("STORY_IDENTITY_FALLBACK",job["id"],str(error)[:140],flush=True)
@@ -1028,8 +1030,16 @@ def assess(job,raw,background):
     # with an unchecked room or an unrelated building if vision daemon is offline.
     spec=job.get("spec") or {}
     environment=(spec.get("environment") or {}).get("id","unclassified")
-    if kind in ("background","scene","local_cg") and environment!="unclassified" and semantic=="unavailable":
-        reasons.append("Scene verification unavailable: canonical scene unchanged")
+    # Default to fail-closed whenever the image requires semantic QA. Avoid
+    # marking technical-only sprite checks as independently verified. Fully
+    # deterministic composites with known accepted inputs remain unchanged.
+    semantic_required=(kind=="sprite" or kind=="local_cg" or
+        (kind=="scene" and spec.get("composition")=="neural_story") or
+        (kind=="background" and environment!="unclassified") or
+        (kind=="scene" and environment!="unclassified" and
+         spec.get("composition")!="anchored_composite"))
+    if semantic_required and semantic=="unavailable":
+        reasons.append("Semantic QA unavailable: keeping last accepted asset")
     # Versioned, bounded evidence is persisted separately from scalar metrics.
     def verdict(value,violation=False):
         return "verified" if value is True else ("violated" if violation else "unobservable")
@@ -1062,9 +1072,19 @@ def assess(job,raw,background):
 
 def run_comfy(job,graph):
     OUTPUT.mkdir(parents=True,exist_ok=True)
-    result=request(COMFY,"/prompt","POST",{"prompt":graph,"client_id":"mcp-vn-worker-v4"})
-    pid=result["prompt_id"]
-    print("SUBMITTED",job["id"],pid,job["kind"],job.get("style"),flush=True)
+    saved=load_manifest(job)
+    attempt=int(job.get("attempts") or 1)
+    reuse=(saved and (saved["attempt"]==attempt or
+            (saved["attempt"]==attempt-1 and not job.get("error"))))
+    if reuse:
+        pid=saved["prompt_id"]
+        print("RESUMING_COMFY",job["id"],pid,flush=True)
+    else:
+        result=request(COMFY,"/prompt","POST",{"prompt":graph,
+            "client_id":"mcp-vn-"+job["id"]})
+        pid=result["prompt_id"]
+        persist_manifest(job,pid,workflow_digest(graph))
+        print("SUBMITTED",job["id"],pid,job["kind"],job.get("style"),flush=True)
     timeout=time.monotonic()+(2400 if job["kind"]=="video" else 900)
     while time.monotonic()<timeout:
         time.sleep(POLL)
@@ -1075,9 +1095,25 @@ def run_comfy(job,graph):
             raise RuntimeError("ComfyUI "+str(status)[:700])
         prefix="mcp_vn_"+job["id"]
         ext=".mp4" if job["kind"]=="video" else ".png"
-        files=sorted(OUTPUT.glob(prefix+"_*"+ext),key=lambda x:x.stat().st_mtime)
-        if not files:raise RuntimeError("No ComfyUI output file for "+job["id"])
-        raw=files[-1].read_bytes()
+        outputs=hist[pid].get("outputs") or {}
+        node="58" if job["kind"]=="video" else "7"
+        result=outputs.get(node) or {}
+        files=result.get("images") or result.get("gifs") or result.get("videos") or []
+        if files and isinstance(files[0],dict):
+            info=files[0]
+            filename=str(info.get("filename") or "")
+            subfolder=str(info.get("subfolder") or "")
+            selected=(OUTPUT/subfolder/filename).resolve()
+            if not (filename.startswith(prefix) and filename.endswith(ext) and
+                    selected.is_relative_to(OUTPUT.resolve())):
+                raise RuntimeError("Unsafe or unexpected ComfyUI output location")
+        elif job["kind"]=="video":
+            files=sorted(OUTPUT.glob(prefix+"_*"+ext),key=lambda x:x.stat().st_mtime)
+            if not files:raise RuntimeError("ComfyUI video output not found")
+            selected=files[-1]
+        else:
+            raise RuntimeError("ComfyUI image history lacks output file reference")
+        raw=selected.read_bytes()
         if len(raw)>100_000_000:raise RuntimeError("Output too large")
         return raw,ext
     raise TimeoutError("Generation timed out")

@@ -12,7 +12,7 @@ class EmbeddingReuse(unittest.TestCase):
         src=SOURCE.read_text()
         block=src.split("def analyze(",1)[1].split("class Handler(",1)[0]
         self.assertIn('clip_embedding=image_embedding(image) if kind in ("background","scene") else None',block)
-        self.assertIn("score_environment(image,clip_embedding)",block)
+        self.assertIn('score_environment(image,clip_embedding,spec.get("qa_profile"))',block)
         self.assertIn("score_principal_people(image,clip_embedding)",block)
         self.assertIn("score_action_contrast(image,spec,clip_embedding)",block)
         for name in ("score_environment","score_principal_people","score_action_contrast"):

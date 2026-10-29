@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly age-based cleanup of mcp-vn ComfyUI temporary files
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+Unit=mcp-vn-comfy-prune.service
+
+[Install]
+WantedBy=timers.target

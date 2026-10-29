@@ -15,6 +15,7 @@ from render_retry import retry_plan
 from pose_presets import pose_prompt
 from engine_policy import assert_engine_snapshot
 from wardrobe_contract import wants_unclothed
+from scene_contract import crowd_condition
 
 
 class WorkerPromptContract(unittest.TestCase):
@@ -35,7 +36,8 @@ class WorkerPromptContract(unittest.TestCase):
             "background_context":lambda _:( "overcast", ""),
             "appearance_tags":lambda _: "adult with dark hair",
             "neural_scene_guards":lambda *_:("SOLO SUBJECT. ","duplicate person, ","v1"),
-            "scene_constraints":lambda *_:("SCENE_CONTRACT. ","worn clothing")
+            "scene_constraints":lambda *_:("SCENE_CONTRACT. ","worn clothing"),
+            "crowd_condition":crowd_condition
         }
         exec(compile(module,str(WORKER),"exec"),namespace)
         cls.prompt_builder=staticmethod(namespace["prompt_builder"])

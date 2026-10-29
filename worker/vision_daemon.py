@@ -14,7 +14,8 @@ from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
 from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption, caption_asserts_single_person
-from identity_observation import face_observability
+from identity_observation import face_observability,face_similarity_decision
+from qa_profiles import load_profiles
 from scene_action_contract import wall_brace_required, check_wall_action
 
 HOST="127.0.0.1"
@@ -36,6 +37,9 @@ LABELS=[
  ("indoor_tavern","inside a medieval tavern with tables, ceiling, candles and wooden walls"),
  ("underground_cave","inside an underground dark stone cave or dungeon")
 ]
+QA_DEFAULT_PROFILE,QA_PROFILE_LABELS=load_profiles()
+if dict(LABELS)!=QA_PROFILE_LABELS[QA_DEFAULT_PROFILE]:
+ raise RuntimeError("QA default profile labels changed from baseline")
 OUTDOOR={k for k,v in LABELS if k.startswith("outdoor_")}
 INDOOR={k for k,v in LABELS if k.startswith("indoor_") or k=="underground_cave"}
 COUNT_LABELS=[
@@ -57,6 +61,15 @@ with torch.inference_mode():
  text_feats=clip.get_text_features(**text_inputs)
  if hasattr(text_feats,"pooler_output"):text_feats=text_feats.pooler_output
  text_feats=torch.nn.functional.normalize(text_feats,dim=-1)
+QA_TEXT_FEATURES={QA_DEFAULT_PROFILE:text_feats}
+with torch.inference_mode():
+ for profile,labels in QA_PROFILE_LABELS.items():
+  if profile==QA_DEFAULT_PROFILE:continue
+  values=clip_processor(text=[labels[name] for name,_ in LABELS],
+                        return_tensors="pt",padding=True)
+  features=clip.get_text_features(**values)
+  if hasattr(features,"pooler_output"):features=features.pooler_output
+  QA_TEXT_FEATURES[profile]=torch.nn.functional.normalize(features,dim=-1)
 with torch.inference_mode():
  count_inputs=clip_processor(text=[v for _,v in COUNT_LABELS],
    return_tensors="pt",padding=True)
@@ -88,10 +101,12 @@ def image_embedding(image):
   if hasattr(emb,"pooler_output"):emb=emb.pooler_output
   return torch.nn.functional.normalize(emb,dim=-1)
 
-def score_environment(image,embedding=None):
+def score_environment(image,embedding=None,profile=None):
  emb=embedding if embedding is not None else image_embedding(image)
  with torch.inference_mode():
-  probs=torch.softmax((emb@text_feats.T)*30,dim=1).squeeze(0).tolist()
+  bank=QA_TEXT_FEATURES.get(profile or QA_DEFAULT_PROFILE,
+                             QA_TEXT_FEATURES[QA_DEFAULT_PROFILE])
+  probs=torch.softmax((emb@bank.T)*30,dim=1).squeeze(0).tolist()
  return {name:round(float(p),4) for (name,_),p in zip(LABELS,probs)}
 
 def score_principal_people(image,embedding=None):
@@ -131,7 +146,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  clip_embedding=image_embedding(image) if kind in ("background","scene") else None
  # Always use CLIP for environment; helps catch very obvious indoors/outdoors.
  if kind in ("background","scene"):
-  probs=score_environment(image,clip_embedding)
+  probs=score_environment(image,clip_embedding,spec.get("qa_profile"))
   indoor=sum(probs[k] for k in INDOOR)
   outdoor=sum(probs[k] for k in OUTDOOR)
   # Confidence needs calibration against real generated examples. Use a strong margin.
@@ -144,11 +159,17 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     reasons.append("Market square resembles an interior furnished room")
    elif probs.get("outdoor_market_square",0)<.14:
     warnings.append("Market square details weak or ambiguous")
+ if kind=="background" and expected in (OUTDOOR|INDOOR):
+  # Consistent with scene QA: a strongly conflicting indoor/outdoor label
+  # is a rejection, not a technically-passed background.
+  _,bg_conflicts,_=scene_location_evidence(expected,probs)
+  reasons.extend(bg_conflicts)
  if neural_story:
   expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
   people_scores=score_principal_people(image,clip_embedding)
   scene_count_verified,count_reasons,scene_count_confidence=principal_count_evidence(
-    expected_count,people_scores)
+    expected_count,people_scores,
+    ((spec.get("visual_contract") or {}).get("crowd") or {}).get("policy","none"))
   scene_location_verified,location_reasons,scene_location_confidence=scene_location_evidence(
     expected,probs)
   reasons.extend(count_reasons)
@@ -277,16 +298,18 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    similarity=round(float((embed[0]*embed[1]).sum()),4)
   # In the observed regression 0.77 was passed with only a warning,
   # despite a visibly different face. Do not publish such a variant.
-  if similarity<.80:
+  decision=face_similarity_decision(spec,similarity,caption)
+  if decision["verdict"]=="violated":
    reasons.append(f"Character identity differs from canonical anchor (CLIP face similarity {similarity:.2f}, required 0.80)")
-  elif similarity<.86:
+  elif decision["reason"]=="face_similarity_borderline":
    warnings.append(f"Character resemblance is borderline (similarity {similarity:.2f})")
  scores={k:round(float(v),3) for k,v in probs.items()}
  return {"status":"failed" if reasons else "passed","reasons":reasons[:8],
    "warnings":warnings[:8],"caption":caption,
    "class_scores":scores,"environment":max(scores,key=scores.get) if scores else "not_checked",
    "identity_similarity":similarity,
-   "identity_face_visibility":face_visibility.get("verdict","not_checked"),
+   "identity_face_visibility":(face_similarity_decision(spec,similarity,caption)["verdict"]
+       if kind=="sprite" else "not_checked"),
    "scene_count_verified":scene_count_verified,
    "scene_location_verified":scene_location_verified,
    "scene_count_confidence":scene_count_confidence,

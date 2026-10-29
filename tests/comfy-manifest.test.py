@@ -1,0 +1,22 @@
+import os,tempfile,sys,unittest
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
+from comfy_manifest import key,persist,load,digest
+class Manifest(unittest.TestCase):
+ def setUp(self):
+  self.tmp=tempfile.TemporaryDirectory()
+  os.environ["VN_COMFY_MANIFEST_DIR"]=self.tmp.name
+  self.job={"id":"11111111-1111-4111-8111-111111111111","kind":"scene",
+    "style":"realistic","attempts":1,"prompt":"one market","spec":{"spec_version":5}}
+ def tearDown(self):
+  self.tmp.cleanup()
+  os.environ.pop("VN_COMFY_MANIFEST_DIR",None)
+ def test_durable_resume_does_not_accept_altered_spec(self):
+  item=persist(self.job,"22222222-2222-4222-8222-222222222222","sha")
+  self.assertEqual(load(self.job)["prompt_id"],item["prompt_id"])
+  self.assertEqual(key(self.job).stat().st_mode&0o777,0o600)
+  changed={**self.job,"spec":{"spec_version":6}}
+  self.assertIsNone(load(changed))
+ def test_graph_digest_is_stable(self):
+  self.assertEqual(digest({"b":2,"a":1}),digest({"a":1,"b":2}))
+if __name__=="__main__":unittest.main()

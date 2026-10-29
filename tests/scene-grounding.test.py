@@ -22,6 +22,20 @@ WRONG_FOREST={"outdoor_market_square":.044,"outdoor_street":.083,
  "outdoor_forest":.468,"outdoor_courtyard":.047}
 
 class SceneEvidenceTest(unittest.TestCase):
+ def test_strong_indoor_conflict_rejected_for_market(self):
+  scores={"outdoor_market_square":.128,"outdoor_street":.134,
+    "outdoor_courtyard":.057,"outdoor_forest":.02,
+    "indoor_room":.116,"indoor_tavern":.235,"underground_cave":.309}
+  ok,reasons,_=scene_location_evidence("outdoor_market_square",scores)
+  self.assertFalse(ok)
+  self.assertIn("indoor evidence",reasons[0])
+ def test_ambiguous_market_never_claims_verified(self):
+  scores={"outdoor_market_square":.17,"outdoor_street":.22,
+    "outdoor_courtyard":.06,"outdoor_forest":.10,
+    "indoor_room":.08,"indoor_tavern":.24,"underground_cave":.13}
+  ok,reasons,_=scene_location_evidence("outdoor_market_square",scores)
+  self.assertFalse(ok)
+  self.assertEqual(reasons,[])
  def test_correct_two_person_market_frame_is_accepted(self):
   ok,reasons,confidence=principal_count_evidence(2,GOOD_TWO)
   self.assertTrue(ok,reasons)

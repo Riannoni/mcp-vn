@@ -66,3 +66,11 @@ Grok отдаёт полные английские промпты. Для ло�
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/VN-WEB.md](docs/VN-WEB.md), [docs/RENDER-POLICY-v64.md](docs/RENDER-POLICY-v64.md).
 - [Текущий конвейер фонов, спрайтов и CG](docs/RENDER-PIPELINE.md) — статус реализации и оставшиеся проверки качества.
 - [Общий движок и будущий каталог игр](docs/ENGINE-CATALOG.md) — проектирование следующего этапа; дальнейшая разработка каталога приостановлена.
+
+## Development roadmap
+
+The durable, cross-conversation project roadmap and acceptance criteria live in
+[docs/ROADMAP.md](docs/ROADMAP.md) and the master
+[GitHub roadmap Issue #20](https://github.com/Riannoni/mcp-vn/issues/20).
+See linked P0, P1 and P2 Issues for implementation status; do not infer that
+an open benchmark item is completed merely because a related module exists.

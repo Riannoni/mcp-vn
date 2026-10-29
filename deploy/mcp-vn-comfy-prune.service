@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune only aged private mcp-vn ComfyUI input and output files
+After=mcp-vn-comfy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/Xavok/.local/share/mcp-vn/prune-comfy-temp.py --input /home/Xavok/.local/share/mcp-vn-comfy/input --output /home/Xavok/.local/share/mcp-vn-comfy/output --days 30 --limit 200 --apply
+NoNewPrivileges=true
+UMask=0077
