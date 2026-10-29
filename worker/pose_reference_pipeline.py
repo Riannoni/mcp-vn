@@ -55,6 +55,30 @@ EXTERNAL_CANDIDATES = {
         "url": "https://storage.googleapis.com/jacksonh/1/Five-Minute-ExercisesFeatured.webp",
         "page": "https://jacksonhealth.org/five-minute-exercises-to-help-lower-blood-pressure/",
         "action": "palms_on_wall", "camera": "side"},
+    "wall_push_rear_oblique_01": {
+        "url":"https://www.fitmetsteffie.nl/cache/media/2365698085c4b146files-Lijst-oefeningen-push-up-wall.jpg",
+        "page":"https://www.fitmetsteffie.nl/nl/oefeningen/opdrukken-tegen-de-muur.html",
+        "action":"palms_on_wall","camera":"rear"},
+    "wall_push_rear_oblique_02": {
+        "url":"https://cdn.shopify.com/s/files/1/0267/3351/0727/files/wall-push-ups-buoy_1024x1024.jpg?v=1736870521",
+        "page":"https://justaddbuoy.com/blogs/pots-resources/low-impact-exercises-for-pots",
+        "action":"palms_on_wall","camera":"rear"},
+    "hip_hinge_side_01": {
+        "url":"https://yogaselection.com/wp-content/uploads/2024/05/ardha-uttanasana.png",
+        "page":"https://yogaselection.com/10-essential-iyengar-yoga-poses-for-beginners/",
+        "action":"palms_on_wall_hip_hinge","camera":"side"},
+    "hip_hinge_side_02": {
+        "url":"https://cdn.shopify.com/s/files/1/0589/6621/2814/files/AmyIppolitiHandsattheWallCorrect.jpg",
+        "page":"https://www.toesox.com/blogs/toe-sox/5-steps-to-touching-your-toes",
+        "action":"palms_on_wall_hip_hinge","camera":"side"},
+    "hip_hinge_rear_oblique_01": {
+        "url":"https://media.graphassets.com/resize%3Dfit%3Aclip%2Cheight%3A350%2Cwidth%3A600/resize%3Dwidth%3A1080%2Cheight%3A1080/25CPNVtR9SIrJyJYSnqb",
+        "page":"https://www.myyogateacher.com/yoga-asana/uttanasana",
+        "action":"palms_on_wall_hip_hinge","camera":"rear"},
+    "hip_hinge_rear_oblique_02": {
+        "url":"https://rmyyrqiqfdzgaycwjrqc.supabase.co/storage/v1/object/public/blog-images/posts/wall-yoga-poses/5cc71324df5b4195bf8b06ab7f67e063.jpg",
+        "page":"https://better5.com/wall-yoga-poses",
+        "action":"palms_on_wall_hip_hinge","camera":"rear"},
 }
 
 
@@ -93,8 +117,13 @@ def _safe_text(metadata, key):
 def download_references(root=DEFAULT_ROOT):
     root = Path(root)
     (root/"refs").mkdir(parents=True, exist_ok=True)
-    manifest = []
+    existing_path=root/"manifest.json"
+    manifest=json.loads(existing_path.read_text()) if existing_path.exists() else []
+    existing={str(item.get("id")) for item in manifest}
     for name, info in CURATED.items():
+        if name in existing:
+            print("SKIP_EXISTING_REFERENCE",name,flush=True)
+            continue
         params = urlencode({
             "action":"query", "titles":info["title"], "prop":"imageinfo",
             "iiprop":"url|extmetadata", "iiurlwidth":"1200", "format":"json",
@@ -129,6 +158,9 @@ def download_references(root=DEFAULT_ROOT):
         })
         print("REF", name, w, h, license_name, flush=True)
     for name,item in EXTERNAL_CANDIDATES.items():
+        if name in existing:
+            print("SKIP_EXISTING_REFERENCE",name,flush=True)
+            continue
         raw=_download(item["url"])
         import io
         with Image.open(io.BytesIO(raw)) as img:
@@ -144,7 +176,7 @@ def download_references(root=DEFAULT_ROOT):
             "usage_scope":"private_local_pose_review_no_photo_redistribution",
             "author":"external publisher (unverified)",
             "action":item["action"],"camera":item["camera"],
-            "description":"Adult with palms on a vertical wall, side view",
+            "description":"Adult with palms on a vertical wall; shot direction: "+item["camera"],
             "reference":"refs/"+name+".jpg","reference_sha256":_sha(out.read_bytes()),
             "dimensions":[width,height],"guide":None,"keypoints":None,
             "extraction_status":"pending","status":"draft","approved":False,
