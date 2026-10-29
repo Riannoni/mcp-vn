@@ -1,6 +1,7 @@
 """Lightweight deterministic vetoes for strong contradictions in VLM scene captions."""
 import re
 from wardrobe_contract import wants_unclothed, clothing_alignment
+from scene_action_contract import resolve_scene_action
 
 _EXTRA_PERSON=re.compile(
     r"\b(?:another (?:person|woman|man|adult|figure|stands|is)|"
@@ -22,15 +23,14 @@ def scene_action_conflicts(characters,caption,narrator_prompt):
         return []
     intended=str(narrator_prompt or "").lower()
     pose=str(people[0].get("pose","")).lower()
-    wants_brace=(
-        ("wall" in intended or "masonry" in intended) and
-        ("lean" in intended or "brac" in intended or "palm" in intended or
-         "lean" in pose)
-    )
+    wants_brace=resolve_scene_action({
+        "composition":"neural_story","characters":people,
+        "prompt":narrator_prompt
+    })["required"]
     if not wants_brace:
         return []
     desc=str(caption).lower()
-    if re.search(r"(?<![a-z])(?:lying|laying|reclining|crawling|sitting)(?![a-z])",desc):
+    if re.search(r"(?<![a-z])(?:lying|laying|reclining|crawling|sitting|kneeling|crouching|squatting)(?![a-z])",desc):
         return ["CG physical pose contradicts intended standing wall contact"]
     if re.search(r"(?<![a-z])(?:hand|hands|elbow|elbows)(?![a-z]).{0,25}"
                  r"(?<![a-z])(?:ground|paving|pavement|street)(?![a-z])",desc):
