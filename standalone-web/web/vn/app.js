@@ -81,8 +81,12 @@ function renderVisualJobs(jobs){
   const name=(JOB_KINDS[j.kind]||j.kind||"Арт")+
    (j.character?" · "+j.character:"")+(j.style?" · "+j.style:"");
   row.append(label("strong",name));
+  const qaRejected=j.status==="failed"&&(
+   j.qa?.passed===false||j.qa?.reasons?.length>0||
+   /CG pose does not match|rejected by QA|semantic QA|scene location|scene count/i.test(j.error||""));
   const stage=j.status==="done"?"Готово":
-   j.status==="failed"?"Ошибка":JOB_STAGES[j.stage]||JOB_STAGES[j.status]||"В работе";
+   j.status==="failed"?(qaRejected?"Сгенерировано, отклонено QA":"Ошибка генерации"):
+   JOB_STAGES[j.stage]||JOB_STAGES[j.status]||"В работе";
   const pct=Number.isFinite(Number(j.progress))?
    Math.max(0,Math.min(100,Math.round(Number(j.progress)))):0;
   row.append(label("span",stage+(j.status==="working"?" · "+pct+"%":""),"job-state"));
