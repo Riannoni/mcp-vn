@@ -24,6 +24,7 @@ from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
 from scene_constraints import scene_constraints
 from pose_library import select_story_pose
+from pose_reference_selector import choose_approved_reference
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -667,9 +668,20 @@ def image_graph(job):
             pose_kind = "leaning_wall_rear"
     pose_filename=pose_control_guide(pose_kind)
     use_pose_library_v2=False
+    approved_reference=None
+    if kind=="scene" and spec.get("composition")=="neural_story" and (
+        os.environ.get("VN_POSE_REFERENCE_ENABLED","1").lower() in ("1","true","yes")
+    ):
+        approved_reference,decision=choose_approved_reference(str(job.get("prompt") or ""))
+        if approved_reference:
+            pose_kind=approved_reference["name"]
+            pose_filename=approved_reference["file"].name
+            print("POSE_REFERENCE_SELECTED",job["id"],pose_kind,flush=True)
+        else:
+            print("POSE_REFERENCE_SKIPPED",job["id"],decision,flush=True)
     # Draft library: opt-in only. A near-match must never silently override
     # the storyteller's camera geometry or a previously approved guide.
-    if kind=="scene" and spec.get("composition")=="neural_story" and (
+    if approved_reference is None and kind=="scene" and spec.get("composition")=="neural_story" and (
         os.environ.get("VN_POSE_LIBRARY_V2","0").lower() in ("1","true","yes")
     ):
         suggested=select_story_pose(str(job.get("prompt") or ""))
@@ -688,8 +700,10 @@ def image_graph(job):
             if use_pose_library_v2:
                 directory=Path(os.environ.get("VN_POSE_LIBRARY_V2_DIR",
                     str(Path.home()/".local/share/mcp-vn/pose-guides-v2/cg")))
+            if approved_reference:
+                directory=approved_reference["file"].parent
             filename=directory/pose_filename
-            if use_pose_library_v2 and filename.is_file():
+            if (use_pose_library_v2 or approved_reference) and filename.is_file():
                 with Image.open(filename) as guide_image:
                     if guide_image.size!=(width,height):
                         raise ValueError("CG OpenPose guide has wrong canvas size")
