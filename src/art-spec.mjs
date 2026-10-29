@@ -1,4 +1,5 @@
 import {environmentFor} from "./environment.mjs";
+import {buildSceneContract} from "./scene-contract.mjs";
 import {engineSnapshot} from "./engine-policy.mjs";
 import {variantKey,visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 import {requireStyle} from "./art-style.mjs";
@@ -125,10 +126,14 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
   resolution:preview_only?(kind==="sprite"?[640,960]:
     kind==="local_cg"?[896,1152]:kind==="scene"?[1216,704]:[896,512]):
     kind==="sprite"?[832,1216]:kind==="video"?[512,288]:[1216,704],
+  visual_contract:null,
   required_checks:kind==="sprite"?["png_dimensions","nonempty_alpha","foreground_bounds","single_character"]:
     ["file_signature","dimensions","scene_semantics"],
   max_attempts:quality==="fast"?2:3
  };
+ if(["scene","local_cg"].includes(kind))
+  spec.visual_contract=buildSceneContract({kind,environment,location,characters,
+    state:local_visual_state,scene});
  return spec;
 }
 export function currentSceneMatches(g,spec){

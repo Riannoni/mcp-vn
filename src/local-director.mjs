@@ -7,6 +7,20 @@ const namesEqual=(a,b)=>trim(a,120).toLocaleLowerCase("ru")===
   trim(b,120).toLocaleLowerCase("ru");
 const asObject=x=>x&&typeof x==="object"&&!Array.isArray(x)?x:{};
 const DETAIL_KEYS=["outfit","pose","expression","equipment","action"];
+const validRegion=r=>Array.isArray(r)&&r.length===4&&r.every(v=>
+ typeof v==="number"&&Number.isFinite(v))&&r[0]>=0&&r[1]>=0&&r[2]>0&&r[3]>0&&
+ r[0]+r[2]<=1&&r[1]+r[3]<=1;
+const crowdPolicy=x=>["none","ambient","crowd","unspecified"].includes(x)?x:"unspecified";
+const contactsOf=(input,names)=>{
+ if(!Array.isArray(input))return [];
+ const nameset=new Set(names.map(x=>trim(x,100).toLowerCase()));
+ return input.slice(0,12).map(c=>({
+  actor:trim(c?.actor,100),target:trim(c?.target,100),
+  kind:trim(c?.kind,30),body_part:trim(c?.body_part,40),
+  target_region:validRegion(c?.target_region)?c.target_region:null
+ })).filter(c=>nameset.has(c.actor.toLowerCase())&&c.target&&
+   ["touch","hold","support","lean_on"].includes(c.kind));
+};
 const CAMERA_DEFAULT="cinematic medium two-shot, natural perspective";
 
 export function initialVisualState(game){
@@ -19,8 +33,11 @@ export function initialVisualState(game){
   camera:actors.length===1?"cinematic medium single-character shot, natural perspective":CAMERA_DEFAULT,
   lighting:trim(scene.time_of_day||"natural ambient light",240),
   activity:"",
+  crowd_policy:crowdPolicy(scene.crowd_policy||"unspecified"),
+  contacts:contactsOf(scene.contacts||[],actors.map(x=>x.name)),
   characters:actors.map(x=>({
    name:trim(x.name,100),
+   actor_region:validRegion(x.actor_region)?x.actor_region:null,
    outfit:trim(x.outfit||"established appearance",350),
    pose:trim(x.pose||"standing",300),
    expression:trim(x.emotion||"neutral",200),
@@ -43,10 +60,13 @@ function legacyToState(previous,game){
    camera:trim(prev.camera,320)||baseline.camera,
    lighting:trim(prev.lighting,240)||baseline.lighting,
    activity:trim(prev.activity,500),
+   crowd_policy:crowdPolicy(prev.crowd_policy||baseline.crowd_policy),
+   contacts:contactsOf(prev.contacts||baseline.contacts,baseline.characters.map(x=>x.name)),
    characters:baseline.characters.map(actor=>{
     const old=asObject((prev.characters||[]).find(x=>namesEqual(x.name,actor.name)));
     return {...actor,...Object.fromEntries(DETAIL_KEYS.map(k=>[k,
-      old[k]===undefined?actor[k]:trim(old[k],k==="outfit"?350:300)]))}
+      old[k]===undefined?actor[k]:trim(old[k],k==="outfit"?350:300)])),
+      actor_region:validRegion(old.actor_region)?old.actor_region:actor.actor_region}
    }),
    render:!!prev.render,source:trim(prev.source,60)||"restored",
    last_queued:!!prev.last_queued,last_job_id:trim(prev.last_job_id,60)
@@ -70,6 +90,9 @@ export const DIRECTOR_SYSTEM=[
  "Structure: {\"location\":\"...\",\"environment\":\"...\",\"camera\":\"...\",\"lighting\":\"...\",\"activity\":\"...\",\"characters\":[{\"name\":\"...\",\"outfit\":\"...\",\"pose\":\"...\",\"expression\":\"...\",\"equipment\":\"...\",\"action\":\"...\"}],\"render\":true}.",
  "Describe clothing state, body contact, pose and lighting precisely when the scene is intimate or explicit. Do not censor confirmed events.",
  "Each character's outfit, gear, posture, expression and physical action persist until an actual narrated event changes them. Include every visible character.",
+ "Optional blocking fields: include actor_region:[x,y,width,height] for characters only when their approximate normalized screen positions are supported by the requested camera. Each value is within 0..1, and rectangles must fit inside frame. If unknown, omit.",
+ "Include crowd_policy:'none','ambient','crowd' or 'unspecified'. Anonymous background pedestrians are NOT additional named principals.",
+ "Optional contacts:[{actor:'existing cast name',target:'physical surface/object',kind:'touch|hold|support|lean_on',body_part:'hands',target_region:[x,y,w,h]}] ONLY for explicitly confirmed physical interactions. Do not guess target regions; omit unknown ones.",
  "Keep everything consistent with the latest confirmed NPC narration. A player request that an NPC rejected is NOT an accomplished change.",
  "Treat the previous visual state as authoritative continuity. Update fields precisely when armor changes, clothes are removed, characters lie down, embrace, etc.",
  "Camera may be any shot. Location and lighting may change when the narrative changes them. Do not invent strangers or rewrite identities.",
@@ -126,7 +149,8 @@ function sceneBits(state){
  return {
   location:state.location,environment:state.environment,
   camera:state.camera,lighting:state.lighting,activity:state.activity,
-  characters:state.characters
+  characters:state.characters,crowd_policy:state.crowd_policy,
+  contacts:state.contacts
  };
 }
 
@@ -150,7 +174,10 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
   const incoming=asObject(byName.find(x=>namesEqual(x.name,actor.name)));
   return {...actor,...Object.fromEntries(DETAIL_KEYS.map(key=>[
    key,incoming[key]===undefined?actor[key]:trim(incoming[key],key==="outfit"?350:300)
-  ]))}
+  ])),
+   actor_region:incoming.actor_region===null?null:
+    validRegion(incoming.actor_region)?incoming.actor_region:
+    (incoming.pose!==undefined&&incoming.pose!==actor.pose)?null:actor.actor_region}
  });
  const state={
   schema:2,
@@ -159,15 +186,27 @@ export function parseDirectorPlan(raw,{previous=null,game=null,
   camera:input.camera===undefined?before.camera:trim(input.camera,320),
   lighting:input.lighting===undefined?before.lighting:trim(input.lighting,240),
   activity:input.activity===undefined?before.activity:trim(input.activity,500),
+  crowd_policy:input.crowd_policy===undefined?before.crowd_policy:
+    crowdPolicy(input.crowd_policy),
+  contacts:[],
   characters
  };
+ state.contacts=input.contacts!==undefined?
+  contactsOf(input.contacts,characters.map(c=>c.name)):
+  // Old contacts are stale after a changed pose/action unless reasserted.
+  (characters.some((c,i)=>c.pose!==before.characters[i]?.pose||
+    c.action!==before.characters[i]?.action)?[]:
+    contactsOf(before.contacts,characters.map(c=>c.name)));
  const changed=JSON.stringify(sceneBits(state))!==JSON.stringify(sceneBits(before));
  const materialChange=state.location!==before.location||
   state.environment!==before.environment||
   state.characters.some((actor,i)=>{
    const old=before.characters[i];
    return ["outfit","pose","equipment","action"].some(k=>actor[k]!==old[k]);
-  });
+  })||JSON.stringify(state.contacts)!==JSON.stringify(before.contacts)||
+   state.crowd_policy!==before.crowd_policy||
+   state.characters.some((actor,i)=>JSON.stringify(actor.actor_region)!==
+     JSON.stringify(before.characters[i]?.actor_region));
  return {
   plan:{...state,render:(input.render||materialChange)&&
     (changed||!before.last_queued),source:"ai_director"},

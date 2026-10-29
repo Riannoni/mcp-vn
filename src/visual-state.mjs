@@ -29,12 +29,14 @@ export function visualFingerprint(scene){
 export function sceneIntentFingerprint(scene={}){
  const people=(scene.sprites||[]).map(x=>[
   norm(x.name,""),norm(x.outfit,"default"),norm(x.pose,"standing"),
-  norm(x.emotion,"neutral")
+  norm(x.emotion,"neutral"),Array.isArray(x.actor_region)?
+     JSON.stringify(x.actor_region):""
  ]);
  return JSON.stringify([norm(scene.location,""),assetId(scene.background_url),
   norm(scene.time_of_day,""),norm(scene.weather,""),
   Number(scene.cg_revision||0),norm(scene.visual_direction,""),
-  norm(scene.image_prompts?.cg,""),people]);
+  norm(scene.image_prompts?.cg,""),norm(scene.crowd_policy,"unspecified"),
+  JSON.stringify(scene.contacts||[]),people]);
 }
 export function normalizeSprite(sprite={},identity={},sceneBackground="",gameStyle=""){
  const s={...sprite};

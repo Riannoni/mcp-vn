@@ -133,3 +133,18 @@ test("internal v5.9 visual control tag is removed from user narration",()=>{
  const x=extractLocalVisual("Mira nods. \n[[VN_VISUAL shot=embrace wardrobe=canonical mood=smile render=yes]]");
  assert.equal(x.narration,"Mira nods.");
 });
+test("director preserves explicit regions and clears stale contact after a pose change",()=>{
+ const first=parseDirectorPlan(JSON.stringify({characters:[
+  {name:"Мира",pose:"standing against a wall",actor_region:[.1,.1,.35,.82]}],
+  contacts:[{actor:"Мира",target:"wall",kind:"touch",body_part:"hands",
+    target_region:[.42,.1,.1,.75]}],crowd_policy:"none",render:true}),
+  {previous:initial,game}).plan;
+ assert.equal(first.contacts.length,1);
+ assert.deepEqual(first.characters[1].actor_region,[.1,.1,.35,.82]);
+ const second=parseDirectorPlan(JSON.stringify({characters:[
+  {name:"Мира",pose:"walking away"}],render:false}),
+  {previous:{...first,last_queued:true},game}).plan;
+ assert.deepEqual(second.contacts,[]);
+ assert.equal(second.characters[1].actor_region,null);
+ assert.equal(second.render,true);
+});

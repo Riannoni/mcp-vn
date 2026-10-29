@@ -1,0 +1,7 @@
+{
+ "description":"Small manually reviewed diagnostics set from existing neutral saved CGs. It is NOT a representative accuracy benchmark; no user images committed.",
+ "pony.png":{"single_frame":true,"prominent_people":3,"background_extras":"present","exact_action":"unverified"},
+ "illustrious.png":{"single_frame":"uncertain","prominent_people":2,"background_extras":"absent","exact_action":"unverified"},
+ "anima.png":{"single_frame":false,"prominent_people":"duplicate_panels","background_extras":"unknown","exact_action":"failed"},
+ "zimage.png":{"single_frame":true,"prominent_people":2,"background_extras":"present","exact_action":"unverified"}
+}

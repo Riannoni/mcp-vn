@@ -24,7 +24,9 @@ from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
 from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
 from panel_guard import detect_four_panel_collage
+from local_repair import archive_rejected_candidate,apply_inpaint_graph,cleanup as cleanup_repair
 from scene_constraints import scene_constraints
+from scene_contract import scene_contract,crowd_condition
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
 from actor_layout import region_for_actor, assert_cast_supported
@@ -347,6 +349,9 @@ def prompt_builder(job, background):
         # a reference identity as a request for multiple appearances.
         positive=lead+positive
         negative=extra_negative+negative
+        crowd_positive,crowd_negative=crowd_condition(spec)
+        if crowd_positive:positive=crowd_positive+positive
+        if crowd_negative:negative=crowd_negative+", "+negative
         scene_positive,scene_negative=scene_constraints(spec,subject)
         if scene_positive:positive=scene_positive+" "+positive
         if scene_negative:negative=scene_negative+", "+negative
@@ -400,6 +405,7 @@ def image_graph(job):
     kind=job["kind"]
     spec=job.get("spec") or {}
     assert_engine_snapshot(spec.get("engine"))
+    scene_contract(spec)
     model,steps,cfg=STYLES[job["style"]]
     is_animation=job["style"]=="animation"
     vae_ref=["14",0] if is_animation else ["1",2]
@@ -769,6 +775,12 @@ def image_graph(job):
                 raise RuntimeError(
                     "Approved DWPose ControlNet could not be applied: "+str(error)) from error
             print("POSE_CONTROL_FALLBACK",job["id"],repr(error),flush=True)
+    # Try a bounded local edit only if the previous rejected attempt has an
+    # immutable, SHA-verified source and an independently grounded region.
+    # Otherwise the existing full-generation graph is retained unchanged.
+    if kind in ("scene","sprite","local_cg") and not is_animation:
+        if apply_inpaint_graph(job,graph,vae_ref,upload_to_comfy):
+            print("LOCAL_REPAIR_GRAPH",job["id"],retry_plan(job)["category"],flush=True)
     if is_animation and kind=="scene":
         # SDXL scene inpainting is incompatible with this model architecture.
         # The image is text-rendered as one coherent frame instead.
@@ -939,6 +951,12 @@ def assess(job,raw,background):
             try:
                 geometry=verify_with_comfy(job,output,ref,COMFY,OUTPUT,request,upload_to_comfy)
                 metrics["pose_geometry"]=geometry
+                contact_roi=geometry.get("contact_roi") or {}
+                if contact_roi.get("verdict")=="violated":
+                    reasons.append("CG hands are spatially separated from required contact surface")
+                if contact_roi:
+                    metrics["contact_roi_verdict"]=str(contact_roi.get("verdict","unobservable"))
+                    metrics["contact_roi_reason"]=str(contact_roi.get("reason",""))
                 if not geometry.get("verified"):
                     reasons.append("CG pose does not match approved DWPose reference: "+
                                    str(geometry.get("reason","unknown"))[:85])
@@ -975,6 +993,8 @@ def assess(job,raw,background):
                 metrics["environment_predicted"]=validation["environment"]
             if validation.get("identity_similarity") is not None:
                 metrics["identity_similarity"]=float(validation["identity_similarity"])
+            if validation.get("identity_face_visibility"):
+                metrics["identity_face_visibility"]=str(validation["identity_face_visibility"])
             # Independent visual-grounding measurements are retained in the
             # server job record. A generic VLM answer is not proof of the cast.
             for field in ("scene_action_observation","scene_action_evidence",
@@ -1022,9 +1042,12 @@ def assess(job,raw,background):
                               "confidence":metrics.get("scene_location_confidence")}
     if kind=="sprite":
         sim=metrics.get("identity_similarity")
-        evidence["identity"]={"verdict":"violated" if sim is not None and sim<.80 else
+        visibility=metrics.get("identity_face_visibility")
+        evidence["identity"]={"verdict":"unobservable" if visibility=="unobservable" else
+            "violated" if sim is not None and sim<.80 else
             "verified" if sim is not None and sim>=.86 else "unobservable",
-            "confidence":sim}
+            "confidence":sim if visibility!="unobservable" else None,
+            "reason":"face_occluded" if visibility=="unobservable" else "face_similarity"}
     if kind=="scene" and wall_brace_required(action_spec):
         features=metrics.get("scene_action_evidence")
         features=features if isinstance(features,dict) else {}
@@ -1083,6 +1106,14 @@ def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
            {"generation_ms":generation_ms,"postprocess_ms":post_ms})
         if composition_metrics:
             report.setdefault("metrics",{}).update(composition_metrics)
+        if not report["passed"]:
+            retry=retry_plan({**job,"attempts":int(job.get("attempts",1))+1,
+                         "error":"; ".join(report.get("reasons") or [])})
+            archived=archive_rejected_candidate(job,final,
+                report.get("reasons") or [],retry["category"])
+            if archived:report.setdefault("metrics",{})["repair_candidate_saved"]=True
+        else:
+            cleanup_repair(job)
         if job.get("kind")=="local_cg":
             report.setdefault("metrics",{})["checkpoint_name"]=(
                 os.environ.get("VN_LOCAL_CG_CHECKPOINT") or
@@ -1093,12 +1124,15 @@ def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
             if response["job"]["status"]!="working":
                 # A failed QA verdict must never be rewritten as passed.
                 # The game server owns retries and preserves all failure evidence.
+                if response["job"]["status"]!="queued":
+                    cleanup_repair(job)
                 print("QUALITY_REJECTED",job["id"],report.get("reasons"),flush=True)
                 return
         mime="video/mp4" if job["kind"]=="video" else "image/png"
         published=request(SERVER,"/worker/complete/"+job["id"],"POST",final,
                           {"Content-Type":mime},timeout=90)
         status=published["job"]
+        cleanup_repair(job)
         print("PUBLISHED",job["id"],"applied",status.get("applied"),
               "quality",status.get("quality_status"),"timings",status.get("timings"),flush=True)
     except Exception as error:

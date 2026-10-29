@@ -226,6 +226,17 @@ scene.image_prompts: {"background":"...","sprites":{"Имя персонажа":
 противоречить друг другу и репликам. Каждый нужный промпт — 1-3 точные
 английские фразы (до ~600 символов). Если действие только разговор,
 image_prompts не добавляй; не надо нового арта ради абзаца.
+Для сложной композиции допускаются дополнительные поля:
+scene.crowd_policy="none"|"ambient"|"crowd"|"unspecified" — наличие
+анонимных статистов не означает дополнительных главных персонажей.
+У каждого scene.sprites[i] может быть actor_region=[x,y,width,height]
+в долях кадра от 0 до 1 — только если ракурс и положение персонажа
+известны, иначе не указывай. Контакты отражай в scene.contacts:
+[{"actor":"точное имя персонажа","target":"стена",
+"kind":"touch","body_part":"hands",
+"target_region":[0.6,0.1,0.1,0.8]}].
+Не придумывай точную геометрию, если она неизвестна, и не подменяй
+физический контакт текстовым утверждением.
 Дополнительно scene.visual_direction можешь использовать для краткого
 резюме кадра; полные image_prompts имеют приоритет при генерации.
 Добавляй scene.visual_mode="cg" при значительном физическом действии,
@@ -286,6 +297,28 @@ def parse_answer(s):
    scene["visual_direction"]=visual["visual_direction"].strip()[:420]
   if visual.get("visual_mode") in ("cg","layers"):
    scene["visual_mode"]=visual["visual_mode"]
+  if visual.get("crowd_policy") in ("none","ambient","crowd","unspecified"):
+   scene["crowd_policy"]=visual["crowd_policy"]
+  if isinstance(visual.get("contacts"),list):
+   contacts=[]
+   for c in visual["contacts"][:12]:
+    if not isinstance(c,dict):continue
+    actor=str(c.get("actor") or "")[:100]
+    target=str(c.get("target") or "")[:100]
+    kind=c.get("kind")
+    if not actor or not target or kind not in ("touch","hold","support","lean_on"):
+     continue
+    item={"actor":actor,"target":target,"kind":kind,
+          "body_part":str(c.get("body_part") or "")[:40]}
+    region=c.get("target_region")
+    if (isinstance(region,list) and len(region)==4 and
+        all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in region)
+        and 0<=region[0]<1 and 0<=region[1]<1 and 0<region[2]<=1
+        and 0<region[3]<=1 and region[0]+region[2]<=1
+        and region[1]+region[3]<=1):
+     item["target_region"]=region
+    contacts.append(item)
+   scene["contacts"]=contacts
   prompts=visual.get("image_prompts")
   if isinstance(prompts,dict):
    clean={}
@@ -310,6 +343,12 @@ def parse_answer(s):
    for key,limit in (("emotion",60),("pose",80),("outfit",80)):
     if isinstance(actor.get(key),str) and actor[key].strip():
      item[key]=actor[key].strip()[:limit]
+   region=actor.get("actor_region")
+   if (isinstance(region,list) and len(region)==4 and
+       all(isinstance(v,(int,float)) and not isinstance(v,bool) for v in region)
+       and 0<=region[0]<1 and 0<=region[1]<1 and 0<region[2]<=1
+       and 0<region[3]<=1 and region[0]+region[2]<=1 and region[1]+region[3]<=1):
+    item["actor_region"]=region
    sprites.append(item)
   if sprites or not d["scene"]["sprites"]:scene["sprites"]=sprites
  flags={}

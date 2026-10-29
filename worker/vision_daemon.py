@@ -14,6 +14,7 @@ from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
 from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption, caption_asserts_single_person
+from identity_observation import face_observability
 from scene_action_contract import wall_brace_required, check_wall_action
 
 HOST="127.0.0.1"
@@ -264,6 +265,9 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     elif not same_color:
      warnings.append(f"QA could not verify wardrobe color {expected_color}")
  similarity=None
+ face_visibility=face_observability(spec) if kind=="sprite" else {}
+ if kind=="sprite" and face_visibility.get("verdict")=="unobservable":
+  warnings.append("Facial identity is not observable from the requested rear/occluded pose")
  if kind=="sprite" and identity_ref is not None and candidate_face is not None:
   pair=clip_processor(images=[identity_ref.convert("RGB"),candidate_face.convert("RGB")],return_tensors="pt")
   with torch.inference_mode():
@@ -282,6 +286,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    "warnings":warnings[:8],"caption":caption,
    "class_scores":scores,"environment":max(scores,key=scores.get) if scores else "not_checked",
    "identity_similarity":similarity,
+   "identity_face_visibility":face_visibility.get("verdict","not_checked"),
    "scene_count_verified":scene_count_verified,
    "scene_location_verified":scene_location_verified,
    "scene_count_confidence":scene_count_confidence,

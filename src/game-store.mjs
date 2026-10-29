@@ -224,6 +224,13 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
    outfit:x.outfit||"default",pose:x.pose||"standing",emotion:x.emotion||"neutral"
  }]));
  const previousDirection=g.scene.visual_direction||"";
+ const previousBlocking=JSON.stringify([
+  g.scene.crowd_policy||"",g.scene.contacts||[],
+  (g.scene.sprites||[]).map(x=>x.actor_region||null)]);
+ const validRegion=r=>Array.isArray(r)&&r.length===4&&r.every(v=>
+  typeof v==="number"&&Number.isFinite(v))&&r[0]>=0&&r[1]>=0&&
+  r[2]>0&&r[3]>0&&r[0]+r[2]<=1&&r[1]+r[3]<=1;
+
  const turn=++ensureMemory(g).turn;
  for(const m of messages)g.messages.push({id:randomUUID(),role:"narrator",speaker:txt(m.speaker||"Рассказчик",100),text:txt(m.text,10000),at:new Date().toISOString()});
  if(scene.location!==undefined||scene.time_of_day!==undefined||scene.weather!==undefined){
@@ -259,6 +266,29 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  }
  if(typeof scene.visual_direction==="string")
   g.scene.visual_direction=txt(scene.visual_direction,420);
+ if(scene.crowd_policy!==undefined){
+  const policy=txt(scene.crowd_policy,30).toLowerCase();
+  if(!["none","ambient","crowd","unspecified"].includes(policy))
+    throw Error("Invalid crowd policy");
+  g.scene.crowd_policy=policy;
+ }else if(scene.location!==undefined&&scene.location!==oldLocation){
+  g.scene.crowd_policy="unspecified";
+ }
+ // Contact targets must be explicit in the storyboard, not guessed from prose.
+ // Clear old contacts on a new pose/cast when no replacement is supplied.
+ if(scene.contacts!==undefined){
+  if(!Array.isArray(scene.contacts)||scene.contacts.length>12)
+    throw Error("Invalid scene contacts");
+  g.scene.contacts=scene.contacts.filter(c=>c&&typeof c==="object"&&
+      !Array.isArray(c)).map(c=>({
+   actor:txt(c.actor,100),target:txt(c.target,100),
+   kind:txt(c.kind,30),body_part:txt(c.body_part,40),
+   target_region:validRegion(c.target_region)?c.target_region:null
+  })).filter(c=>["touch","hold","support","lean_on"].includes(c.kind)&&
+     c.actor&&c.target);
+ }else if(scene.sprites!==undefined||scene.location!==undefined){
+  g.scene.contacts=[];
+ }
  // A prompt belongs to one visual beat, never an unrelated future pose.
  if(scene.image_prompts&&typeof scene.image_prompts==="object"&&!Array.isArray(scene.image_prompts)){
   const source=scene.image_prompts,art={};
@@ -296,6 +326,13 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
     emotion:txt(s.emotion||old.emotion||"neutral",60),
     outfit:txt(s.outfit||old.outfit||"default",80),
     pose:txt(s.pose||old.pose||"standing",80),
+    actor_region:s.actor_region===null?null:
+      validRegion(s.actor_region)?s.actor_region:
+      ((scene.location!==undefined&&scene.location!==oldLocation)||
+       (typeof scene.visual_direction==="string"&&
+        scene.visual_direction!==previousDirection)||
+       (s.pose!==undefined&&s.pose!==old.pose))?
+        null:(validRegion(old.actor_region)?old.actor_region:null),
     rendered_image_url:sameImage?old.rendered_image_url||old.image_url:url,
     rendered_variant_key:sameImage?old.rendered_variant_key||"":"",
     rendered_background_asset:sameImage?old.rendered_background_asset||"":""
@@ -312,7 +349,11 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
   });
  g.scene.auto_cg_requested=scene.visual_mode==="cg"?true:
   scene.visual_mode==="layers"?false:physicalChanged;
- const changedShot=physicalChanged||(scene.visual_mode==="cg"&&(
+ const currentBlocking=JSON.stringify([
+  g.scene.crowd_policy||"",g.scene.contacts||[],
+  (g.scene.sprites||[]).map(x=>x.actor_region||null)]);
+ const changedBlocking=previousBlocking!==currentBlocking;
+ const changedShot=physicalChanged||changedBlocking||(scene.visual_mode==="cg"&&(
   previousDirection!==(g.scene.visual_direction||"")||
   (typeof scene.image_prompts?.cg==="string"&&scene.image_prompts.cg.trim())));
  // Revisions are part of the accepted CG fingerprint. A brand-new camera

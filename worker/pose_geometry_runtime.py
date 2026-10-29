@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from pose_geometry_contract import inspect_approved_pose
+from contact_geometry import inspect_contact_region
 
 def verify_with_comfy(job,image_bytes,reference,comfy,output_dir,request,upload):
     root=reference["file"].parents[1]
@@ -57,6 +58,10 @@ def verify_with_comfy(job,image_bytes,reference,comfy,output_dir,request,upload)
         finally:
             path.unlink(missing_ok=True)
         verdict=inspect_approved_pose(expected,actual)
+        contract=(job.get("spec") or {}).get("visual_contract") or {}
+        contacts=contract.get("contacts") or []
+        if len(contacts)==1 and contacts[0].get("target_region"):
+            verdict["contact_roi"]=inspect_contact_region(actual,contacts[0])
         verdict["reference_id"]=reference["name"]
         verdict["duration_seconds"]=round(time.monotonic()-start,2)
         return verdict

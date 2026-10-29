@@ -91,3 +91,34 @@ semantic QA verdict; do not treat all rejected frames as a prompt failure.
 
 The system is **not** visually complete until these points are measured and
 shown to improve the real test scenes without relaxing QA.
+
+
+## Scene blocking and bounded repair (29 October 2026)
+
+A versioned `visual_contract` is attached to new CG job specs by the shared
+`src/scene-contract.mjs`. Named principals are distinct from anonymous extras;
+explicit normalized actor regions are optional and never invented. Story
+narration and local directing can supply `actor_region`, `crowd_policy`, and
+`contacts` with named actors, target objects and optional target regions.
+Changed positions/camera/contact invalidate stale CG and unset obsolete ROIs.
+Old job specs without this contract remain supported.
+
+`worker/scene_contract.py` validates cast and typed contacts before GPU work.
+For explicit hand-to-object regions, DWPose can mark strong spatial separation
+as a contradiction, while proximity is merely plausible (not contact proof).
+Occluded/rear view faces are marked unobservable in QA evidence, not identity
+verified. Production CLIP/VLM still decides according to existing hard gates.
+
+`worker/local_repair.py` allows strictly bounded masked repair of a rejected
+candidate only with a single, grounded ROI (identity, wardrobe or contact).
+Rejects lacking a trustworthy ROI use the existing full retry workflow.
+Candidates are local private files, SHA-verified and permission-restricted;
+repair uses ComfyUI `VAEEncodeForInpaint` and `ImageCompositeMasked`, then
+re-enters the unchanged full QA without bypass. A separate GPU smoke on a
+neutral CG verified the output size and zero modification outside the selected
+mask, but the visual accuracy of repair remains to be benchmarked at scale.
+
+Florence-2 object detections in `scripts/qa-actor-objects.py` are diagnostic
+only. They can support spatial occupancy/extras analysis when explicit actor
+regions exist, but cannot verify character identity. This model is not loaded
+by production and does not add overhead to normal render jobs.

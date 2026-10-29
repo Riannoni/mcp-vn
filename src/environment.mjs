@@ -2,7 +2,7 @@
 // Rules are generalizable; scenes can override with scene.environment.
 const rules=[
  {id:"outdoor_market_square",test:/площад|рынок|базар|market|town square|marketplace/i,
-  positive:["exterior outdoor public medieval market square","open sky","paved cobblestone ground","market stalls and outdoor shop fronts","town clock tower","pedestrians absent","streets leading out of square"],
+  positive:["exterior outdoor public medieval market square","open sky","paved cobblestone ground","market stalls and outdoor shop fronts","town clock tower","optional distant anonymous pedestrians","streets leading out of square"],
   negative:["interior","inside a room","bedroom","office","living room","wallpaper","chandelier","ceiling","indoor hallway","apartment","palace room"]},
  {id:"outdoor_street",test:/улиц|переул|проспект|алле|street|road|alley/i,
   positive:["outdoor street","open sky","road surface","distant buildings","external walls and roofs"],
