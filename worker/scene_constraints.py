@@ -6,6 +6,7 @@ inside a long positive prompt or the canonical face reference.
 """
 from wardrobe_contract import wants_unclothed
 from scene_action_contract import action_prompt_contract
+from pose_contracts import pose_contract
 
 def scene_constraints(spec, prompt):
     if spec.get("composition") != "neural_story":
@@ -37,6 +38,13 @@ def scene_constraints(spec, prompt):
                 "instead of the garments from the old character reference: "+
                 outfit[:160]+"."
             )
+    # A per-actor declarative pose is advisory text unless it has its own
+    # validated control reference. Never impose one actor's pose on the cast.
+    for actor in people:
+        descriptor=pose_contract(actor.get("pose"))
+        if descriptor and descriptor["id"] not in ("stand_three_quarter",):
+            positive.append("Actor "+str(actor.get("name",""))[:80]+
+                " physical pose: "+descriptor["description"]+".")
     # The same resolved contract now governs pose selection, conditioning and QA.
     action_positive,action_negative=action_prompt_contract(spec,prompt)
     if action_positive:positive.insert(0,action_positive)
