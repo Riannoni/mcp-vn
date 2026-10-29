@@ -8,47 +8,25 @@ from pathlib import Path
 import hashlib
 import json
 import os
+from scene_action_contract import scene_action_key, resolve_scene_action
 
 DEFAULT_ROOT=Path.home()/".local/share/mcp-vn/pose-references-v1"
-
-def scene_action_key(prompt, characters=None):
-    s=str(prompt or "").lower()
-    rear=any(x in s for x in ("rear view","from behind","view from the back", "rear three-quarter", "three-quarter rear", "back three-quarter"))
-    side=any(x in s for x in ("side view","from the side","profile view"))
-    wall=any(x in s for x in ("stone wall","brick wall","against the wall",
-        "palms on the wall","hands on the wall","wall push-up","wall pushup"))
-    palms=any(x in s for x in ("both palms","both hands","palms braced",
-        "hands braced","hands on the wall","palms on the wall"))
-    bending=any(x in s for x in ("leaning forward","leans forward",
-        "bending forward","bent forward","inclines toward the wall","wall push"))
-    hip_hinge=any(x in s for x in (
-        "bent at the waist","bend at the waist","bends at the waist",
-        "hinged at the hips","hinges at the hips","bends forward at the hips", "bending forward at the hips",
-        "torso horizontal","folded forward at the waist",
-        "folds forward at the waist","forward fold",
-        "bending forward at the waist", "leaning forward at the waist",
-        "hip hinge", "hip-hinge",
-        "legs straight", "straight legs", "knees straight",
-    ))
-    if wall and palms and bending:
-        action="palms_on_wall_hip_hinge" if hip_hinge else "palms_on_wall"
-        if rear:return (action,"rear")
-        if side:return (action,"side")
-    if (any(x in s for x in ("forward bend","bent forward","bending forward")) and
-        side and not wall):
-        return ("bend_forward","side_or_oblique")
-    return (None,None)
 
 def _digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-def choose_approved_reference(prompt,root=DEFAULT_ROOT):
+def choose_approved_reference(prompt,root=DEFAULT_ROOT,spec=None):
     root=Path(root).resolve()
     manifest=root/"manifest.json"
     if not manifest.is_file():
         return None,"no_manifest"
-    action,camera=scene_action_key(prompt)
+    contract=(resolve_scene_action({**spec,"prompt":prompt},prompt)
+              if isinstance(spec,dict) else
+              resolve_scene_action({"composition":"neural_story",
+                 "characters":[{"name":"single adult"}],"prompt":prompt}))
+    action,camera=contract["action"],contract["camera"]
     if action is None:return None,"no_exact_action"
+    if camera is None:return None,"camera_missing_or_ambiguous"
     try:
         entries=json.loads(manifest.read_text())
     except (OSError,ValueError):
