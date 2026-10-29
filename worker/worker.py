@@ -25,6 +25,8 @@ from neural_scene_guards import neural_scene_guards
 from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
+from scene_action_contract import wall_brace_required
+from pose_geometry_runtime import verify_with_comfy
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
 TOKEN = os.environ["VN_WORKER_TOKEN"]
@@ -673,6 +675,12 @@ def image_graph(job):
         os.environ.get("VN_POSE_REFERENCE_ENABLED","1").lower() in ("1","true","yes")
     ):
         approved_reference,decision=choose_approved_reference(str(job.get("prompt") or ""))
+        action_required=wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")})
+        print("POSE_REFERENCE_DECISION",job["id"],decision,
+              "required",action_required,flush=True)
+        if action_required and approved_reference is None:
+            # Do not spend three GPU retries on a shot we cannot constrain.
+            raise RuntimeError("Required wall-contact DWPose unavailable: "+decision)
         if approved_reference:
             pose_kind=approved_reference["name"]
             pose_filename=approved_reference["file"].name
@@ -690,6 +698,8 @@ def image_graph(job):
             pose_filename=suggested+".png"
             use_pose_library_v2=True
     env_enabled=os.environ.get("VN_POSE_CONTROL","1").lower() not in ("0","false","off")
+    if approved_reference is not None and not env_enabled:
+        raise RuntimeError("Approved DWPose was selected but ControlNet is disabled")
     previous_error=str(job.get("error","")).lower()
     if ((kind=="sprite" or (kind=="scene" and spec.get("composition")=="neural_story")) and not is_animation and env_enabled and pose_filename and
         not (job.get("attempts",1)>1 and ("controlnet" in previous_error or
@@ -721,8 +731,23 @@ def image_graph(job):
               "strength":0.78,"start_percent":0.0,"end_percent":0.86}}
             graph["5"]["inputs"]["positive"]=["25",0]
             graph["5"]["inputs"]["negative"]=["25",1]
+            if approved_reference:
+                control=graph.get("25",{})
+                assert (control.get("class_type")=="ControlNetApplyAdvanced"
+                    and graph["5"]["inputs"]["positive"]==["25",0]
+                    and graph["5"]["inputs"]["negative"]==["25",1]), (
+                        "Approved DWPose must be connected to the sampler")
+                print("POSE_CONTROL_GRAPH_VERIFIED",job["id"],
+                      approved_reference["name"],
+                      "guide",approved_reference["file"].name,
+                      "strength",control["inputs"]["strength"],
+                      "end",control["inputs"]["end_percent"],
+                      "nodes",("23","24","25"),flush=True)
             print("POSE_CONTROL_ACTIVE",job["id"],pose_kind,flush=True)
-        except (OSError,HTTPError,URLError,ValueError,TimeoutError) as error:
+        except (OSError,HTTPError,URLError,ValueError,TimeoutError,AssertionError) as error:
+            if approved_reference:
+                raise RuntimeError(
+                    "Approved DWPose ControlNet could not be applied: "+str(error)) from error
             print("POSE_CONTROL_FALLBACK",job["id"],repr(error),flush=True)
     if is_animation and kind=="scene":
         # SDXL scene inpainting is incompatible with this model architecture.
@@ -890,7 +915,8 @@ def assess(job,raw,background):
                 metrics["identity_similarity"]=float(validation["identity_similarity"])
             # Independent visual-grounding measurements are retained in the
             # server job record. A generic VLM answer is not proof of the cast.
-            for field in ("scene_count_verified","scene_location_verified",
+            for field in ("scene_action_observation","scene_action_evidence",
+                          "scene_count_verified","scene_location_verified",
                           "scene_count_confidence","scene_location_confidence",
                           "scene_solo_score","scene_pair_score",
                           "scene_action_contrast","scene_action_verified"):
@@ -904,6 +930,28 @@ def assess(job,raw,background):
         except (OSError,ValueError,TimeoutError,URLError,HTTPError) as error:
             semantic="unavailable"
             metrics["vlm_error"]=str(error)[:140]
+    # Pose similarity is independently measured from the generated frame.
+    # It is a veto, not a substitute for verifying real wall contact.
+    spec=job.get("spec") or {}
+    if kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
+        ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""))
+        if not ref:
+            reasons.append("CG pose reference unavailable for QA: "+ref_reason)
+            metrics["pose_geometry"]={"verified":False,"reason":ref_reason}
+        else:
+            try:
+                geometry=verify_with_comfy(job,output,ref,COMFY,OUTPUT,request,upload_to_comfy)
+                metrics["pose_geometry"]=geometry
+                if not geometry.get("verified"):
+                    reasons.append("CG pose does not match approved DWPose reference: "+
+                                   str(geometry.get("reason","unknown"))[:85])
+                elif metrics.get("scene_action_verified") is False:
+                    warnings.append(
+                        "DWPose body geometry matches, but physical wall contact was not independently confirmed")
+            except (OSError,ValueError,KeyError,HTTPError,URLError,TimeoutError) as err:
+                metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
+                    "details":str(err)[:140]}
+                reasons.append("CG pose geometry verification unavailable")
     # Location validation is critical: never replace the canonical background
     # with an unchecked room or an unrelated building if vision daemon is offline.
     spec=job.get("spec") or {}
