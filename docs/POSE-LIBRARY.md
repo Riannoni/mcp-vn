@@ -18,3 +18,12 @@ Each new pose should be A/B-tested against a text-only generation with the same 
 **Debugging:** a `POSE_CONTROL_ACTIVE` entry in the worker logs is evidence that the guide was actually applied to ComfyUI. Its absence means ControlNet had no effect even if the PNG is present on disk. Generated PNGs are reproducible from source; binary output is intentionally not committed to Git.
 
 References: [COCO-18 pose editor](https://github.com/hisashi-ito/bonepose) and [ControlNet OpenPose palette reference](https://github.com/lllyasviel/ControlNet/discussions/266).
+
+## Верификация на игровом ПК (29 октября 2026)
+
+Библиотека развёрнута на ПК в `~/.local/share/mcp-vn/pose-guides-v2`: по 33 PNG и 33 JSON для `cg` и `sprite`, плюс manifest и обзорный лист. Исходники и сервисы сверены с GitHub `main` (коммит `8a39383`). Старые подтверждённые `running.png` и `kneeling.png` не менялись.
+
+Сделаны два **изолированных ComfyUI A/B-теста** шаблона `brace_wall_rear`, на нейтральном персонаже в одежде. В каждом сравнении использовались одинаковые seed, описание, модель CyberRealistic Pony, 20 шагов и разрешение 1216×704. Первый вариант применял ControlNet strength 0.78 / end 0.86; второй — скорректированные координаты рук, strength 1.05 / end 0.92. Оба успешно завершились технически, но **не воспроизвели опору обеих ладоней на стену**. Визуальная корректность по исходному действию не улучшилась достаточно для автоматического применения.
+
+Результаты сохранены на игровом ПК в `~/.local/share/mcp-vn/pose-guides-v2/reviews/2026-10-29-wall-brace` (3 PNG и `evaluation.json`). Оценка: `not_approved`. **`VN_POSE_LIBRARY_V2` по-прежнему выключен**. Запись в каталоге не равна подтверждению пригодности отдельной позы. Дальнейший шаг — более надёжный референс позы (например, из реального изображения с детекцией ключевых точек), после чего повторный A/B и независимая QA действия.
+
