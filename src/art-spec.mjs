@@ -65,6 +65,11 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
   const canonical=identityFor(g,s.name);
   return {name:compact(s.name,100),appearance:characterDescription(g,s.name),
    sprite_asset:assetName(s.image_url),sprite_alpha:s.transparent===true,
+   // Optional storyteller-specified normalized foreground region [x,y,w,h].
+   // Omit when unknown; worker uses conservative equal-column group framing.
+   actor_region:Array.isArray(s.actor_region)&&s.actor_region.length===4&&
+     s.actor_region.every(v=>typeof v==="number"&&Number.isFinite(v))?
+     s.actor_region:null,
    visual_dirty:s.visual_dirty===true,
    desired_variant_key:s.desired_variant_key||variantKey(s),
    rendered_variant_key:s.rendered_variant_key||"",
