@@ -7,6 +7,8 @@ import {ensureMemory,patchMemory,recordEvent,closeChapterIfNeeded,queryMemory} f
 import {rememberScene,restoreScene} from "./scene-cache.mjs";
 import {ensureRules,setRulesMode,resolveCheck,getRuleSummary} from "./game-rules.mjs";
 import {pushGameEvent} from "./live-events.mjs";
+import {engineSnapshot} from "./engine-policy.mjs";
+import {normalizeStoryPackage} from "./story-package.mjs";
 import {prepareStoryCommand} from "./story-commands.mjs";
 const root=process.env.VN_DATA_DIR||"/data";
 const demo={
@@ -42,13 +44,34 @@ export async function list(kind){
  await init();const dir=kind==="stories"?"stories":"games";
  const f=(await fs.readdir(path.join(root,dir))).filter(x=>x.endsWith(".json"));
  const all=await Promise.all(f.map(x=>load(dir,x.slice(0,-5))));
- return all.map(x=>({id:x.id,title:x.title,summary:x.summary||"",hero:x.hero?.name||"",updated_at:x.updated_at||""}));
+ return all.map(x=>({id:x.id,title:x.title,summary:x.summary||"",
+   hero:x.hero?.name||"",updated_at:x.updated_at||"",
+   ...(dir==="stories"?{author:x.author||"",source:x.source||"original",
+     rights_confirmed:x.rights_confirmed===true,
+     package_schema:x.package_schema||"legacy",source_url:x.source_url||""}:{} )}));
+}
+// Imported packages are immutable story templates. They never overwrite saves,
+ // existing story IDs, or engine-wide rendering and QA rules.
+export async function importStoryPackage(packageData){
+ const story=normalizeStoryPackage(packageData);
+ return serialize(async()=>{
+  await init();
+  const dest=file("stories",story.id);
+  const temp=dest+"."+randomUUID()+".tmp";
+  try{
+   await fs.writeFile(temp,JSON.stringify(story),{mode:0o600,flag:"wx"});
+   await fs.link(temp,dest); // atomic no-overwrite, including across processes
+   return {id:story.id,title:story.title,source:story.source,
+       author:story.author,package_schema:story.package_schema};
+  }finally{await fs.rm(temp,{force:true})}
+ });
 }
 export async function gameGet(gameId){await init();const g=normalizeVisualState(ensureGameStyle(await load("games",gameId)));ensureMemory(g);ensureRules(g);return g}
 export async function gameStart(storyId="ash-gate",hero="Макс Кроу",
  description="",artStyle="realistic",rulesMode="narrative"){
  return serialize(async()=>{await init();const s=await load("stories",storyId),now=new Date().toISOString(),gid=randomUUID();
  const game={id:gid,story_id:s.id,title:s.title,
+   engine_contract:engineSnapshot(),
    art_style:requireStyle(artStyle),art_style_origin:"new_game",
    art_style_locked_at:now,
    hero:{name:txt(hero,100),description:txt(description,5000)},

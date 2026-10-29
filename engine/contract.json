@@ -1,0 +1,29 @@
+{
+  "engine_id": "mcp-vn",
+  "contract_version": 1,
+  "story_package_schema": "mcp-vn.story.v1",
+  "render": {
+    "profile": "vn-scene-v1",
+    "pose_catalog": "pose-contracts-v1",
+    "qa_policy": "strict-v1",
+    "max_anchored_principals_per_pass": 4,
+    "background_extras_modes": [
+      "none",
+      "ambient",
+      "crowd"
+    ]
+  },
+  "isolation": {
+    "story_templates": "stories",
+    "playthroughs": "games",
+    "jobs": "jobs",
+    "assets": "assets",
+    "game_overrides_engine_policy": false
+  },
+  "import": {
+    "network_fetch_enabled": false,
+    "requires_rights_confirmation": true,
+    "executes_scripts": false,
+    "remote_assets_enabled": false
+  }
+}

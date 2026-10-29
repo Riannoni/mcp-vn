@@ -7,7 +7,8 @@ Bystanders are not named principals and must not consume face anchors.
 """
 from __future__ import annotations
 
-MAX_CG_FACE_ANCHORS=4
+from engine_policy import read_engine_contract
+MAX_CG_FACE_ANCHORS=read_engine_contract()['render']['max_anchored_principals_per_pass']
 
 def region_for_actor(index,count,region=None):
     if not 1<=count<=MAX_CG_FACE_ANCHORS:

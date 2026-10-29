@@ -1,4 +1,5 @@
 import {environmentFor} from "./environment.mjs";
+import {engineSnapshot} from "./engine-policy.mjs";
 import {variantKey,visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 import {requireStyle} from "./art-style.mjs";
 const permittedStyle=new Set(["anime","animation","semireal","realistic","poster"]);
@@ -86,7 +87,8 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
    pose:compact(pose||sprite?.pose||"standing",280),
    emotion:compact(emotion||sprite?.emotion||"neutral",120)};
  const spec={
-  spec_version:10,kind,style,quality,preview_only:!!preview_only,
+  spec_version:10,engine:engineSnapshot(),story_id:g.story_id||"",
+  kind,style,quality,preview_only:!!preview_only,
   narrator_prompt:narrator_prompt===true,
   local_session_id:(kind==="local_cg"||video_start_asset)?
     (g.local_scene?.session_id||""):"",

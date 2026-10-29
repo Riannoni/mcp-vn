@@ -26,6 +26,7 @@ from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
 from actor_layout import region_for_actor, assert_cast_supported
+from engine_policy import assert_engine_snapshot
 from scene_action_contract import wall_brace_required,resolve_scene_action
 from pose_geometry_runtime import verify_with_comfy
 
@@ -185,6 +186,7 @@ def appearance_tags(description):
 
 def prompt_builder(job, background):
     spec=job.get("spec") or {}
+    assert_engine_snapshot(spec.get("engine"))
     kind=job["kind"]
     style=job["style"]
     lighting,_=background_context(background)
@@ -382,6 +384,7 @@ def prompt_builder(job, background):
 def image_graph(job):
     kind=job["kind"]
     spec=job.get("spec") or {}
+    assert_engine_snapshot(spec.get("engine"))
     model,steps,cfg=STYLES[job["style"]]
     is_animation=job["style"]=="animation"
     vae_ref=["14",0] if is_animation else ["1",2]

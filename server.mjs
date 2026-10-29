@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import * as games from "./src/game-store.mjs";
+import {engineSnapshot,ENGINE_POLICY} from "./src/engine-policy.mjs";
 import * as jobs from "./src/jobs.mjs";
 import {waitGameEvents} from "./src/live-events.mjs";
 import {makeNarrationPacket} from "./src/narration-packet.mjs";
@@ -34,6 +35,12 @@ const service=http.createServer(async(req,res)=>{
    const sub=u.pathname.slice("/worker/standalone/".length);
    if(req.method==="GET"&&sub==="games")
     return json(res,200,{games:await games.list("games")});
+   if(req.method==="GET"&&sub==="catalog")
+    return json(res,200,{stories:await games.list("stories")});
+   if(req.method==="GET"&&sub==="engine")
+    return json(res,200,{engine:engineSnapshot(),
+      story_package_schema:ENGINE_POLICY.story_package_schema,
+      import_capabilities:ENGINE_POLICY.import});
    const contextMatch=sub.match(/^context\/([a-f0-9-]{36})$/i);
    if(req.method==="GET"&&contextMatch)
     return json(res,200,{packet:await standaloneContext(contextMatch[1])});
