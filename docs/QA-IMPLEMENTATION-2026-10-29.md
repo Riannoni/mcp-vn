@@ -72,6 +72,33 @@ Baseline on two existing CGs (same image bytes and scene spec):
 CLIP verified two figures in both before and after. The change does not
 alter thresholds or let a genuinely explicit solo caption pass.
 
+### Newly confirmed four-panel CG defect and structural fix
+
+A read-only inspection of the four existing neutral sample CGs found
+`anima.png` is **four repeated panels**, not one coherent shot, but the
+old CLIP/SmolVLM pipeline accepted it as a valid two-person scene.
+Added `worker/panel_guard.py` (CPU Pillow + NumPy at 512x384)
+to detect strong orthogonal seam discontinuities and repeated
+vertically paired panels in single-frame `neural_story` CG. This is
+a deliberately conservative **2x2 repeated-panel** detector, not a
+complete panel/duplication classifier.
+
+Reproducible local test on four stored test images:
+- `anima.png`: seam ratios x=5.00 and y=6.07; repeated left=0.555,
+  right=0.383; **REJECTED before VLM**.
+- `pony.png`, `illustrious.png`, `zimage.png`: all panel flags
+  false; original semantic checking still runs.
+- A high-contrast *non-repeated* four-window grid is not treated
+  as a repeated storyboard.
+
+Panel failure produces a targeted `panel_layout` retry with an explicit
+single-view positive prompt and collage/tiled-image exclusions. A
+severe structural failure skips slow DWPose/VLM checks, but does not
+bypass other publication QA. This does not solve arbitrary collages,
+background extras, duplicated actors inside a continuous frame,
+occluded contacts, or incorrect hands. No accuracy claims beyond
+the neutral test set are made.
+
 ### Verification and rollback
 
 - Docker build executed the full Node suite: **135/135 tests passed**.

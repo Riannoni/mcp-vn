@@ -23,6 +23,7 @@ from scene_compositor import compose as compose_cg
 from pose_presets import pose_prompt,wants_fresh_latent,pose_control_guide
 from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
+from panel_guard import detect_four_panel_collage
 from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
@@ -870,6 +871,18 @@ def assess(job,raw,background):
     if kind=="scene" and (job.get("spec") or {}).get("composition")=="neural_story":
         metrics["visual_action_contract"]=resolve_scene_action(
             job.get("spec") or {},job.get("prompt") or (job.get("spec") or {}).get("prompt"))
+    spec=job.get("spec") or {}
+    if kind in ("scene","local_cg") and spec.get("composition")=="neural_story":
+        # Cheap structural QA before both GPU pose geometry and CPU VLM.
+        # A screenshot-like multi-panel layout is not an accepted single CG.
+        panels=detect_four_panel_collage(image)
+        metrics["panel_seam_x"]=panels["seam_x_ratio"]
+        metrics["panel_seam_y"]=panels["seam_y_ratio"]
+        metrics["panel_repeat_left"]=panels["repeat_left"]
+        metrics["panel_repeat_right"]=panels["repeat_right"]
+        metrics["panel_collage_detected"]=panels["detected"]
+        if panels["detected"]:
+            reasons.append("CG multi-panel collage: expected one continuous scene")
     if kind=="sprite":
         image=cutout(image)
         image=harmonize(image,background)
@@ -917,7 +930,7 @@ def assess(job,raw,background):
     # Cheap DWPose geometry before expensive CPU VLM: mismatched poses are
     # rejected without spending ~25s asking the VLM to describe other details.
     spec=job.get("spec") or {}
-    if kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
+    if not reasons and kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
         ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""),spec=spec)
         if not ref:
             reasons.append("CG pose reference unavailable for QA: "+ref_reason)
@@ -933,7 +946,10 @@ def assess(job,raw,background):
                 metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
                     "details":str(err)[:140]}
                 reasons.append("CG pose geometry verification unavailable")
-    if reasons and "pose_geometry" in metrics:
+    if reasons and metrics.get("panel_collage_detected"):
+        semantic="failed"
+        metrics["vlm_skipped_reason"]="panel_layout_failed"
+    elif reasons and "pose_geometry" in metrics:
         semantic="failed"
         metrics["vlm_skipped_reason"]="pose_geometry_failed"
     if not reasons and os.environ.get("VN_VISION_QA","1").lower() not in ("0","false","off"):

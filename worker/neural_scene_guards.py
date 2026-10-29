@@ -30,7 +30,9 @@ def neural_scene_guards(spec,attempts=1,error="",subject=""):
         )
     else:
         lead=f"Exactly {count} separate established principal characters and no clones. "
-        exclude="duplicate people, cloned faces, twins, second copy of subject, collage, "
+        exclude=("duplicate people, cloned faces, twins, second copy of subject, "
+                 "collage, split screen, four-panel illustration, storyboard, "
+                 "repeated viewpoints, repeated scene, tiled image, ")
     # Shot framing terms are not physical photography equipment.
     lead+="The described shot angle is the viewer's virtual viewpoint only. "
     # Suppress accidental physical props induced by camera-angle or

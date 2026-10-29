@@ -11,7 +11,14 @@ def retry_plan(job):
                          "control_strength":0.78,"control_end":0.86}
     error=str(job.get("error") or "").lower()
     kind=job.get("kind") or ""
-    if "pose" in error or "geometry" in error or "required joints" in error:
+    if "multi-panel collage" in error:
+        category="panel_layout"
+        positive=("RETRY COMPOSITION CORRECTION: one continuous cinematic scene, "
+                  "one camera viewpoint, one complete uninterrupted frame. "
+                  "Render the named cast exactly once with no repeated views.")
+        negative=("four-panel sheet, split screen, storyboard, comic panels, "
+                  "contact sheet, repeated poses, tiled collage, multiple frames")
+    elif "pose" in error or "geometry" in error or "required joints" in error:
         category="pose_geometry"
         positive=("RETRY POSE CORRECTION: the previous body geometry was wrong. "
                   "Follow the approved physical skeleton more closely. "
