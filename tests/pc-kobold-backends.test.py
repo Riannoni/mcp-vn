@@ -3,12 +3,31 @@
 from pathlib import Path
 import importlib.util, os, unittest
 from unittest.mock import patch
-p=Path.home()/".local/share/mcp-vn-kobold/gateway.py"
+p=Path(__file__).resolve().parents[1]/"deploy"/"kobold-gateway.py"
 spec=importlib.util.spec_from_file_location("vn_gateway",p)
 g=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
+class InstalledFileStub:
+ def __init__(self,size):self.size=size
+ def is_file(self):return True
+ def stat(self):
+  from types import SimpleNamespace
+  return SimpleNamespace(st_size=self.size)
+
 class BackendTests(unittest.TestCase):
- def setUp(self):g.ROCM_DISABLED.clear()
+ def setUp(self):
+  g.ROCM_DISABLED.clear()
+  # Test routing with simulated installed binaries and models. CI must
+  # not require private 5GB model weights or the workstation's filesystem.
+  q=InstalledFileStub(g.MODEL_SIZE)
+  c=InstalledFileStub(g.CYDONIA_SIZE)
+  for key,value in (("MODEL",q),("BINARY",InstalledFileStub(1)),
+                    ("BINARY_ROCM",InstalledFileStub(g.ROCM_BINARY_SIZE)),
+                    ("OPTIONS",{g.MODEL_ID:(q,g.MODEL_SIZE,8192,99),
+                                g.CYDONIA_ID:(c,g.CYDONIA_SIZE,4096,30)})):
+   p=patch.object(g,key,value)
+   p.start()
+   self.addCleanup(p.stop)
  def tearDown(self):g.ROCM_DISABLED.clear()
  def test_gpu_opt_in(self):
   with patch.dict(os.environ,{"VN_KOBOLD_BACKEND":"rocm","VN_KOBOLD_CPU_ONLY":"0"}):
