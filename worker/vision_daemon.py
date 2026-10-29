@@ -13,7 +13,7 @@ from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
-from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption
+from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption, caption_asserts_single_person
 from scene_action_contract import wall_brace_required, check_wall_action
 
 HOST="127.0.0.1"
@@ -79,37 +79,36 @@ def summarize(image,prompt,max_new_tokens=62):
  suffix=result[:,inputs["input_ids"].shape[1]:]
  return vlm_processor.batch_decode(suffix,skip_special_tokens=True)[0].strip()[:420]
 
-def score_environment(image):
+def image_embedding(image):
+ # Compute one normalized image representation for all CLIP label banks.
  inputs=clip_processor(images=image,return_tensors="pt")
  with torch.inference_mode():
-  img=clip.get_image_features(**inputs)
-  if hasattr(img,"pooler_output"):img=img.pooler_output
-  img=torch.nn.functional.normalize(img,dim=-1)
-  probs=torch.softmax((img@text_feats.T)*30,dim=1).squeeze(0).tolist()
+  emb=clip.get_image_features(**inputs)
+  if hasattr(emb,"pooler_output"):emb=emb.pooler_output
+  return torch.nn.functional.normalize(emb,dim=-1)
+
+def score_environment(image,embedding=None):
+ emb=embedding if embedding is not None else image_embedding(image)
+ with torch.inference_mode():
+  probs=torch.softmax((emb@text_feats.T)*30,dim=1).squeeze(0).tolist()
  return {name:round(float(p),4) for (name,_),p in zip(LABELS,probs)}
 
-def score_principal_people(image):
- inputs=clip_processor(images=image,return_tensors="pt")
+def score_principal_people(image,embedding=None):
+ emb=embedding if embedding is not None else image_embedding(image)
  with torch.inference_mode():
-  img=clip.get_image_features(**inputs)
-  if hasattr(img,"pooler_output"):img=img.pooler_output
-  img=torch.nn.functional.normalize(img,dim=-1)
-  scores=torch.softmax((img@count_feats.T)*30,dim=1).squeeze(0).tolist()
+  scores=torch.softmax((emb@count_feats.T)*30,dim=1).squeeze(0).tolist()
  return {name:round(float(p),4) for (name,_),p in zip(COUNT_LABELS,scores)}
 
-def score_action_contrast(image,spec):
+def score_action_contrast(image,spec,embedding=None):
  labels=action_contrast_captions(spec)
  if not labels:return None
+ emb=embedding if embedding is not None else image_embedding(image)
  txt=clip_processor(text=list(labels),return_tensors="pt",padding=True)
- img=clip_processor(images=image,return_tensors="pt")
  with torch.inference_mode():
   t=clip.get_text_features(**txt)
-  v=clip.get_image_features(**img)
   if hasattr(t,"pooler_output"):t=t.pooler_output
-  if hasattr(v,"pooler_output"):v=v.pooler_output
   t=torch.nn.functional.normalize(t,dim=-1)
-  v=torch.nn.functional.normalize(v,dim=-1)
-  relative=torch.softmax((v@t.T)*30,dim=1).squeeze(0).tolist()
+  relative=torch.softmax((emb@t.T)*30,dim=1).squeeze(0).tolist()
  return round(float(relative[0]),4)
 
 def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
@@ -127,9 +126,11 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  scene_action_verified=None
  scene_action_observation=""
  scene_action_evidence={}
+ # Reuse one image encoding for all CLIP comparisons; no verdict changes.
+ clip_embedding=image_embedding(image) if kind in ("background","scene") else None
  # Always use CLIP for environment; helps catch very obvious indoors/outdoors.
  if kind in ("background","scene"):
-  probs=score_environment(image)
+  probs=score_environment(image,clip_embedding)
   indoor=sum(probs[k] for k in INDOOR)
   outdoor=sum(probs[k] for k in OUTDOOR)
   # Confidence needs calibration against real generated examples. Use a strong margin.
@@ -144,7 +145,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     warnings.append("Market square details weak or ambiguous")
  if neural_story:
   expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
-  people_scores=score_principal_people(image)
+  people_scores=score_principal_people(image,clip_embedding)
   scene_count_verified,count_reasons,scene_count_confidence=principal_count_evidence(
     expected_count,people_scores)
   scene_location_verified,location_reasons,scene_location_confidence=scene_location_evidence(
@@ -153,7 +154,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
   reasons.extend(location_reasons)
   # This is advisory evidence against the common "static portrait" failure.
   # It is not an exact action/pose verifier and never blocks a valid category.
-  scene_action_contrast=score_action_contrast(image,spec)
+  scene_action_contrast=score_action_contrast(image,spec,clip_embedding)
   if scene_action_contrast is not None and scene_action_contrast<0.24:
    warnings.append("Action appears less aligned than a generic posed portrait")
  caption=""
@@ -230,14 +231,12 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     reasons.extend(scene_caption_conflicts(spec.get("characters") or [],caption))
     reasons.extend(scene_action_conflicts(spec.get("characters") or [],caption,spec.get("prompt","")))
    expected_count=int(spec.get("visible_count") or len(spec.get("characters") or []))
-   counts={0:r"\b(?:no people|nobody|no one)\b",
-           1:r"\b(?:one person|one man|one woman|single person|a person|a man|a woman)\b",
-           2:r"\b(?:two people|two persons|two men|two women|a man and a woman|a woman and a man)\b",
-           3:r"\b(?:three people|three persons)\b"}
-   # Never call a CG with two visible characters correct if VLM confidently finds one.
-   if expected_count>=2 and re.search(counts[1],desc) and not re.search(counts[2],desc):
-    reasons.append(f"CG missing characters: expected {expected_count}, VLM identified only one")
-   if expected_count==1 and re.search(counts[0],desc):
+   # Never infer a SOLO image from mentions of "a man"/"a woman":
+   # captions frequently describe a man WITH a woman. Strong count
+   # contradictions only; independent CLIP count remains mandatory.
+   if expected_count>=2 and caption_asserts_single_person(desc):
+    reasons.append(f"CG missing characters: expected {expected_count}, VLM explicitly identified only one")
+   if expected_count==1 and re.search(r"\b(?:no people|nobody|no one)\b",desc):
     reasons.append("CG missing expected character")
   if kind=="sprite":
    if re.search(r"\b(?:two people|multiple people|three people|two men|two women)\b",desc):

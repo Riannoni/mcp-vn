@@ -8,6 +8,16 @@ _EXTRA_PERSON=re.compile(
     r"two (?:people|persons|women|men|adults)|"
     r"second (?:person|woman|man|adult|figure))\b",re.I)
 
+_EXPLICIT_SOLO=re.compile(
+    r"\b(?:(?:only|just|exactly)\s+(?:one|a|single)|"
+    r"(?:a|one)\s+(?:single|lone))\s+"
+    r"(?:adult\s+)?(?:person|people|man|woman|adult|figure|character)\b",
+    re.I)
+
+def caption_asserts_single_person(caption):
+    """Only positive SOLO assertions count; 'a man with a woman' is not solo."""
+    return bool(_EXPLICIT_SOLO.search(str(caption or "")))
+
 def insufficient_scene_caption(caption):
     """A bare count such as 'Two.' is not evidence of an accurate scene."""
     words=re.findall(r"[a-zA-Z]+",str(caption or ""))

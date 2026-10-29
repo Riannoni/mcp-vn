@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
-from scene_caption_contract import scene_caption_conflicts
+from scene_caption_contract import scene_caption_conflicts, caption_asserts_single_person
 
 class SceneCaptionContractTest(unittest.TestCase):
  def test_ambiguous_short_caption_is_not_accepted(self):
@@ -23,5 +23,17 @@ class SceneCaptionContractTest(unittest.TestCase):
        {"name":"Lia","outfit":"robe"}],
       "Two people face one another in a courtyard."),[])
 
+class CaptionCountTest(unittest.TestCase):
+ def test_two_people_described_without_exact_count(self):
+  self.assertFalse(caption_asserts_single_person(
+      "A man is sitting on a bench with a woman wearing a green cloak."))
+  self.assertFalse(caption_asserts_single_person(
+      "A person stands near another person in the market."))
+ def test_only_one_asserted(self):
+  self.assertTrue(caption_asserts_single_person("There is only one person in this scene."))
+  self.assertTrue(caption_asserts_single_person("A single woman is standing in the forest."))
+  self.assertTrue(caption_asserts_single_person("Exactly one adult figure is visible."))
+ def test_generic_indefinite_is_not_solo(self):
+  self.assertFalse(caption_asserts_single_person("A woman wears a coat. A man stands next to her."))
 if __name__=="__main__":
  unittest.main()

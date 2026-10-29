@@ -994,10 +994,31 @@ def assess(job,raw,background):
     environment=(spec.get("environment") or {}).get("id","unclassified")
     if kind in ("background","scene","local_cg") and environment!="unclassified" and semantic=="unavailable":
         reasons.append("Scene verification unavailable: canonical scene unchanged")
+    # Versioned, bounded evidence is persisted separately from scalar metrics.
+    def verdict(value,violation=False):
+        return "verified" if value is True else ("violated" if violation else "unobservable")
+    evidence={"version":1}
+    if kind in ("scene","local_cg"):
+        evidence["count"]={"verdict":verdict(metrics.get("scene_count_verified")),
+                           "confidence":metrics.get("scene_count_confidence")}
+    if kind in ("background","scene","local_cg"):
+        evidence["location"]={"verdict":verdict(metrics.get("scene_location_verified")),
+                              "confidence":metrics.get("scene_location_confidence")}
+    if kind=="sprite":
+        sim=metrics.get("identity_similarity")
+        evidence["identity"]={"verdict":"violated" if sim is not None and sim<.80 else
+            "verified" if sim is not None and sim>=.86 else "unobservable",
+            "confidence":sim}
+    if kind=="scene" and wall_brace_required(action_spec):
+        features=metrics.get("scene_action_evidence")
+        features=features if isinstance(features,dict) else {}
+        evidence["action"]={"verdict":verdict(metrics.get("scene_action_verified"),
+                              features.get("ground_pose") is True),
+                            "features":features}
     qa_ms=(time.monotonic()-qa_t0)*1000
 
     return output,{"passed":not reasons,"reasons":reasons,"warnings":warnings,
-                   "metrics":metrics,"semantic_status":semantic,
+                   "metrics":metrics,"evidence":evidence,"semantic_status":semantic,
                    "timings":{"qa_ms":qa_ms}}
 
 def run_comfy(job,graph):

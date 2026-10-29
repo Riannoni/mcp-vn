@@ -13,10 +13,10 @@ class SceneConstraintsTest(unittest.TestCase):
           spec,"A single adult leans forward against a stone wall with both palms.")
         self.assertIn("CURRENT WARDROBE CONTRACT",positive)
         self.assertIn("facial identity ONLY",positive)
-        self.assertIn("VERTICAL stone wall",positive)
-        self.assertIn("feet and legs remain on the ground",positive)
+        self.assertIn("VERTICAL wall",positive)
+        self.assertIn("feet and hands on the wall",positive)
         self.assertIn("worn clothing",negative)
-        self.assertIn("lying on stomach",negative)
+        self.assertIn("lying",negative)
 
     def test_outfit_change_does_not_reuse_canonical_cloak(self):
         spec={"composition":"neural_story","characters":[

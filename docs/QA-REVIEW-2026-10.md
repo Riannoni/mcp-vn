@@ -1,6 +1,6 @@
 # Visual QA research and alternatives (29 October 2026)
 
-Research only. Production QA and model selection remain unchanged.
+Historical research baseline. See [QA-IMPLEMENTATION-2026-10-29.md](QA-IMPLEMENTATION-2026-10-29.md) for deployed optimizations, shadow-model measurements, verification and remaining work. Production models remain unchanged.
 
 ## Actual baseline
 

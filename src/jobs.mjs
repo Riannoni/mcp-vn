@@ -312,6 +312,27 @@ export async function stageJob(id,{stage,timings={}}){
   await save(j);return j;
  });
 }
+function boundedQaEvidence(evidence){
+ if(!evidence||typeof evidence!=="object"||Array.isArray(evidence))return null;
+ const result={version:1};
+ for(const key of ["count","location","identity","action"]){
+  const src=evidence[key];
+  if(!src||typeof src!=="object"||Array.isArray(src))continue;
+  const out={};
+  if(["verified","violated","unobservable"].includes(src.verdict))out.verdict=src.verdict;
+  if(typeof src.confidence==="number"&&Number.isFinite(src.confidence)&&src.confidence>=0&&src.confidence<=1)
+   out.confidence=Math.round(src.confidence*1e4)/1e4;
+  if(typeof src.reason==="string")out.reason=src.reason.slice(0,160);
+  if(key==="action"&&src.features&&typeof src.features==="object"){
+   const f={};
+   for(const field of ["wall_touch","both_hands","weight_on_feet","forward_lean","ground_pose","uncertain"])
+    if(typeof src.features[field]==="boolean")f[field]=src.features[field];
+   if(Object.keys(f).length)out.features=f;
+  }
+  if(Object.keys(out).length)result[key]=out;
+ }
+ return Object.keys(result).length>1?result:null;
+}
 export async function reportQA(id,report){
  return exclusive(async()=>{
   const j=await read(id);
@@ -322,13 +343,21 @@ export async function reportQA(id,report){
   const safeWarnings=Array.isArray(report.warnings)?report.warnings.slice(0,8).map(s=>String(s).slice(0,200)):[];
   const metrics=report.metrics&&typeof report.metrics==="object"?report.metrics:{};
   const safeMetrics={};
-  for(const [k,v] of Object.entries(metrics).slice(0,32)){
+  // Critical evidence cannot be displaced by 32 earlier metrics.
+  const priority=["scene_count_verified","scene_location_verified","scene_action_verified",
+   "scene_count_confidence","scene_location_confidence","identity_similarity",
+   "scene_solo_score","scene_pair_score","scene_action_contrast","vlm_seconds","vlm_error","vlm_caption"];
+  for(const k of new Set([...priority,...Object.keys(metrics)])){
+    if(Object.keys(safeMetrics).length>=32)break;
+    const v=metrics[k];
     if(/^[a-z_]{1,32}$/.test(k)&&(["string","number","boolean"].includes(typeof v))&&
-       (typeof v!=="number"||Number.isFinite(v)))safeMetrics[k]=typeof v==="string"?v.slice(0,150):v;
+       (typeof v!=="number"||Number.isFinite(v)))
+      safeMetrics[k]=typeof v==="string"?v.slice(0,150):v;
   }
   recordStage(j,report.timings||{});
   j.stage="validated";
   j.qa={passed:report.passed,reasons:safeReasons,warnings:safeWarnings,metrics:safeMetrics,
+        evidence:boundedQaEvidence(report.evidence),
         semantic_status:["passed","failed","unavailable","not_requested"].includes(report.semantic_status)?
           report.semantic_status:"unavailable", checked_at:new Date().toISOString()};
   j.quality_status=report.passed?(j.qa.semantic_status==="unavailable"?"technical_pass":"passed"):"rejected";
