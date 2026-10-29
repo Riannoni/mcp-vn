@@ -1,6 +1,8 @@
 """Human-readable shot planning for repeatable VN character poses.
 Descriptive geometry rather than underscored tokens or contradictory 'standing' prompts.
 """
+from pose_contracts import pose_contract
+
 POSES = {
  "standing": (
   "natural full-body upright standing posture, feet on imaginary ground, relaxed shoulders, "
@@ -55,6 +57,9 @@ def pose_prompt(pose):
     text = str(pose or "standing").strip().lower()
     if text in POSES:
         return POSES[text]
+    contract=pose_contract(text)
+    if contract:
+        return contract["description"]
     return ("human full-body pose: " + text.replace("_", " ").replace("-", " ") +
             "; anatomically plausible movement and limb positions")
 def wants_fresh_latent(pose, has_face_anchor):
