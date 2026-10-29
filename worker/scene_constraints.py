@@ -30,14 +30,27 @@ def scene_constraints(spec, prompt):
             "shirt, blouse, top, sleeves, jacket, vest, pants, trousers, "
             "skirt, dress, fabric wrapped on body, collar, boots, underwear"
         )
-    elif len(people)==1:
-        outfit=str(people[0].get("outfit","")).strip()
-        if outfit and outfit.lower()!="default":
-            positive.append(
-                "CURRENT WARDROBE CONTRACT: match the CURRENT outfit exactly "
-                "instead of the garments from the old character reference: "+
-                outfit[:160]+"."
-            )
+    else:
+        # Actor-specific garments are authoritative even in a mixed cast.
+        # A global negative garment list would erase clothing from actors
+        # who are supposed to wear it; scope requirements by actor instead.
+        for actor in people:
+            outfit=str(actor.get("outfit","")).strip()
+            if not outfit or outfit.lower()=="default":
+                continue
+            name=str(actor.get("name","")).strip()[:80]
+            if wants_unclothed(outfit):
+                positive.append(
+                    "CURRENT WARDROBE CONTRACT for "+name+": no garments worn "
+                    "on this person's body; any discarded clothing is separate. "
+                    "Do not copy clothing from the identity reference."
+                )
+            else:
+                positive.append(
+                    "CURRENT WARDROBE CONTRACT for "+name+": "+outfit[:160]+
+                    ". Match this actor's CURRENT garments instead of the "
+                    "garments from the old character reference."
+                )
     # A per-actor declarative pose is advisory text unless it has its own
     # validated control reference. Never impose one actor's pose on the cast.
     for actor in people:

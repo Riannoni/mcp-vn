@@ -34,7 +34,10 @@ class SceneConstraintsTest(unittest.TestCase):
           {"name":"Two","outfit":"robe","pose":"standing"}
         ]}
         positive,negative=scene_constraints(spec,"Two people in a room.")
-        self.assertNotIn("CURRENT WARDROBE CONTRACT",positive)
+        self.assertIn("CURRENT WARDROBE CONTRACT for One",positive)
+        self.assertIn("CURRENT WARDROBE CONTRACT for Two",positive)
+        self.assertIn("no garments worn",positive)
+        self.assertIn("robe",positive)
         self.assertNotIn("worn clothing",negative)
 
     def test_other_compositions_are_untouched(self):

@@ -10,7 +10,7 @@ from pathlib import Path
 
 WORKER=Path(__file__).resolve().parents[1]/"worker"/"worker.py"
 sys.path.insert(0,str(WORKER.parent))
-from render_invariants import narrator_invariants
+from render_invariants import narrator_invariants,allow_sprite_body_img2img
 from render_retry import retry_plan
 from pose_presets import pose_prompt
 from engine_policy import assert_engine_snapshot
@@ -69,6 +69,18 @@ class WorkerPromptContract(unittest.TestCase):
         self.assertNotIn("MUST BE FROM BEHIND",positive)
         self.assertNotIn("MUST BE FULLY NUDE",positive)
         self.assertNotIn("Market square with brick buildings",positive)
+
+    def test_alternate_wardrobe_never_reuses_full_body_anchor(self):
+        base={"anchor_asset":"canonical.png","face_asset":"face.png"}
+        self.assertFalse(allow_sprite_body_img2img({
+            **base,"variant":{"outfit":"blue travel jacket"}}))
+        self.assertFalse(allow_sprite_body_img2img({
+            **base,"variant":{"outfit":"formal evening attire"}}))
+        self.assertTrue(allow_sprite_body_img2img({
+            **base,"variant":{"outfit":"default"}}))
+        self.assertFalse(allow_sprite_body_img2img({
+            "variant":{"outfit":"default"}}))
+        self.assertIn("allow_sprite_body_img2img(spec)",self.source)
 
     def test_no_fallback_forces_failed_qa_to_pass(self):
         self.assertNotIn("QUALITY_ACCEPTED_FALLBACK",self.source)
