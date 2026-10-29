@@ -37,6 +37,23 @@ const service=http.createServer(async(req,res)=>{
     return json(res,200,{games:await games.list("games")});
    if(req.method==="GET"&&sub==="catalog")
     return json(res,200,{stories:await games.list("stories")});
+   if(req.method==="POST"&&sub==="start"){
+    const input=JSON.parse((await body(req,8192)).toString());
+    const storyId=String(input.story_id||"");
+    const hero=String(input.hero||"Макс Кроу");
+    const description=String(input.hero_description||"");
+    const style=String(input.style||"semireal");
+    const mode=String(input.rules_mode||"narrative");
+    if(!/^[a-z0-9][a-z0-9_-]{1,79}$/.test(storyId)||
+       !hero.trim()||hero.length>100||description.length>5000||
+       !["anime","animation","semireal","realistic","poster"].includes(style)||
+       !["narrative","adventure"].includes(mode))
+      return json(res,400,{error:"Invalid story or starting parameters"});
+    const game=await games.gameStart(storyId,hero,description,style,mode);
+    return json(res,201,{game:{id:game.id,story_id:game.story_id,
+      title:game.title,version:game.version,engine_contract:game.engine_contract}});
+   }
+
    if(req.method==="GET"&&sub==="engine")
     return json(res,200,{engine:engineSnapshot(),
       story_package_schema:ENGINE_POLICY.story_package_schema,
