@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 
 def read_engine_contract():
-    p=Path(__file__).resolve().parent.parent/'engine'/'contract.json'
+    module_dir=Path(__file__).resolve().parent
+    local_path=module_dir/'engine'/'contract.json'
+    p=local_path if local_path.is_file() else module_dir.parent/'engine'/'contract.json'
     doc=json.loads(p.read_text())
     if doc.get('engine_id')!='mcp-vn' or doc.get('contract_version')!=1:
         raise ValueError('Unsupported engine policy')
