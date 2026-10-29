@@ -25,7 +25,7 @@ from neural_scene_guards import neural_scene_guards
 from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
-from scene_action_contract import wall_brace_required
+from scene_action_contract import wall_brace_required,resolve_scene_action
 from pose_geometry_runtime import verify_with_comfy
 
 SERVER = os.environ.get("VN_SERVER", "http://192.168.50.29:3100").rstrip("/")
@@ -671,13 +671,16 @@ def image_graph(job):
     pose_filename=pose_control_guide(pose_kind)
     use_pose_library_v2=False
     approved_reference=None
-    if kind=="scene" and spec.get("composition")=="neural_story" and (
-        os.environ.get("VN_POSE_REFERENCE_ENABLED","1").lower() in ("1","true","yes")
-    ):
-        approved_reference,decision=choose_approved_reference(str(job.get("prompt") or ""))
-        action_required=wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")})
+    action_contract=resolve_scene_action(spec,job.get("prompt") or spec.get("prompt"))
+    action_required=(kind=="scene" and action_contract["required"])
+    pose_reference_enabled=(
+        os.environ.get("VN_POSE_REFERENCE_ENABLED","1").lower() in ("1","true","yes"))
+    if action_required and not pose_reference_enabled:
+        raise RuntimeError("Required pose reference disabled by configuration")
+    if kind=="scene" and spec.get("composition")=="neural_story" and pose_reference_enabled:
+        approved_reference,decision=choose_approved_reference(str(job.get("prompt") or ""),spec=spec)
         print("POSE_REFERENCE_DECISION",job["id"],decision,
-              "required",action_required,flush=True)
+              "contract",action_contract,flush=True)
         if action_required and approved_reference is None:
             # Do not spend three GPU retries on a shot we cannot constrain.
             raise RuntimeError("Required wall-contact DWPose unavailable: "+decision)
@@ -702,7 +705,7 @@ def image_graph(job):
         raise RuntimeError("Approved DWPose was selected but ControlNet is disabled")
     previous_error=str(job.get("error","")).lower()
     if ((kind=="sprite" or (kind=="scene" and spec.get("composition")=="neural_story")) and not is_animation and env_enabled and pose_filename and
-        not (job.get("attempts",1)>1 and ("controlnet" in previous_error or
+        not (approved_reference is None and job.get("attempts",1)>1 and ("controlnet" in previous_error or
                "control net" in previous_error or "out of memory" in previous_error))):
         try:
             directory=Path(os.environ.get("VN_POSE_GUIDE_DIR",
@@ -847,6 +850,9 @@ def assess(job,raw,background):
     if (width,height)!=expected:
         reasons.append(f"Wrong size {width}x{height}, expected {expected[0]}x{expected[1]}")
     metrics.update({"width":width,"height":height,"bytes":len(raw)})
+    if kind=="scene" and (job.get("spec") or {}).get("composition")=="neural_story":
+        metrics["visual_action_contract"]=resolve_scene_action(
+            job.get("spec") or {},job.get("prompt") or (job.get("spec") or {}).get("prompt"))
     if kind=="sprite":
         image=cutout(image)
         image=harmonize(image,background)
@@ -895,7 +901,8 @@ def assess(job,raw,background):
         try:
             payload={"kind":"scene" if kind=="local_cg" else kind,
                      "quality":(job.get("spec") or {}).get("quality","standard"),
-                     "spec":job.get("spec") or {},
+                     "spec":{**(job.get("spec") or {}),
+                             "prompt":job.get("prompt") or (job.get("spec") or {}).get("prompt")},
                      "image_b64":base64.b64encode(output).decode("ascii")}
             if kind=="sprite" and (job.get("spec") or {}).get("face_asset"):
                 try:
@@ -945,7 +952,7 @@ def assess(job,raw,background):
     # It is a veto, not a substitute for verifying real wall contact.
     spec=job.get("spec") or {}
     if kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
-        ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""))
+        ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""),spec=spec)
         if not ref:
             reasons.append("CG pose reference unavailable for QA: "+ref_reason)
             metrics["pose_geometry"]={"verified":False,"reason":ref_reason}
