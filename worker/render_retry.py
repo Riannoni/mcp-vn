@@ -18,6 +18,9 @@ def retry_plan(job):
                   "Render the named cast exactly once with no repeated views.")
         negative=("four-panel sheet, split screen, storyboard, comic panels, "
                   "contact sheet, repeated poses, tiled collage, multiple frames")
+    elif "ambiguous_foreground_people" in error or "ambiguous foreground actors" in error:
+        category="pose_unobservable"
+        positive="";negative=""
     elif "pose" in error or "geometry" in error or "required joints" in error:
         category="pose_geometry"
         positive=("RETRY POSE CORRECTION: the previous body geometry was wrong. "

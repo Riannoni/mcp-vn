@@ -980,8 +980,18 @@ def assess(job,raw,background):
                     metrics["contact_roi_verdict"]=str(contact_roi.get("verdict","unobservable"))
                     metrics["contact_roi_reason"]=str(contact_roi.get("reason",""))
                 if not geometry.get("verified"):
-                    reasons.append("CG pose does not match approved DWPose reference: "+
-                                   str(geometry.get("reason","unknown"))[:85])
+                    pose_reason=str(geometry.get("reason","unknown"))
+                    # An ambiguous detector assignment is not proof that the
+                    # intended actor has the wrong pose. Keep all independent
+                    # count/location/contact/semantic gates active.
+                    if pose_reason in ("ambiguous_foreground_people","ambiguous_principal_roi",
+                                       "invalid_principal_roi"):
+                        geometry["verdict"]="unobservable"
+                        warnings.append("Pose QA inconclusive: ambiguous foreground actors")
+                        metrics["pose_qa_inconclusive"]=True
+                    else:
+                        reasons.append("CG pose does not match approved DWPose reference: "+
+                                       pose_reason[:85])
             except (OSError,ValueError,KeyError,HTTPError,URLError,TimeoutError) as err:
                 metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
                     "details":str(err)[:140]}

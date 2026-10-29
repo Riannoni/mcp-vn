@@ -338,7 +338,11 @@ function jobText(j){
     generated:"Генерация завершена",postprocess:"CPU обработка",validating:"Проверка",publishing:"Публикация",
     validated:"Проверено"}[j.stage]||"Генерация")+" · "+j.attempts+formatTime(j);
  if(j.status==="queued")return j.attempts?"Повтор после проверки":"В очереди";
- if(j.status==="failed")return "Ошибка: "+(j.error||"проверка не пройдена")+formatTime(j);
+ if(j.status==="failed"){
+  const qaRejected=!!(j.qa?.reasons?.length||j.qa?.passed===false);
+  return (qaRejected?"Сгенерировано, отклонено QA: ":"Ошибка генерации: ")+
+    (j.error||j.qa?.reasons?.join("; ")||"проверка не пройдена")+formatTime(j);
+ }
  if(j.status==="superseded")return "Заменено новым запросом";
  return j.status;
 }

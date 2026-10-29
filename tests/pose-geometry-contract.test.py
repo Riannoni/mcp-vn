@@ -59,6 +59,22 @@ class PrincipalSelectionTests(unittest.TestCase):
   self.assertEqual(result["principal_index"],0)
   self.assertEqual(result["candidate_people"],9)
 
+ def test_roi_selects_named_actor_among_large_bystanders(self):
+  principal=shifted_person(.8,50,20)
+  other=shifted_person(.9,700,0)
+  actual=[{"canvas_width":1600,"canvas_height":800,"people":[other,principal]}]
+  verdict=inspect_approved_pose(frame(BASE),actual,actor_region=[.05,.02,.40,.95])
+  self.assertTrue(verdict["verified"],verdict)
+  self.assertEqual(verdict["principal_index"],1)
+  self.assertTrue(verdict["principal_selected_by_roi"])
+
+ def test_roi_with_two_possible_actors_is_unobservable(self):
+  figures=[shifted_person(),shifted_person(.9,30,10)]
+  actual=[{"canvas_width":1600,"canvas_height":800,"people":figures}]
+  verdict=inspect_approved_pose(frame(BASE),actual,actor_region=[0,0,.60,1])
+  self.assertEqual(verdict["reason"],"ambiguous_principal_roi")
+  self.assertFalse(verdict["verified"])
+
  def test_second_similarly_large_foreground_figure_is_ambiguous(self):
   people=[shifted_person(),shifted_person(.9,30,10)]
   result=inspect_approved_pose(frame(BASE),[{"people":people}])

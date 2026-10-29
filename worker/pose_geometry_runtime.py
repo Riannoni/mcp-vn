@@ -57,7 +57,12 @@ def verify_with_comfy(job,image_bytes,reference,comfy,output_dir,request,upload)
             actual=json.loads(path.read_text())
         finally:
             path.unlink(missing_ok=True)
-        verdict=inspect_approved_pose(expected,actual)
+        contract=(job.get("spec") or {}).get("visual_contract") or {}
+        principals=contract.get("principals") or []
+        # Only a single explicit named principal can be attributed to a ROI.
+        actor_region=(principals[0].get("region") if len(principals)==1
+                      and isinstance(principals[0],dict) else None)
+        verdict=inspect_approved_pose(expected,actual,actor_region=actor_region)
         contract=(job.get("spec") or {}).get("visual_contract") or {}
         contacts=contract.get("contacts") or []
         if len(contacts)==1 and contacts[0].get("target_region"):
