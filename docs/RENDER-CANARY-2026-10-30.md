@@ -18,6 +18,10 @@ The evaluation is a coherent neutral market sequence: (1) one sprite wearing an 
 
 All three ComfyUI generations completed technically; zero of three satisfy the human-checked complete shot contract. The CG automatic QA **false-accepted 2 of 2** among these specific negative examples; this is not a population false-accept estimate. Sprite QA includes a likely false reject for additional people even though it correctly should reject the unrelated camera prop and inaccurate garment. Repeated trials and a labeled gold set remain required.
 
+## Follow-up first-attempt sprite probe (not promoted)
+
+One further private one-shot sprite experiment appended explicit negative terms for photography equipment, tripod, studio camera, lighting stands and boom microphone, while preserving the face-only reference. ComfyUI again produced a camera in the upper-left foreground, and **changed the intended standing pose to seated**. Automatic QA rejected for `several people` (the image showed one main person and a camera) and low face similarity **0.79** versus the configured **0.80** threshold. GPU generation **11.16s**, QA **13.33s**, total **24.49s**. Different random seed, therefore *not* a controlled A/B effectiveness estimate. These unverified negative prompt changes were rolled back in source; the test establishes only that more negative prompt words did not ensure a correct first-attempt render in this run. No private artifacts were published.
+
 ## Code change under evaluation
 
 - `worker/render_invariants.py`, `worker/worker.py`: explicit alternate outfits never reuse an old **full-body** sprite through img2img; a fresh latent still receives the immutable canonical **face** IPAdapter. Default-outfit revisions retain existing reuse behavior.

@@ -18,6 +18,8 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--source-job',type=Path,required=True)
     parser.add_argument('--output-dir',type=Path,required=True)
+    parser.add_argument('--only',choices=('sprite','cg-one','cg-two','all'),default='all')
+    parser.add_argument('--seed',type=int,default=None,help='Optional fixed ComfyUI seed for reproducible A/B')
     args=parser.parse_args()
     if not os.environ.get('VN_WORKER_TOKEN'):
         raise RuntimeError('Production worker environment must be loaded privately')
@@ -58,6 +60,8 @@ def main():
         scene['visual_contract']=contract
         specs.append((label,scene,prompt))
     for kind,spec,prompt in specs:
+        if args.only!='all' and args.only!=kind:
+            continue
         start=time.monotonic()
         mode='sprite' if kind=='sprite' else 'scene'
         job={'id':str(uuid.uuid4()),'kind':mode,'style':source['style'],
@@ -66,6 +70,11 @@ def main():
         summary={'test':kind,'mode':mode,'attempts':1,'passed':False}
         try:
             graph,background=worker.image_graph(job)
+            if args.seed is not None:
+                if not 0<=args.seed<(1<<48):
+                    raise ValueError('Seed must be a nonnegative 48-bit integer')
+                graph['5']['inputs']['seed']=args.seed
+            summary['seed']=graph['5']['inputs']['seed']
             summary['face_adapter']=any(n.get('class_type')=='IPAdapterAdvanced' for n in graph.values())
             summary['body_img2img']=mode=='sprite' and any(
                 n.get('class_type')=='VAEEncode' for n in graph.values())
