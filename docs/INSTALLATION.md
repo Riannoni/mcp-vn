@@ -21,7 +21,7 @@
 ## 1. Домашний сервер
 
 ```bash
-git clone https://github.com/Riannoni/mcp-vn.git /opt/mcp-vn
+git clone https://github.com/Riannoni/web-vn.git /opt/mcp-vn
 cd /opt/mcp-vn
 cp .env.example .env
 chmod 600 .env

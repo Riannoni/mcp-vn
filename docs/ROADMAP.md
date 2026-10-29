@@ -1,4 +1,4 @@
-# mcp-vn / Kagesekai — durable roadmap (2026-10-29)
+# web-vn / Kagesekai — durable roadmap (2026-10-29)
 
 This master roadmap plus linked Issues is the source of truth after any chat ends. Current pilot: Ash Gate. Do not claim render-v1 ready until golden-set and end-to-end gates have evidence. Keep private game saves, dialogue, CG, face references, tokens and model weights out of GitHub.
 
@@ -9,6 +9,26 @@ This master roadmap plus linked Issues is the source of truth after any chat end
 - QA verifies independently: correctness of location, cast, identity where visible, pose/contact when observable; retry/repair then publish only if the scene fingerprint still matches.
 - Single AMD GPU: model or custom-node addition requires measured benefit. All public dependencies pinned and licences checked.
 - Regression tests must run on temporary games, not production playthroughs.
+
+## 2026-10-30 web-vn P0 live wall-contact regression
+
+Canonical repository: https://github.com/Riannoni/web-vn; main playable client:
+http://192.168.50.27:8190/vn/. This is a standalone authenticated
+browser application, **not** an MCP game connector. Main tracking issue:
+https://github.com/Riannoni/web-vn/issues/20.
+
+Recent production Ash Gate scene CG was marked done although QA evidence
+was `wall_touch=false`, `both_hands=false`, and `forward_lean=false`.
+Root cause in worker: mandatory contact unknown was converted into a warning.
+P0 fix: fail closed and ask targeted VLM pose question if generic caption
+does not positively verify action. Do not infer wall touch from DWPose alone.
+Run isolated same-state replay without changing canonical save; verify
+actual output/QA before claiming a solved visual render.
+
+Next targeted research/testing: approved exact rear-wall pose guide (existing
+rear guide is draft, NOT approved); principal and target ROI; region-based
+inpainting with existing SDXL setup; compare timing and successful blocking
+against free whole-frame rendering. No additional GPU model by default.
 
 ## P0 — render-v1 release blockers
 - #2 Golden human-labeled E2E suite (>=30 independent scenes), positive/negative, P50/P90 complete turn latency, accuracy and retries.

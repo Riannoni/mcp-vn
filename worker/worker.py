@@ -1049,9 +1049,10 @@ def assess(job,raw,background):
                  "prompt":job.get("prompt") or (job.get("spec") or {}).get("prompt")}
     if kind=="scene" and wall_brace_required(action_spec) and not reasons:
         if metrics.get("scene_action_verified") is not True:
-            # Absence of proof is not evidence of a contradiction. The VLM
-            # and spatial validators still veto explicit action violations.
-            warnings.append("Wall contact not positively verified; inspect CG")
+            # For an explicitly required physical action, unknown evidence is
+            # NOT permission to publish. Keep the prior accepted frame and
+            # let the retry policy target this exact missing contact.
+            reasons.append("Mandatory CG wall contact not independently verified")
             if metrics.get("pose_geometry",{}).get("verified") is True:
                 warnings.append("DWPose skeleton match is not proof of surface contact")
     # Location validation is critical: never replace the canonical background

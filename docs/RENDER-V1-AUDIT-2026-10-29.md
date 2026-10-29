@@ -2,7 +2,7 @@
 
 **Decision:** safe to begin controlled human playtesting, **NOT** certified
 render-v1. This file links to [the permanent roadmap](ROADMAP.md) and [GitHub
-Issue #20](https://github.com/Riannoni/mcp-vn/issues/20).
+Issue #20](https://github.com/Riannoni/web-vn/issues/20).
 
 ## Implemented in this change set
 

@@ -1,3 +1,5 @@
+> **2026-10-30: Legacy guide only.** The playable VN now runs in the independent browser client at `http://192.168.50.27:8190/vn/`; the game MCP connector was removed. See [VN Web](VN-WEB.md). Do not attempt to reconnect the game through ChatGPT MCP. SSH-MCP remains a separate infrastructure administration connector.
+
 # Подключение mcp-vn v0.6.4 к ChatGPT
 
 mcp-vn использует **Streamable HTTP MCP** с визуальным MCP Apps интерфейсом. Это не обычное локальное stdio-приложение и не просто архив ZIP с `mcp.json`: для работы в веб-чате требуется зарегистрированное, доступное и авторизованное MCP-подключение.

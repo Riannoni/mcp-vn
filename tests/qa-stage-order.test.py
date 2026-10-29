@@ -35,7 +35,8 @@ class StageOrder(unittest.TestCase):
        patch.object(worker,"verify_with_comfy",return_value={"verified":False,"reason":"geometry_mismatch"}),\
        patch.object(worker,"request",side_effect=fake_request):
    _,report=worker.assess(job,raw,None)
-  self.assertTrue(report["passed"],report)
+  self.assertFalse(report["passed"],report)
+  self.assertIn("Mandatory CG wall contact not independently verified",report["reasons"])
   self.assertEqual(report["metrics"]["pose_geometry"]["verdict"],"unobservable")
   self.assertNotIn("vlm_skipped_reason",report["metrics"])
   self.assertEqual(report["semantic_status"],"passed")

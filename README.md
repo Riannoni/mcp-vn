@@ -1,4 +1,4 @@
-# mcp-vn — самостоятельная визуальная новелла в браузере
+# web-vn — самостоятельная визуальная новелла в браузере
 
 **Актуальная версия: 0.7.x (28 октября 2026).** Персональная визуальная новелла с основным интерфейсом **VN Web** в домашней сети. Сохранения, память мира и канонические иллюстрации живут на домашнем сервере. В браузере можно выбирать локального или подключённого внешнего рассказчика.
 
@@ -71,6 +71,6 @@ Grok отдаёт полные английские промпты. Для ло�
 
 The durable, cross-conversation project roadmap and acceptance criteria live in
 [docs/ROADMAP.md](docs/ROADMAP.md) and the master
-[GitHub roadmap Issue #20](https://github.com/Riannoni/mcp-vn/issues/20).
+[GitHub roadmap Issue #20](https://github.com/Riannoni/web-vn/issues/20).
 See linked P0, P1 and P2 Issues for implementation status; do not infer that
 an open benchmark item is completed merely because a related module exists.

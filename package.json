@@ -1,9 +1,9 @@
 {
-  "name": "mcp-vn",
+  "name": "web-vn",
   "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "Visual novel with MCP and standalone web clients, shared saves and local ComfyUI",
+  "description": "Standalone browser visual novel with shared saves and local ComfyUI",
   "scripts": {
     "start": "node server.mjs",
     "build": "vite build",

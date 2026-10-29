@@ -239,11 +239,13 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
      "toward a vertical wall? If any part is not visible or unclear, say so. "
      "Do not infer the story or imagine hidden surfaces."
    )
-   # Standard story CG reuses the existing caption instead of a second
-   # CPU-heavy 92-token VLM call. Cinematic quality may request a stricter
-   # dedicated contact observation.
-   scene_action_observation=(summarize(image,action_prompt,max_new_tokens=92)
-                             if quality=="cinematic" else caption)
+   # Generic captions often describe only the location and therefore
+   # cannot confirm the mandatory action. Use them when affirmative; only
+   # ask a targeted follow-up when the first observation is inconclusive.
+   # This avoids an extra CPU VLM pass for already-readable contact.
+   generic_verified=check_wall_action(caption,spec)[0] is True
+   scene_action_observation=(caption if generic_verified else
+                             summarize(image,action_prompt,max_new_tokens=92))
    scene_action_verified,pose_reasons,scene_action_evidence=check_wall_action(
        scene_action_observation,spec)
    if scene_action_evidence.get("ground_pose") is True:
