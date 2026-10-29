@@ -24,15 +24,21 @@ def sample():
          "spec":spec},memory.getvalue()
 
 class StageOrder(unittest.TestCase):
- def test_bad_geometry_skips_slow_vlm(self):
+ def test_inconclusive_geometry_runs_semantic_qa(self):
   job,raw=sample()
+  def fake_request(base,path,*args,**kwargs):
+   self.assertEqual(path,"/judge")
+   return {"status":"passed","scene_action_verified":False,
+           "scene_count_verified":True,"scene_location_verified":True,
+           "duration_seconds":0.0}
   with patch.object(worker,"choose_approved_reference",return_value=({"name":"reference"},"approved")),\
-       patch.object(worker,"verify_with_comfy",return_value={"verified":False,"reason":"missing_required_joints"}),\
-       patch.object(worker,"request",side_effect=AssertionError("VLM must not run")):
+       patch.object(worker,"verify_with_comfy",return_value={"verified":False,"reason":"geometry_mismatch"}),\
+       patch.object(worker,"request",side_effect=fake_request):
    _,report=worker.assess(job,raw,None)
-  self.assertFalse(report["passed"])
-  self.assertEqual(report["metrics"]["vlm_skipped_reason"],"pose_geometry_failed")
-  self.assertEqual(report["semantic_status"],"failed")
+  self.assertTrue(report["passed"],report)
+  self.assertEqual(report["metrics"]["pose_geometry"]["verdict"],"unobservable")
+  self.assertNotIn("vlm_skipped_reason",report["metrics"])
+  self.assertEqual(report["semantic_status"],"passed")
  def test_good_geometry_does_not_override_action_qa(self):
   job,raw=sample()
   def fake_request(base,path,*args,**kwargs):

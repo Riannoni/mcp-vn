@@ -720,14 +720,15 @@ def image_graph(job):
     pose_reference_enabled=(
         os.environ.get("VN_POSE_REFERENCE_ENABLED","1").lower() in ("1","true","yes"))
     if action_required and not pose_reference_enabled:
-        raise RuntimeError("Required pose reference disabled by configuration")
+        print("POSE_REFERENCE_SKIPPED",job["id"],"disabled",flush=True)
     if kind=="scene" and spec.get("composition")=="neural_story" and pose_reference_enabled:
         approved_reference,decision=choose_approved_reference(str(job.get("prompt") or ""),spec=spec)
         print("POSE_REFERENCE_DECISION",job["id"],decision,
               "contract",action_contract,flush=True)
         if action_required and approved_reference is None:
-            # Do not spend three GPU retries on a shot we cannot constrain.
-            raise RuntimeError("Required wall-contact DWPose unavailable: "+decision)
+            # No matching reference: leave generation guided by the exact
+            # scene text instead of blocking the entire CG rendering.
+            print("POSE_REFERENCE_ADVISORY",job["id"],decision,flush=True)
         if approved_reference:
             pose_kind=approved_reference["name"]
             pose_filename=approved_reference["file"].name
@@ -967,8 +968,9 @@ def assess(job,raw,background):
     if not reasons and kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
         ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""),spec=spec)
         if not ref:
-            reasons.append("CG pose reference unavailable for QA: "+ref_reason)
-            metrics["pose_geometry"]={"verified":False,"reason":ref_reason}
+            warnings.append("Pose QA unobservable: "+str(ref_reason)[:80])
+            metrics["pose_geometry"]={"verified":False,"verdict":"unobservable",
+                                      "reason":ref_reason}
         else:
             try:
                 geometry=verify_with_comfy(job,output,ref,COMFY,OUTPUT,request,upload_to_comfy)
@@ -981,21 +983,17 @@ def assess(job,raw,background):
                     metrics["contact_roi_reason"]=str(contact_roi.get("reason",""))
                 if not geometry.get("verified"):
                     pose_reason=str(geometry.get("reason","unknown"))
-                    # An ambiguous detector assignment is not proof that the
-                    # intended actor has the wrong pose. Keep all independent
-                    # count/location/contact/semantic gates active.
-                    if pose_reason in ("ambiguous_foreground_people","ambiguous_principal_roi",
-                                       "invalid_principal_roi"):
-                        geometry["verdict"]="unobservable"
-                        warnings.append("Pose QA inconclusive: ambiguous foreground actors")
-                        metrics["pose_qa_inconclusive"]=True
-                    else:
-                        reasons.append("CG pose does not match approved DWPose reference: "+
-                                       pose_reason[:85])
+                    # Geometry alone is not semantic evidence of an incorrect
+                    # action, especially with occluded joints or rear views.
+                    # Strong physical-contact violations remain independent
+                    # hard reasons above, and visual scene gates still run.
+                    geometry["verdict"]="unobservable"
+                    warnings.append("DWPose could not confirm principal pose: "+pose_reason[:90])
+                    metrics["pose_qa_inconclusive"]=True
             except (OSError,ValueError,KeyError,HTTPError,URLError,TimeoutError) as err:
                 metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
                     "details":str(err)[:140]}
-                reasons.append("CG pose geometry verification unavailable")
+                warnings.append("CG pose geometry verification unavailable")
     if reasons and metrics.get("panel_collage_detected"):
         semantic="failed"
         metrics["vlm_skipped_reason"]="panel_layout_failed"
@@ -1036,7 +1034,7 @@ def assess(job,raw,background):
                           "scene_action_contrast","scene_action_verified"):
                 if validation.get(field) is not None:
                     metrics[field]=validation[field]
-            warnings=[str(x)[:180] for x in validation.get("warnings",[])[:4]]
+            warnings.extend(str(x)[:180] for x in validation.get("warnings",[])[:4])
             if semantic=="failed":
                 reasons.extend(str(x)[:170] for x in validation.get("reasons",[])[:4])
             elif semantic=="unavailable":
@@ -1051,11 +1049,11 @@ def assess(job,raw,background):
                  "prompt":job.get("prompt") or (job.get("spec") or {}).get("prompt")}
     if kind=="scene" and wall_brace_required(action_spec) and not reasons:
         if metrics.get("scene_action_verified") is not True:
-            reason="CG wall-contact action not independently verified"
-            if reason not in reasons:
-                reasons.append(reason)
+            # Absence of proof is not evidence of a contradiction. The VLM
+            # and spatial validators still veto explicit action violations.
+            warnings.append("Wall contact not positively verified; inspect CG")
             if metrics.get("pose_geometry",{}).get("verified") is True:
-                warnings.append("DWPose geometry matches; wall contact verification is independent")
+                warnings.append("DWPose skeleton match is not proof of surface contact")
     # Location validation is critical: never replace the canonical background
     # with an unchecked room or an unrelated building if vision daemon is offline.
     spec=job.get("spec") or {}

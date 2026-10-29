@@ -44,6 +44,15 @@ HIP=re.compile(
 
 # Deliberate negative evidence: a person may lean near a wall while
 # bracing with hands on the ground. Do not treat wall proximity as contact.
+# A one-hand action must never be rewritten as an approved TWO-hand guide.
+# Keep narrator instructions authoritative; there is no approved single-hand
+# ControlNet reference in this library yet.
+ONE_HAND=re.compile(
+    r"\b(?:one|single|left|right)\s+(?:hand|palm)\b|"
+    r"\b(?:his|her|their)\s+(?:left|right)\s+(?:hand|palm)\b|"
+    r"одн(?:ой|у|а)\s+(?:рук|ладон)|"
+    r"(?:лев|прав)[а-я]*\s+(?:рук|ладон)",re.I)
+
 NO_WALL_ACTION=re.compile(
     r"\b(?:hands?|palms?)\b.{0,35}"
     r"\b(?:by (?:her|his|their) sides?|behind (?:her|his|their) back|"
@@ -90,6 +99,9 @@ def resolve_scene_action(spec, prompt=None):
     if not (WALL.search(t) and LEAN.search(t) and HANDS.search(t)):
         return {"required":False,"action":None,"camera":None,
                 "reason":"no_explicit_wall_brace"}
+    if ONE_HAND.search(t):
+        return {"required":False,"action":None,"camera":None,
+                "reason":"single_hand_action_has_no_approved_two_hand_guide"}
     if GROUND_CONTACT.search(t) or NO_WALL_ACTION.search(t):
         return {"required":False,"action":None,"camera":None,
                 "reason":"hands_not_on_wall"}

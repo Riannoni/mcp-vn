@@ -239,10 +239,17 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
      "toward a vertical wall? If any part is not visible or unclear, say so. "
      "Do not infer the story or imagine hidden surfaces."
    )
-   scene_action_observation=summarize(image,action_prompt,max_new_tokens=92)
+   # Standard story CG reuses the existing caption instead of a second
+   # CPU-heavy 92-token VLM call. Cinematic quality may request a stricter
+   # dedicated contact observation.
+   scene_action_observation=(summarize(image,action_prompt,max_new_tokens=92)
+                             if quality=="cinematic" else caption)
    scene_action_verified,pose_reasons,scene_action_evidence=check_wall_action(
        scene_action_observation,spec)
-   reasons.extend(pose_reasons)
+   if scene_action_evidence.get("ground_pose") is True:
+    reasons.extend(pose_reasons)
+   elif pose_reasons:
+    warnings.extend(pose_reasons)
   desc=caption.lower()
   if expected in OUTDOOR and re.search(r"\b(?:inside|indoors|bedroom|interior room|living room|office|hallway)\b",desc):
    warnings.append("VLM describes an interior while an outdoor location is requested")

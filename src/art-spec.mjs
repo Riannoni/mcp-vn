@@ -131,7 +131,8 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
   visual_contract:null,
   required_checks:kind==="sprite"?["png_dimensions","nonempty_alpha","foreground_bounds","single_character"]:
     ["file_signature","dimensions","scene_semantics"],
-  max_attempts:quality==="fast"?2:3
+  // Interactive story CG: no third blind 20-second GPU retry.
+  max_attempts:(quality==="fast"||(kind==="scene"&&neural_scene===true))?2:3
  };
  if(["scene","local_cg"].includes(kind))
   spec.visual_contract=buildSceneContract({kind,environment,location,characters,

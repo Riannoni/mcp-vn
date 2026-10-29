@@ -43,6 +43,14 @@ class UnifiedActionTests(unittest.TestCase):
                     "A woman is kneeling on the ground next to a wall.",prompt)
                 self.assertTrue(reasons)
 
+    def test_one_hand_never_forces_two_hand_controlnet(self):
+        prompt=("One adult leans toward a stone wall, left hand planted "
+                "on its masonry, right hand holding a bag; rear view.")
+        c=resolve_scene_action(spec(prompt),prompt)
+        self.assertFalse(c["required"],c)
+        self.assertEqual(c["reason"],"single_hand_action_has_no_approved_two_hand_guide")
+        self.assertEqual(action_prompt_contract(spec(prompt),prompt),("",""))
+
     def test_missing_camera_is_fail_closed(self):
         prompt="One person leans forward against the stone wall, both palms planted."
         c=resolve_scene_action(spec(prompt),prompt)
