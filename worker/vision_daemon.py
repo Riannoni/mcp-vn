@@ -14,6 +14,7 @@ from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
 from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
 from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption
+from scene_action_contract import wall_brace_required, check_wall_action
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -67,14 +68,14 @@ vlm=AutoModelForImageTextToText.from_pretrained(
  VLM_ID,dtype=torch.float32,attn_implementation="eager").eval()
 print("VLM_DAEMON ready port",PORT,flush=True)
 
-def summarize(image,prompt):
+def summarize(image,prompt,max_new_tokens=62):
  resized=image.copy();resized.thumbnail((560,560),Image.Resampling.LANCZOS)
  messages=[{"role":"user","content":[{"type":"image","image":resized},
        {"type":"text","text":prompt}]}]
  inputs=vlm_processor.apply_chat_template(messages,add_generation_prompt=True,
    tokenize=True,return_dict=True,return_tensors="pt")
  with torch.inference_mode():
-  result=vlm.generate(**inputs,max_new_tokens=62,do_sample=False,repetition_penalty=1.15)
+  result=vlm.generate(**inputs,max_new_tokens=max_new_tokens,do_sample=False,repetition_penalty=1.15)
  suffix=result[:,inputs["input_ids"].shape[1]:]
  return vlm_processor.batch_decode(suffix,skip_special_tokens=True)[0].strip()[:420]
 
@@ -123,6 +124,9 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  scene_count_confidence=0.0;scene_location_confidence=0.0
  people_scores={}
  scene_action_contrast=None
+ scene_action_verified=None
+ scene_action_observation=""
+ scene_action_evidence={}
  # Always use CLIP for environment; helps catch very obvious indoors/outdoors.
  if kind in ("background","scene"):
   probs=score_environment(image)
@@ -202,6 +206,20 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
      "full English sentences including foreground subjects, their positions, "
      "physical objects and background. Do not answer with a count alone.")
    if not insufficient_scene_caption(alt):caption=alt
+  # The generic scene caption is not proof of requested physical contact.
+  # Ask a separate observation question and require affirmative evidence.
+  if neural_story and wall_brace_required(spec):
+   action_prompt=(
+     "Describe ONLY the visible physical pose in factual sentences: "
+     "where are BOTH of the person's hands, what exact surface do they touch, "
+     "what supports the knees or feet, and does the torso lean forward "
+     "toward a vertical wall? If any part is not visible or unclear, say so. "
+     "Do not infer the story or imagine hidden surfaces."
+   )
+   scene_action_observation=summarize(image,action_prompt,max_new_tokens=92)
+   scene_action_verified,pose_reasons,scene_action_evidence=check_wall_action(
+       scene_action_observation,spec)
+   reasons.extend(pose_reasons)
   desc=caption.lower()
   if expected in OUTDOOR and re.search(r"\b(?:inside|indoors|bedroom|interior room|living room|office|hallway)\b",desc):
    warnings.append("VLM describes an interior while an outdoor location is requested")
@@ -274,7 +292,9 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    "scene_pair_score":round(sum(people_scores.get(k,0) for k in (
      "pair_people","pair_interaction","pair_mixed")),4),
    "scene_action_contrast":scene_action_contrast,
-   "scene_action_verified":False,
+   "scene_action_verified":scene_action_verified,
+   "scene_action_observation":scene_action_observation[:420],
+   "scene_action_evidence":scene_action_evidence,
    "duration_seconds":round(time.monotonic()-t0,2)}
 
 class Handler(BaseHTTPRequestHandler):
