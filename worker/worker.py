@@ -25,6 +25,7 @@ from neural_scene_guards import neural_scene_guards
 from scene_constraints import scene_constraints
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
+from actor_layout import region_for_actor, assert_cast_supported
 from scene_action_contract import wall_brace_required,resolve_scene_action
 from pose_geometry_runtime import verify_with_comfy
 
@@ -127,17 +128,12 @@ def background_context(image):
     direction="light from camera left" if sum(ImageStat.Stat(sample.crop((0,0,24,48))).mean)>sum(ImageStat.Stat(sample.crop((24,0,48,48))).mean) else "light from camera right"
     return period+", "+temp+", "+direction, (r,g,b)
 
-def regional_face_attention_mask(index,width,height):
-    """Each canonical face is applied only to its own half of a two-person frame.
-
-    The transparent region of the PNG maps to the attention mask returned by
-    ComfyUI LoadImage. Global IPAdapter conditions two different people into
-    one averaged identity; regional masks prevent that collapse.
-    """
+def regional_face_attention_mask(index,width,height,count=2,region=None):
+    """Comfy LoadImage alpha mask for each principal, not a fixed two-way split."""
     layer=Image.new("RGBA",(width,height),(0,0,0,255))
-    left,right=((0.015,0.555) if index==0 else (0.445,0.985))
+    x0,y0,x1,y1=region_for_actor(index,count,region)
     ImageDraw.Draw(layer).rectangle(
-        (int(width*left),int(height*.04),int(width*right),int(height*.96)),
+        (int(width*x0),int(height*y0),int(width*x1),int(height*y1)),
         fill=(0,0,0,0))
     return layer
 
@@ -493,7 +489,7 @@ def image_graph(job):
                 "denoise":.72 if variants else .86})
         # Regional face references keep independent established identities
         # without constraining body poses to canned silhouettes.
-        people=(spec.get("characters") or [])[:2]
+        people=(spec.get("characters") or [])
         try:
             if (not is_animation and len(people)==2 and
                 all(c.get("sprite_asset") for c in people)):
@@ -532,7 +528,8 @@ def image_graph(job):
     elif kind=="scene" and spec.get("composition")=="neural_story" and not is_animation:
         # A neural CG replaces the whole shot, so it must be conditioned on
         # immutable identity anchors, NOT on a disposable pose/outfit sprite.
-        people=(spec.get("characters") or [])[:2]
+        people=(spec.get("characters") or [])
+        assert_cast_supported(people)
         if not people or any(not (p.get("anchor_face_asset") or p.get("anchor_asset"))
                              for p in people):
             raise ValueError("Canonical face/reference missing for neural CG")
@@ -567,7 +564,8 @@ def image_graph(job):
                 "combine_embeds":"concat","start_at":0.0,"end_at":0.95,
                 "embeds_scaling":"V only"}
             if len(people)>1:
-                mask=regional_face_attention_mask(i,width,height)
+                mask=regional_face_attention_mask(
+                    i,width,height,len(people),actor.get("actor_region"))
                 mask_file=upload_to_comfy(pil_png(mask),
                     "mcp_vn_cg_face_region_"+str(i)+"_"+job["id"]+".png")
                 mask_node=str(63+i*3)
@@ -897,6 +895,28 @@ def assess(job,raw,background):
     semantic="unavailable"
     warnings=[]
     qa_t0=time.monotonic()
+    # Cheap DWPose geometry before expensive CPU VLM: mismatched poses are
+    # rejected without spending ~25s asking the VLM to describe other details.
+    spec=job.get("spec") or {}
+    if kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
+        ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""),spec=spec)
+        if not ref:
+            reasons.append("CG pose reference unavailable for QA: "+ref_reason)
+            metrics["pose_geometry"]={"verified":False,"reason":ref_reason}
+        else:
+            try:
+                geometry=verify_with_comfy(job,output,ref,COMFY,OUTPUT,request,upload_to_comfy)
+                metrics["pose_geometry"]=geometry
+                if not geometry.get("verified"):
+                    reasons.append("CG pose does not match approved DWPose reference: "+
+                                   str(geometry.get("reason","unknown"))[:85])
+            except (OSError,ValueError,KeyError,HTTPError,URLError,TimeoutError) as err:
+                metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
+                    "details":str(err)[:140]}
+                reasons.append("CG pose geometry verification unavailable")
+    if reasons and "pose_geometry" in metrics:
+        semantic="failed"
+        metrics["vlm_skipped_reason"]="pose_geometry_failed"
     if not reasons and os.environ.get("VN_VISION_QA","1").lower() not in ("0","false","off"):
         try:
             payload={"kind":"scene" if kind=="local_cg" else kind,
@@ -942,34 +962,13 @@ def assess(job,raw,background):
     # status field so future VLM changes cannot accidentally bypass it.
     action_spec={**(job.get("spec") or {}),
                  "prompt":job.get("prompt") or (job.get("spec") or {}).get("prompt")}
-    if kind=="scene" and wall_brace_required(action_spec):
+    if kind=="scene" and wall_brace_required(action_spec) and not reasons:
         if metrics.get("scene_action_verified") is not True:
             reason="CG wall-contact action not independently verified"
             if reason not in reasons:
                 reasons.append(reason)
-    # Pose similarity is independently measured from the generated frame.
-    # Pose similarity is independently measured from the generated frame.
-    # It is a veto, not a substitute for verifying real wall contact.
-    spec=job.get("spec") or {}
-    if kind=="scene" and wall_brace_required({**spec,"prompt":job.get("prompt") or spec.get("prompt")}):
-        ref,ref_reason=choose_approved_reference(str(job.get("prompt") or spec.get("prompt") or ""),spec=spec)
-        if not ref:
-            reasons.append("CG pose reference unavailable for QA: "+ref_reason)
-            metrics["pose_geometry"]={"verified":False,"reason":ref_reason}
-        else:
-            try:
-                geometry=verify_with_comfy(job,output,ref,COMFY,OUTPUT,request,upload_to_comfy)
-                metrics["pose_geometry"]=geometry
-                if not geometry.get("verified"):
-                    reasons.append("CG pose does not match approved DWPose reference: "+
-                                   str(geometry.get("reason","unknown"))[:85])
-                elif metrics.get("scene_action_verified") is False:
-                    warnings.append(
-                        "DWPose body geometry matches, but physical wall contact was not independently confirmed")
-            except (OSError,ValueError,KeyError,HTTPError,URLError,TimeoutError) as err:
-                metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
-                    "details":str(err)[:140]}
-                reasons.append("CG pose geometry verification unavailable")
+            if metrics.get("pose_geometry",{}).get("verified") is True:
+                warnings.append("DWPose geometry matches; wall contact verification is independent")
     # Location validation is critical: never replace the canonical background
     # with an unchecked room or an unrelated building if vision daemon is offline.
     spec=job.get("spec") or {}
