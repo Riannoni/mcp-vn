@@ -29,3 +29,5 @@ The import never overwrites an existing story ID or modifies an active save. No 
 ## Roadmap
 
 Next: catalog UI to start and resume independent sessions; structured narrator shot plan shared by every game; explicit named cast versus background extras; real multi-person ControlNet regions and staged rendering beyond four principals; stronger visual grounding QA benchmark; per-source import adapters with attribution and provenance.
+
+An authenticated standalone client may start another independent session using POST /worker/standalone/start with story_id, hero, hero_description, style, and rules_mode. The response gives the new game UUID and global engine snapshot. This is not exposed as an unauthenticated public endpoint.
