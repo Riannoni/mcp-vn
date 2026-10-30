@@ -1,5 +1,15 @@
 # web-vn render handoff — 2026-10-31 (Asia/Novosibirsk)
 
+## DEPLOYMENT UPDATE — 2026-10-31 ~01:22–01:32 Asia/Novosibirsk
+
+User explicitly requested deploying what is already proven while they continue to render in the real game concurrently. **GitHub main merge**: [PR #48](https://github.com/Riannoni/web-vn/pull/48) at `202af42b80f64a71793fb36e8fc10d119ea94880`; deployment record [RENDER-SAFE-HELPER-ROLLOUT-2026-10-31.md](RENDER-SAFE-HELPER-ROLLOUT-2026-10-31.md). This is an **additive helper-only production deployment**: exact tested copies of `actor_edit_policy.py`, `source_hand_mask_guard.py`, `leg_core_guard.py`, `staged_klein_scene.py`, `bimanual_scene_planner.py`, `zimage_backend.py`, `prop_scale_evidence.py` installed into PC `~/.local/share/mcp-vn/`. All seven previously absent, byte-checked, `py_compile` PASS, 46/46 clean candidate tests PASS. No worker/comfy/vision/model-lab restart, no checkpoint/env/active worker.py modification, no canonical saves/art updates. Latest active `worker.py` SHA256 remains `a865c4a9b075de619fc82ae9ebd5c5cfdc7dd0b5f80be8c4f0f5a44fd9b960ce`; source-job SHA remains `0bb1a6c953f3000f0a60b228015e48374e31e378c5e6810f8d3922bbee1a8231`. All four PC services active, Comfy GPU queue idle **at final snapshot**. **This is NOT switching active browser generator to Z-Image.** Existing worker still uses existing SDXL graph. Home repo `main` was ahead1/behind5 relative to GitHub and was deliberately not force-synced or game-container rebuilt while user is playing.
+
+**Next source-only development:** [draft PR #49](https://github.com/Riannoni/web-vn/pull/49) adds `atomic_prop_gate.py` (10/10 PC tests), fail-closed typed required-object provenance/attribution, projected size and two-hand atomic contact evidence. Positive result is *plausible_pending_scene_qa* only, never a final CG pass; missing/violated mandatory evidence rejects. It has NOT been integrated into live QA. The non-generalizing post-hoc compositor in PR #47 deliberately stays out of main and PC production. Do not claim render-v1 G2/G3 complete.
+
+**Next action:** integrate grounded object/actor evidence from the actual game pipeline into a read-only shadow validator and compare against human-labeled new game CGs, **without GPU jobs or service restarts during owner's play**. Only after calibration can a guarded production QA and explicitly opted-in Z-Image route be considered; avoid switching default model or weakening QA on the basis of one visually plausible box.
+
+
+
 ## LATEST UPDATE — 2026-10-31 after held-out, automated pre-GPU planner A/B (G3 STILL NO-GO)
 
 `worker/bimanual_scene_planner.py` now implemented on [draft PR #47](https://github.com/Riannoni/web-vn/pull/47), SHA commits `73065bf` / `cfd96a9` with seven passing planner tests. It derives **both** wrist/elbow targets, prop target bbox and inverse-alpha edit mask from independently observed source DWPose, not fixed per-scene coordinate literals. Real private source *both* map at chest and wooden box at waist pass strict pre-GPU old-hands/boots/thigh mask guards.
