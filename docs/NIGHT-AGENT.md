@@ -55,7 +55,7 @@ systemctl --user is-active vn-night-20261031-021227.service
 - Systemd unit: vn-night-20261031-021227.service.
 - Рабочая ветка: night/20261031-p0-shadow, SHA источника при старте ca10be4.
 - Приоритет: issue #49 + #20, read-only **shadow** atomic required object/actor-contact evidence с fail-closed и нейтральными регрессионными тестами.
-- Почасовая Automation: ID 6ae4ec33db048191af03a0f0c102e8f4; Asia/Novosibirsk, с 03:12 каждый час, COUNT=10, последний запуск около 12:12.
+- Почасовая Automation: ID 6ae4ec33db048191af03a0f0c102e8f4; Asia/Novosibirsk, с 03:15 каждый час, COUNT=10, последний запуск около 12:15.
 - Все частные логи и статусы: ~/.local/share/web-vn-night-runner/runs/20261031-021227/.
 
 Структура внутри run:
