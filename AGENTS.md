@@ -6,6 +6,9 @@
 
 > **СРОЧНЫЙ P0 HANDOFF от 2026-10-30:** [docs/RENDER-HANDOFF-2026-10-30.md](docs/RENDER-HANDOFF-2026-10-30.md) — точное состояние проваленного first-attempt спрайт+3CG E2E, SHA, доказательства, приватный manifest на ПК, недеплоенный QA, PR #33/#35–#38 и блокер #39. **После чтения этих инструкций обязательно открой handoff, пока issue #20 не укажет на более свежий. Не считай его исторические статусы текущим live-state.**
 
+
+> **ПРОВЕРЕННЫЙ SSH-ДОСТУП К ИГРОВОМУ ПК (2026-10-30):** SSH-MCP `infra_exec(host="home", as_root=true)` → на home выполнить `ssh -i /opt/homeassistant/config/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes Xavok@192.168.50.27 '...'`. Пользователь **`Xavok`** (строчная/прописная важна), ПК `xavok-pc`. Сервисы запускаются как **`systemctl --user`**, а не system; проверять `mcp-vn-comfy`, `mcp-vn-worker`, `mcp-vn-vision`. Ключ остаётся на home, не публиковать его. Полные команды и правила: [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md). **Не предполагать, что алиас `pc` существует**; использовать указанный IP. Состояние PC/очереди перепроверять каждый раз.
+
 ## 0. Восстановление контекста за одну минуту
 
 1. Прочитай `AGENTS.md` и `docs/DEVELOPMENT-AND-TESTING.md` **целиком**, не по случайным фрагментам.
