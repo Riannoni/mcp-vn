@@ -124,3 +124,33 @@ install -m 700 scripts/night-agent.py ~/.local/bin/vn-night
 ## 10. Контроль новых файлов и коммитов
 
 Первый фактический source-only цикл создал `worker/atomic_prop_gate.py`, две новые regression tests и `NIGHT_HANDOFF.md`. Отчёт агента сообщил о 35 прошедших тестах, но Git-коммит невозможен внутри `workspace-write` sandbox (метаданные `.git` доступны только для чтения). Это **не потеря изменений**: файлы сохранены в изолированном checkout до независимого ревью. Поэтому новый supervisor больше не требует от агента коммита и учитывает untracked файлы при подсчёте `changed_files`. Эти поправки вступают в силу в **следующем** запуске. Живой процесс продолжает работать на своей прежней загруженной версии, а Cloud Automation дополнительно проверяет `git status --short`. Публикация изменений в GitHub из ночного процесса запрещена.
+
+## 11. Автоматическое возобновление после сброса короткой квоты (установлено)
+
+**Проблема:** GPT-6 Astra за первые минуты начал быстро расходовать 5-часовой пул Codex OAuth. Завершать 10-часовую работу окончательно на `85%` короткого окна неправильно: следующий 5-часовой цикл может открыться до общего дедлайна. **Модель автоматически не меняется**.
+
+Поставлен отдельный маленький **read-only для production**, idempotent quota-resumer: [scripts/night-quota-resume.py](../scripts/night-quota-resume.py), тесты [scripts/tests/test_night_quota_resume.py](../scripts/tests/test_night_quota_resume.py).
+
+Systemd user:
+- `vn-night-quota-resume.timer` — проверка раз в **5 минут**, `OnCalendar=*:0/5`, без LLM-вызовов.
+- `vn-night-quota-resume.service` — Python one-shot, читает **только локальный current.json, status.json и квоту Codex**.
+- Скрипт не запускает второй агент, когда текущий unit active, а также **никогда** после `deadline_epoch`, при `blocked_repeated_error`, `failed`, `stopped`, при исчерпании **недельного** окна или неизвестном лимите.
+- Только если предыдущий state=`paused_quota`, причина строго `5h_or_primary used >= 85%`, systemd unit уже завершился и оба окна снова ниже 85%, запускается новый user systemd-run **с тем же run_id и прежним deadline**. Новое имя unit сохраняется в current.json; монитор статуса должен читать его оттуда.
+- Перед повторным запуском архивирует прежние `codex-*.jsonl` и stderr в приватной папке `paused-before-HHMMSS/`, чтобы не перезатереть доказательства. Общие `hourly.md`, handoff и git-worktree сохраняются.
+- Единственный stop-фактор для всей 10-часовой работы — изначальный дедлайн или необратимый блокер/достижение недельного предела. Объём inference может быть значительно меньше 10 часов из-за ожидания квоты. **Никаких гарантий 10 часов непрерывной генерации.**
+
+Проверить:
+
+~~~
+systemctl --user is-enabled vn-night-quota-resume.timer
+systemctl --user is-active vn-night-quota-resume.timer
+systemctl --user list-timers --all vn-night-quota-resume.timer
+# Проверка вручную (без запуска нового агента при активном действующем):
+systemctl --user start vn-night-quota-resume.service
+~~~
+
+После дня запуска timer может оставаться включённым: если нет подходящего `paused_quota`, он не выполняет изменений и не отправляет запросов модели. Чтобы полностью убрать периодическую проверку: `systemctl --user disable --now vn-night-quota-resume.timer`. Не удалять runtime-логи, статус или приватные сохранённые файлы.
+
+Код на ПК: `~/.local/share/web-vn-night-runner/bin/night-quota-resume.py`, установлен из того же tested source; 5/5 unit tests (guards: active, wrong state, weekly, deadline, short window). Для будущей переустановки поставить source Python в этот путь с режимом `0700`, положить вышеописанные два user units, запустить `systemctl --user daemon-reload` и `enable --now`.
+
+**Замечание о версиях:** существующий 10-часовой процесс работает на исходной версии `vn-night` в памяти; matching quota-resumer импортирует этот установленный CLI. Перед обновлением running supervisor выполнять ручной review совместимости, не подменять его без остановки.
