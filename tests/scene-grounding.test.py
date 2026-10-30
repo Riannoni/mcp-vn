@@ -59,5 +59,38 @@ class SceneEvidenceTest(unittest.TestCase):
   self.assertFalse(ok)
   self.assertTrue(reasons)
 
+ def test_malformed_principal_probabilities_never_verify_scene(self):
+  for bad in (float("inf"), float("-inf"), float("nan"), "Infinity",
+              None, True, 1.01, -0.01):
+   for policy in ("none", "ambient"):
+    with self.subTest(bad=repr(bad), policy=policy):
+     scores={**GOOD_TWO, "pair_people":bad}
+     ok,reasons,confidence=principal_count_evidence(2,scores,policy)
+     self.assertFalse(ok)
+     self.assertIn("Invalid CLIP",reasons[0])
+     self.assertEqual(confidence,0.0)
+  for scores in (None, [], {"solo_portrait":float("inf")}):
+   with self.subTest(scores=repr(scores)):
+    ok,reasons,confidence=principal_count_evidence(1,scores)
+    self.assertFalse(ok)
+    self.assertTrue(reasons)
+    self.assertEqual(confidence,0.0)
+ def test_malformed_location_probabilities_never_verify_scene(self):
+  for bad in (float("inf"), float("-inf"), float("nan"), "NaN",
+              None, True, 1.01, -0.01):
+   for label in ("outdoor_market_square", "outdoor_forest"):
+    with self.subTest(bad=repr(bad), label=label):
+     scores={**MARKET, label:bad}
+     ok,reasons,confidence=scene_location_evidence("outdoor_market_square",scores)
+     self.assertFalse(ok)
+     self.assertIn("Invalid CLIP",reasons[0])
+     self.assertEqual(confidence,0.0)
+  for scores in (None, [], {"outdoor_market_square":float("inf")}):
+   with self.subTest(scores=repr(scores)):
+    ok,reasons,confidence=scene_location_evidence("outdoor_market_square",scores)
+    self.assertFalse(ok)
+    self.assertTrue(reasons)
+    self.assertEqual(confidence,0.0)
+
 if __name__=="__main__":
  unittest.main()
