@@ -1,5 +1,8 @@
 # web-vn / Kagesekai — durable roadmap (2026-10-29)
 
+> **Обязательный старт для всех агентов:** [../AGENTS.md](../AGENTS.md) → [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md). Этот roadmap устанавливает приоритеты и acceptance blockers, но не заменяет процедуру доказательства визуальной корректности.
+
+
 This master roadmap plus linked Issues is the source of truth after any chat ends. Current pilot: Ash Gate. Do not claim render-v1 ready until golden-set and end-to-end gates have evidence. Keep private game saves, dialogue, CG, face references, tokens and model weights out of GitHub.
 
 ## Architecture invariants

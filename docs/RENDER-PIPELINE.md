@@ -1,5 +1,8 @@
 # Rendering pipeline — current production track
 
+> **Обязательный регламент диагностики, исправлений и проверки реальных изображений:** [../AGENTS.md](../AGENTS.md) и [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md). Описание существующего workflow не является доказательством того, что CG соответствует Scene Contract. Обязательно осматривайте оригинал PNG, а не только `qa.passed`.
+
+
 This track takes precedence over expanding the multi-game catalog. Use the
 existing Ash Gate save as a regression source, but do NOT alter its dialogue,
 assets, or active game state as part of automatic tests.
