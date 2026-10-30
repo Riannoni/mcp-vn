@@ -1,0 +1,41 @@
+# web-vn render handoff — 2026-10-31 (Asia/Novosibirsk)
+
+**Status: P0 / render-v1 NO-GO.** This document supersedes the latest progress status (not the historical evidence) of [RENDER-HANDOFF-2026-10-30.md](RENDER-HANDOFF-2026-10-30.md). Always read [../AGENTS.md](../AGENTS.md), [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md) in full first. Master tracker [#20](https://github.com/Riannoni/web-vn/issues/20), specific generator/prop failure [#44](https://github.com/Riannoni/web-vn/issues/44).
+
+## Verified access and current safety boundary
+
+- SSH-MCP `infra_exec(host="home", as_root=true)` → from home execute `ssh -i /opt/homeassistant/config/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes Xavok@192.168.50.27 '<command>'`. Details [REMOTE-ACCESS.md](REMOTE-ACCESS.md). PC is `xavok-pc`; services `mcp-vn-comfy`, `mcp-vn-worker`, `mcp-vn-vision` use **`systemctl --user`**.
+- Latest observed ComfyUI queue empty (`queue_running=[]`, `queue_pending=[]`); this is a snapshot, **re-check before any job**. No production unit restarted or deployed in this continuation.
+- Private source-job `~/.local/share/mcp-vn/qa-experiment-20261030/source-job.json` unchanged, SHA256 `0bb1a6c953f3000f0a60b228015e48374e31e378c5e6810f8d3922bbee1a8231`. No canonical game/save or published assets touched.
+- Private experiments and PNGs remain on PC under `~/.local/share/mcp-vn/render-fix-20261030/`. Never publish exact PNGs, face references, unredacted prompts or manifest in GitHub.
+- The original home worktree `/opt/mcp-vn-render-wardrobe-20261030` contains uncommitted other research: **do not clean/reset**. Isolated worktree `/opt/mcp-vn-actor-policy-20261030` holds source/experiment tests. No forced merge.
+
+## Actual measured milestone
+
+A **native Z-Image Turbo FP8 + installed Union Pose/Inpaint model patch** now produces a significantly more coherent base CG than earlier Klein and SDXL variants. Real one-shot fixed-seed (`2026103062`) Comfy prompt `bf984036-421f-4407-8e30-31826f7db23b`, GPU **14.06 s**, 1024×592, private PNG SHA256 `ae62fca560aca6549bc0776dc9062555c7d0c35ebb03c8827d35ceaab4ad7c67`. Direct original-pixel review: one principal woman, canonical-looking visible face, navy jacket, dark trousers, boots, marketplace, two apparent hands gripping a paper map. Preflight strict lower-leg + thigh garment mask passed; **570,897 immutable source pixels unchanged**; no ROCm crash.
+
+**Nevertheless G2 FAIL:** independent Florence + DWPose projected map / shoulder width ratio **1.6996** against explicit typed `max_width_to_shoulders=1.0`; Florence caption did not independently verify two-hand MAP contact (`unobservable`). Do not count the image as accepted first attempt.
+
+Other branches falsified: full-frame SDXL ControlNet 22.05 s created extra detached face and omitted map; enlarged-crop SDXL 8.23 s kept source but damaged hand sleeves; expanded crop mask 6.18 s caused blue/magenta wardrobe drift. Whole-frame CPU geometry shrink distorted buildings; **STOP** arbitrary pose/prompt/mask/freeform warp rerolls for this scene.
+
+## New actor-relative prop/hands layered experiment (NO new GPU)
+
+Instead of a global warp, restore a small, explicitly authorized actor region from the *prop-free accepted source plate*, resize a separately grounded paper-map surface from the generated frame, and relocate two independently detected palm patches toward opposite map edges. Pixel edits outside ROI are strictly prohibited. Original one-off CPU layered image SHA256 `07bfbb3c706567869a24a41f6f0d9777cb40a7a3b3bc655552777224ed86af03` located under `zimage-union-contact-20261030/shadow-prop-contact-layers-originalplate/layered.png`. **Zero outside-ROI pixel changes** on its explicit region.
+
+Direct original-pixel review: substantially smaller paper map, plausible two hands at edges, preserved face/outfit/boots/market; an independent 5× hands crop was also reviewed. DWPose finds both hands with **21 confident joints each**. CPU Qwen3-VL-2B says `MAP`, `BOTH_EDGES`, `SHORT_DARK_BLUE_JACKET_DARK_PANTS` in ~12 s for layered frame; it also incorrectly flags extra principal because of background pedestrians (not a calibrated principal-count verifier). Florence detects the map but reports **ratio 1.0913**, still marginally over 1.0, and caption does not affirm exact two-hand map relation. **Do not relax thresholds or call G2 PASS.**
+
+Reusable pure experimental module added to [draft PR #47](https://github.com/Riannoni/web-vn/pull/47): `worker/prop_layer_compositor.py` + `tests/prop-layer-compositor.test.py`, based on [draft #46](https://github.com/Riannoni/web-vn/pull/46). Inputs require source baseline, candidate, attributed OpenPose18 shoulder+hand landmarks, independent object box, explicit max+design width ratios, front/same-depth, bounded allowed ROI, leg lock and protected face regions. Fail closed on invalid/missing evidence; return `shadow_not_full_scene_qa`, **never publish/auto-accept**. On actual PC **7/7 new synthetic tests pass** including exact locked-pixel invariance and negative cases. Real private fixture through this reusable module: target ratio **0.9001**, **586,344 pixels outside authorized ROI identical**, output SHA256 `75eefc89dc089ae6df88b330d82953f29ca8db624d720ecf023f40c0e9bb833e` under `zimage-union-contact-20261030/shadow-generic-prop-v1/candidate.png`.
+
+Related draft dependency stack:
+- [PR #43](https://github.com/Riannoni/web-vn/pull/43) source-pose-derived boots/lower-shin mask, tested isolated.
+- [PR #46](https://github.com/Riannoni/web-vn/pull/46) optional strict garment thigh-core lock; 10 typed-policy + 6 thigh-core + 6 existing staged unit tests **22/22 PASS** on PC; never wired to production.
+- [PR #47](https://github.com/Riannoni/web-vn/pull/47) new bounded prop/hands staging, **7/7 PASS** on PC but visual release gate open.
+- [PR #45](https://github.com/Riannoni/web-vn/pull/45) independent projected prop size shadow evidence, 8 tests PASS. Separate dependency branch. None are merged into production.
+
+## One next action — do NOT spend another chat refining the same map
+
+**Do not claim expected result achieved.** 1 sprite + 3 complex CG, each at first attempt in an isolated browser game, is **not done**. Full render-v1 also needs 30+ independently human-labelled scenes and E2E rollback/restart/QA calibration.
+
+Nearest falsifiable next milestone: use the **same generic staged architecture** on one genuinely independent held-out actor/action/prop scene, not yet another one-factor tweak on this map. Before GPU, require attributable source actor and safe allowed edit ROI, a prior accepted prop-free source plate, typed object relation and actual canonical outfit; reject if any are unobservable. One fresh fixed GPU seed followed by bounded CPU stage and full independent post-composite QA. Record prompt ID, source and result SHA, queue, first-attempt status, latency, direct original-pixel visual verdict and source-save preservation. **STOP at first mandatory G2 violation.** Do not weaken QA to accommodate false negatives; classify detector observability separately. If a held-out scene cannot be staged without new ungrounded manual ROIs, the current architecture fails generality and needs explicit planner/editor design before more GPUs.
+
+**Release state:** Source/test-only in isolated branches, no deployment, no live browser E2E, G3 NO-GO.
