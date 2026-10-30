@@ -88,6 +88,37 @@ def quota_check():
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return False, {"status": "unavailable", "reason": "quota collection failed"}
 
+def tool_event_verdict(jsonl_path):
+    """Treat a tool-less/failed code-mode run as failure even if Codex exits 0."""
+    try:
+        completed_commands = 0
+        fatal_errors = []
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            try:
+                event_data = json.loads(line)
+            except ValueError:
+                continue
+            typ = event_data.get("type")
+            item = event_data.get("item") or {}
+            if typ == "item.completed" and item.get("type") == "command_execution":
+                completed_commands += 1
+            message = str(item.get("message") or event_data.get("message") or "")
+            if typ == "turn.failed" or (
+                typ in ("error", "item.completed") and
+                ("Code Mode is unavailable" in message or
+                 "unexpected status 413" in message or
+                 "request body too large" in message)
+            ):
+                fatal_errors.append(message[:120])
+        if fatal_errors:
+            return "tool_failure"
+        if completed_commands == 0:
+            return "no_tool_execution"
+        return "ok"
+    except OSError:
+        return "tool_events_missing"
+
+
 def git_snapshot():
     try:
         h = command(["git", "rev-parse", "--short=12", "HEAD"], cwd=WORK)
@@ -265,7 +296,8 @@ def daemon(run_id):
                             report(run_dir, status)
                         time.sleep(15)
                     if outcome == "not_started":
-                        outcome = "ok" if proc.returncode == 0 else "codex_error_" + str(proc.returncode)
+                        outcome = (tool_event_verdict(jsonl) if proc.returncode == 0
+                                   else "codex_error_" + str(proc.returncode))
                 status["last_outcome"] = outcome
                 event(run_dir, "iteration_completed", iteration=iteration, outcome=outcome)
                 report(run_dir, status)

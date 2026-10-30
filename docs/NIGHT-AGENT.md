@@ -112,3 +112,11 @@ install -m 700 scripts/night-agent.py ~/.local/bin/vn-night
 - [Официальные CLI-параметры exec](https://learn.chatgpt.com/docs/cli/reference)
 - [CLIProxyAPI для Codex](https://github.com/router-for-me/CLIProxyAPIDocs/blob/main/docs/en/agent-client/codex.md)
 - [OAuth quota monitoring](CLI-PROXY-QUOTAS.md)
+
+## 9. Дополнительные реальные bootstrap-инциденты и восстановление
+
+После установки Code Mode Host ранние рабочие циклы вызвали **HTTP 413 Payload Too Large** от локального CLIProxyAPI: ранее для игры был задан `server.max-request-body-bytes: 200000`, а после нескольких source/read-tool событий тело запроса Codex Responses выросло. Перед изменением проверено `ss`: активных соединений на `127.0.0.1:8317` не было. Создан private backup `~/.local/share/mcp-vn-universal-proxy/backups/config.before-night-payload-20261031.yaml`, увеличен `max-request-body-bytes` до `16000000` (16 MB), перезапущен **только** user `mcp-vn-universal-proxy.service`. Проверены loopback bind, 37 models и активность сервиса. Никаких прав управления сетью/публикаций наружу не добавлено. Изменение нужно учитывать при обновлении CLIProxyAPI и откатывать только при отсутствии активных LLM-запросов.
+
+Ночной запуск был **возобновлён под тем же run ID** с новым systemd unit `vn-night-20261031-021227-resume`, сохранением исходного deadline **12:12:27 31 октября** и перенастроенным `runs/current.json`. Это важно: старый `vn-night-20261031-021227.service` после аварии завершился, поэтому `status --json` обращается к unit из current.json, а не к жёстко зашитому имени. Первые 5 итераций **НЕ** считаются кодовым успехом, G2 НЕ ПРОВЕРЕН.
+
+Реальные ошибки показали, что Codex CLI иногда может вернуть нулевой код выхода, даже если Code Mode не выполнил ни одной команды. В новой версии исходника добавлена проверка JSONL-событий: отсутствие законченного `command_execution` или ошибки Code Mode/HTTP 413 формально дают failed-iteration. Эта версия будет применяться **к следующему запуску** после тестов, не подменяет уже загруженный в память текущий 10-часовой процесс. Это причина проверять не только exit code, но и реальный semantic progress. 

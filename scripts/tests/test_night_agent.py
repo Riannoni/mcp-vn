@@ -42,6 +42,27 @@ class NightTests(unittest.TestCase):
             path=pathlib.Path(d)/"status.json"
             mod.write_json(path,{"state":"working","iteration":3})
             self.assertEqual(mod.read_json(path)["iteration"],3)
+    def test_codex_toolless_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = pathlib.Path(directory) / "events.jsonl"
+            p.write_text(json.dumps({"type": "item.completed", "item": {
+                "type": "agent_message", "text": "I cannot use tools"}}) + "\n")
+            self.assertEqual(mod.tool_event_verdict(p), "no_tool_execution")
+
+    def test_codex_code_host_failure_detected_despite_exit_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = pathlib.Path(directory) / "events.jsonl"
+            p.write_text(json.dumps({"type": "item.completed", "item": {
+                "type": "error", "message": "Code Mode is unavailable; host executable was not found"}}) + "\n")
+            self.assertEqual(mod.tool_event_verdict(p), "tool_failure")
+
+    def test_codex_real_commands_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = pathlib.Path(directory) / "events.jsonl"
+            p.write_text(json.dumps({"type": "item.completed", "item": {
+                "type": "command_execution", "exit_code": 0}}) + "\n")
+            self.assertEqual(mod.tool_event_verdict(p), "ok")
+
     def test_default_model(self):
         self.assertEqual(mod.MODEL_DEFAULT, "gpt-6-astra")
     def test_default_task_is_nonproduction(self):
