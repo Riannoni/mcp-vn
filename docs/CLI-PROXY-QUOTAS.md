@@ -1,62 +1,146 @@
-# CLIProxyAPI quotas — эксплуатация на игровом ПК
+# CLIProxyAPI OAuth quotas — Codex и Grok / xAI
 
-> Перед разработкой/администрированием прочитать [../AGENTS.md](../AGENTS.md) и [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md). Этот документ описывает **локальную установку**, а не универсальный облачный endpoint. Секреты не коммитить.
+> **Операционная инструкция для личного игрового ПК** (Bazzite, CLIProxyAPI v8.0.46, 31 октября 2026). Перед работой: [../AGENTS.md](../AGENTS.md) и [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md). Состояние квот и установленные версии динамические: **всегда повторять проверку**. Здесь нет токенов и приватных данных.
 
-## Назначение и текущая настройка
+## 1. Что именно теперь работает
 
-На Bazzite ПК работает пользовательская служба `mcp-vn-universal-proxy.service`, CLIProxyAPI v8.0.46. Порт `127.0.0.1:8317` доступен **только с самого ПК**, `management.allow-remote: false`. Management API **v8** активирован; control panel включён, автоматическое обновление panel-asset отключено. Не переключать bind на `0.0.0.0` и не включать `allow-remote` для удобства: management key способен изменять настройки и через `requests/api-call` использовать подключённые OAuth credentials.
+Через **один существующий OAuth-прокси** доступны два независимых представления использования:
 
-**Открыть с самого игрового ПК**: http://127.0.0.1:8317/management.html. Встроенный интерфейс умеет показывать OAuth credentials, квоты/окна Codex и поддерживаемые Grok/xAI, запросы и состояние сервисов. Чтобы авторизоваться в UI, нужен *management key*, не ключ игрового OpenAI-compatible API. Прочитать management key **непосредственно в локальном терминале ПК**, не отправлять его в чат, issue или screenshot:
+| Провайдер | Источник (через CLIProxyAPI) | Подтверждённые поля | Как трактовать |
+| --- | --- | --- | --- |
+| Codex / ChatGPT | `GET https://chatgpt.com/backend-api/wham/usage` | `plan_type`, `rate_limit.allowed`, `limit_reached`, `primary_window`, `secondary_window` | % **использовано** в коротком (~5 ч) и длинном (~7 д) окне, время сброса |
+| Grok Build / xAI OAuth | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` | `config.creditUsagePercent`, `config.currentPeriod.type/start/end`, fallback `billingPeriodStart/End` | % **израсходовано** в указанном upstream расчётном периоде, время сброса |
+
+**Данные подтверждены реальными, успешными HTTP 200 вызовами на этой установке**. Формат Grok оказался `USAGE_PERIOD_TYPE_WEEKLY`; выставлять «неделю» для другого типа автоматически нельзя. Запросы — к billing/usage, **не к inference-модели**, поэтому LLM-токены не генерируются. Однако upstream может ограничивать частоту обращений; не опрашивайте API каждую секунду.
+
+### Пример первого измерения (исторический снимок, НЕ live)
+
+**31 октября 2026**, местный часовой пояс `Asia/Novosibirsk`:
+
+| Провайдер | Использовано | Осталось | Следующий сброс |
+| --- | ---: | ---: | --- |
+| Codex, короткое окно 5 часов | 0% | 100% | 31.10, 06:58:47 |
+| Codex, недельное окно | 9% | 91% | 04.11, 21:17:14 |
+| Grok/xAI, недельный период | 81% | 19% | 04.11, 17:49:08 |
+
+Даты Codex возвращаются в epoch seconds, Grok — в ISO8601 с временной зоной. Отображаемые значения в этом примере зафиксированы при настройке; **не используйте их для решения о ночной работе**. Опросите команду заново.
+
+**Важная оговорка:** Grok Build OAuth billing представляет соответствующий период/кредиты CLI и не обязательно покрывает *все* лимиты чата grok.com, все модели, отдельные медиа-сервисы или платный xAI API-биллинг. Нельзя называть 19% «универсальным остатком всего Grok» без документального подтверждения связи конкретного endpoint и услуги. Аналогично Codex OAuth не даёт безлимитного API.
+
+## 2. Использование на ПК: терминал
+
+Проверенная локальная команда (доступна под пользователем `Xavok`):
+
+```bash
+~/.local/bin/vn-proxy-quota
+~/.local/bin/vn-proxy-quota --provider codex
+~/.local/bin/vn-proxy-quota --provider xai
+~/.local/bin/vn-proxy-quota --json
+~/.local/bin/vn-proxy-quota --provider xai --json
+```
+
+- Без параметров выводятся **оба** провайдера.
+- `--provider` ограничивает опрос одним провайдером.
+- `--json` возвращает очищенный от персональных данных объект с `checked_at`, `timezone` и `accounts[]`. В каждом элементе: `provider`, `account_number`, `status`, проценты `used_percent`/`remaining_percent`, окно/сброс и только необходимый минимум статуса.
+- Код выхода **0** означает успешное чтение заявленных числовых квот для всех запрошенных аккаунтов. **1** означает, что хотя бы один провайдер недоступен, его формат изменился, числовая квота не получена или запрос завершился ошибкой. Наличие `status=ok` не означает, что есть достаточно квоты для ночной работы — смотри сами проценты и `allowed`.
+- `auth_index` используется только **внутри локального процесса** для выбора токена в Management API; файл OAuth, bearer, email, user ID и сырой HTTP body не записываются и не выводятся.
+
+Для машинного gate (пример, **не политика релиза**):
+
+```bash
+~/.local/bin/vn-proxy-quota --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print([(a["provider"],a["status"]) for a in d["accounts"]])'
+```
+
+Ночной агент обязан дополнительно установить собственные лимиты на продолжительность, стоимость, число GPU jobs и STOP-условия. Расход квоты между окнами не линейный и другие приложения/сессии тоже могут менять значения. `remaining_percent` — это **100 минус использование**, а не доллары/токены.
+
+## 3. Веб-панель (только на игровом ПК)
+
+Адрес: **http://127.0.0.1:8317/management.html**
+
+Management API: `http://127.0.0.1:8317/v8/management` (в версии 8 префикс **`/v8/`**, старые `/v0/` инструкции неприменимы).
+
+Чтобы авторизоваться в панели, *не* используйте игровой inference API key. Управляющий пароль хранится локально:
 
 ```bash
 cat ~/.config/mcp-vn/cli-proxy-management.key
 ```
 
-Не включать «Remember password» в общем браузере. Через телефон/другой компьютер интерфейс **намеренно недоступен**: потребуется защищённый SSH-туннель или отдельный строго read-only агрегатор (не прямое открытие management в LAN/Internet).
+**Не передавать этот секрет в ChatGPT, GitHub, скриншоты или лог**, не хранить в общедоступном браузере. Management API разрешает не только чтение квот, но и изменяющие операции. Панель недоступна напрямую с телефона/другого ПК — это намеренная защита. Для удалённого интерфейса использовать только отдельный аутентифицированный read-only агрегатор или авторизованный SSH-туннель на loopback, но **не** переключать Management API на публичный bind.
 
-## Команда получения квот без браузера
+## 4. Как устроен мониторинг
 
-```bash
-~/.local/bin/vn-proxy-quota
-~/.local/bin/vn-proxy-quota --json
-```
+Утилита [../scripts/cli-proxy-quota.py](../scripts/cli-proxy-quota.py) — стандартная библиотека Python 3; `zoneinfo` использует `Asia/Novosibirsk` для вывода дат. Код установлен локально как `~/.local/bin/vn-proxy-quota`.
 
-Команда на ПК читает файл управления локально, получает текущий `auth_index` Codex через `GET /v8/management/credentials` и вызывает официальный для клиента Codex внутренний endpoint учёта `https://chatgpt.com/backend-api/wham/usage` **через API самого CLIProxyAPI** (`POST /v8/management/requests/api-call`). Upstream bearer остаётся внутри proxy и не распечатывается. Ничего не отправляется в inference; **проверка квоты сама по себе не расходует LLM-токены**. Формат `wham/usage` внутренний и может меняться; если вернулись 401/403/502, не считать отсутствие окна «100% доступно».
+1. Читает `~/.config/mcp-vn/cli-proxy-management.key` **только локально**.
+2. `GET /v8/management/credentials` — получает **сейчас действующие** `auth_index` для провайдеров `codex` и `xai`, пропускает `disabled`; не привязывается к имени OAuth-файла или аккаунту по email.
+3. `POST /v8/management/requests/api-call`: только закреплённые в коде GET URLs, `Authorization: Bearer $TOKEN$` подставляется CLIProxyAPI внутри своей памяти. Никакой из OAuth bearer не передаётся вызывающему скрипту.
+4. Сначала проверяет HTTP 200 и корректность JSON, потом строго и независимо парсит каждый провайдер. Если процент отсутствует, нечисловой, NaN или вне 0–100, **помечает квоту unavailable**, не подменяет её 0%.
+5. В Grok `currentPeriod.type` различает weekly/monthly/daily/unknown; дата и длительность показываются только при корректных ISO8601-границах. Нельзя считать «недельный» статус универсальным, если сервер вернёт иной тип периода.
+6. Сетевой таймаут 20 секунд на запрос; предел размера ответа 1 МиБ; вывод содержит только отфильтрованные поля. При ошибке нет автоматического повторного запроса и **не печатается** raw тело HTTP.
+7. Выводит локальную дату сброса и код успеха. Кеш, история запросов, токены и private account identity на диск не сохраняются.
 
-Текущая поддержка локального CLI: **Codex OAuth**; окно ~5 часов и ~7 дней, plan/allowed, процент использования, время сброса в Asia/Novosibirsk. Процент `used_percent` означает **потрачено**, остаток = `100 - used_percent`. Прочие provider quotas смотреть через встроенную management UI; получение Grok/xAI зависит от типа OAuth/tier и не подтверждено этим скриптом.
+**Стабильность API:** `/backend-api/wham/usage` и `/v1/billing?format=credits` — внутренние/зависящие от версии интерфейсы; могут меняться без предупреждения. Это отдельный инструмент для личного мониторинга, не гарантия стороннего SLA.
 
-**Операционное правило ночному агенту:** читать квоту перед стартом и на границах ограниченных задач. Не полагаться исключительно на `allowed=true`; кодовые/визуальные эксперименты имеют отдельный лимит времени, GPU и стоп-условия. Наличие доступной квоты Codex не доказывает независимость от других интерфейсов ChatGPT/Work и не гарантирует произвольный 8-часовой запуск. Не предполагать независимых лимитов.
+## 5. Безопасность и сохранённые файлы
 
-## Где находится настройка (локальные приватные файлы)
+| Что | Где находится | Доступ |
+| --- | --- | --- |
+| конфигурация CLIProxyAPI | `~/.local/share/mcp-vn-universal-proxy/config.yaml` | `0600` |
+| management key (исходный) | `~/.config/mcp-vn/cli-proxy-management.key` | `0600` |
+| установленный quota CLI | `~/.local/bin/vn-proxy-quota` | `0700` |
+| backup CLI до поддержки Grok | `~/.local/bin/vn-proxy-quota.before-grok-20261031` | `0700` |
+| backup конфигурации до включения Management API | `~/.local/share/mcp-vn-universal-proxy/backups/config.before-quota-*.yaml` | `0600` |
+| пользовательский сервис | `mcp-vn-universal-proxy.service` | `systemctl --user` |
 
-- Config: `~/.local/share/mcp-vn-universal-proxy/config.yaml` (`0600`).
-- Локальный management key: `~/.config/mcp-vn/cli-proxy-management.key` (`0600`), **не публиковать содержимое**.
-- CLI: `~/.local/bin/vn-proxy-quota` (`0700`).
-- Backup конфигурации до включения: `~/.local/share/mcp-vn-universal-proxy/backups/config.before-quota-*.yaml` (`0600`).
-- Unit: `systemctl --user status mcp-vn-universal-proxy.service`.
+Сервис настроен на `127.0.0.1:8317` и `management.allow-remote: false`. После первого запуска plaintext secret был заменён в YAML bcrypt-хешем; исходный ключ хранится отдельно и **не восстанавливается из хеша**. Для добавления Grok ничего в этой конфигурации менять не понадобилось. Существующие игровые подключения и GPU не затрагивались.
 
-В момент первого запуска plaintext management key в YAML был автоматически заменён CLIProxyAPI на bcrypt-хеш. Отдельный файл с исходным ключом позволяет локально пользоваться API. **Не удалять ключевой файл без плана восстановления**: хеш не позволяет восстановить исходный plaintext.
-
-## Проверки после изменений / reboot
+Проверки безопасности без публикации значений:
 
 ```bash
 systemctl --user is-active mcp-vn-universal-proxy.service
-ss -ltn | grep ':8317'            # только 127.0.0.1:8317
+ss -ltn | grep ':8317'       # только 127.0.0.1:8317
+stat -c '%a %n' ~/.config/mcp-vn/cli-proxy-management.key
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8317/v8/management/credentials
-# Ожидание без management key: 401
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8317/management.html
-# Ожидание: 200
+# Без management key ожидается 401.
+```
+
+## 6. Установка или восстановление скрипта из GitHub
+
+Исходник версии, которую можно переустановить: [scripts/cli-proxy-quota.py](../scripts/cli-proxy-quota.py). Тесты: [scripts/tests/test_cli_proxy_quota.py](../scripts/tests/test_cli_proxy_quota.py).
+
+В существующей рабочей копии репозитория (в отдельной ветке/copy, не изменяя чужие незакоммиченные файлы):
+
+```bash
+python3 -m unittest discover -v -s scripts/tests -p 'test_cli_proxy_quota.py'
+python3 -m py_compile scripts/cli-proxy-quota.py
+install -m 700 scripts/cli-proxy-quota.py ~/.local/bin/vn-proxy-quota
 ~/.local/bin/vn-proxy-quota
 ```
 
-После изменения конфигурации **не перезапускать** proxy во время активного пользовательского LLM-запроса. Проверить отсутствие активных соединений/операций, сделать приватный backup, затем `systemctl --user restart mcp-vn-universal-proxy.service` и выполнить проверки. Включение management API не требует изменения OAuth auth-файлов.
+Перед перезаписью установленного скрипта рекомендуется сохранить его `cp -p` в приватный backup, затем выполнить `--provider codex`, `--provider xai` и `--json`. Без локального management key восстановленный скрипт корректно откажет: секрет специально не находится в Git.
 
-## Диагностика и возврат
+## 7. Неисправности, диагностика, rollback
 
-- `404` на management: `management.secret-key` пуст, не загружен корректный конфиг, либо URL API версии ошибочен (`/v8/management/...`).
-- `401`: неверный management key; не повторять вслепую — подряд несколько ошибок могут вызвать временный ban.
-- `502` на `requests/api-call`: ошибка upstream/сетевого маршрута/OAuth; не интерпретировать как исчерпание лимита.
-- Доступны Codex и xAI OAuth, однако quota-check скрипт измеряет **именно Codex**. Если upstream возвращает дополнительные пулы, script сообщает их количество, не выдумывая значения.
-- Rollback: в отсутствие активного LLM-запроса вернуть приватный `config.before-quota-*.yaml`, сохранить права `0600`, перезапустить **только** proxy unit. Это вновь отключит Management API, но не должно менять остальную игровую инфраструктуру. Не копировать backup или management key в GitHub.
+| Симптом | Причина / действие |
+| --- | --- |
+| `no_credential` | Провайдер не подключён или отключён в CLIProxyAPI. Проверить авторизацию в локальном UI, не копировать OAuth JSON в чат. |
+| `upstream_error`, HTTP 401/403 | OAuth истёк, аккаунт/тип подписки не имеет доступа или billing endpoint не подходит для платного API типа; не делать бесконечные повторы. |
+| HTTP 429 | Частотный лимит самого сервиса. Остановить опрос и повторить существенно позже. |
+| `request_failed` | Недоступен proxy/управление/сеть/временный upstream отказ; не считать квоту истраченной или свободной без дополнительных данных. |
+| `unavailable` | Сервер ответил, но не сообщил валидный процент; период/схема могли поменяться. **Unknown ≠ 100% free**. |
+| нет панели / management 404 | Проверить config `management.secret-key`, service unit, правильный URL `/v8/management`. |
+| management 401 | Неверный локальный management key; не повторять десятки раз (возможна блокировка). |
+| Grok 403 только на billing | Известное различие между Grok Build CLI OAuth billing и платным `api.x.ai` OAuth. Не обходить ограничение запросами к неизвестным endpoint; в таком случае показывать `unavailable`. |
 
-**Документация upstream:** [CLIProxyAPI v8 Management API](https://help.router-for.me/management/apiv8), [config management options](https://help.router-for.me/configuration/options), [официальный Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center).
+**Откат только новой функции:** `cp -p ~/.local/bin/vn-proxy-quota.before-grok-20261031 ~/.local/bin/vn-proxy-quota`; proxy остаётся запущенным, Codex вернётся к прошлой утилите, Grok исчезнет из CLI. Перезапуск прокси не нужен.
+
+**Откат включения Management API целиком:** когда нет активных LLM-вызовов, восстановить приватный `config.before-quota-*.yaml`, проверить `0600`, перезапустить только `systemctl --user restart mcp-vn-universal-proxy.service`; Management API снова будет отключён. Не менять game state, ComfyUI и OAuth credentials.
+
+## 8. Первоисточники
+
+- [CLIProxyAPI — xAI OAuth](https://help.router-for.me/configuration/provider/xai)
+- [CLIProxyAPI — v8 Management API](https://help.router-for.me/management/apiv8)
+- [Официальный код Grok Build billing (x.ai)](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/src/extensions/billing.rs)
+- [Совместимость платного xAI OAuth и Grok Build billing](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/issues/350)
+
+**Итог по установке (2026-10-31):** Codex и Grok OAuth успешно опрошены, обе записи `status=ok`, самостоятельный JSON-путь проверен, 7 unit-тестов прошли, скрипт поставлен без изменения игрового кода, секретов и конфигурации proxy.
