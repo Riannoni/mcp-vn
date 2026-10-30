@@ -11,6 +11,8 @@
 
 > **ПРОВЕРЕННЫЙ SSH-ДОСТУП К ИГРОВОМУ ПК (2026-10-30):** SSH-MCP `infra_exec(host="home", as_root=true)` → на home выполнить `ssh -i /opt/homeassistant/config/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes Xavok@192.168.50.27 '...'`. Пользователь **`Xavok`** (строчная/прописная важна), ПК `xavok-pc`. Сервисы запускаются как **`systemctl --user`**, а не system; проверять `mcp-vn-comfy`, `mcp-vn-worker`, `mcp-vn-vision`. Ключ остаётся на home, не публиковать его. Полные команды и правила: [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md). **Не предполагать, что алиас `pc` существует**; использовать указанный IP. Состояние PC/очереди перепроверять каждый раз.
 
+> **НОЧНАЯ АВТОНОМНАЯ РАБОТА:** перед запуском, проверкой и завершением ночного агента читать [docs/NIGHT-AGENT.md](docs/NIGHT-AGENT.md). Запускается только явной командой владельца; по умолчанию GPT-6 Astra, без production/GPU, с квотными ограничителями и почасовым статусом.
+
 ## 0. Восстановление контекста за одну минуту
 
 1. Прочитай `AGENTS.md` и `docs/DEVELOPMENT-AND-TESTING.md` **целиком**, не по случайным фрагментам.

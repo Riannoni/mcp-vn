@@ -153,3 +153,8 @@ python3 -m unittest discover -s standalone-web -p 'test_*.py'
 ## CLIProxyAPI OAuth quota / лимиты подписки
 
 Проверки 5h/7d лимитов Codex OAuth, локальная панель, read-only CLI, management key, диагностика и безопасный откат описаны в [CLI-PROXY-QUOTAS.md](CLI-PROXY-QUOTAS.md). Management API слушает только localhost; не публиковать его в LAN.
+
+
+## Автономная ночная разработка web-vn
+
+Запуск из ChatGPT, локальная команда `~/.local/bin/vn-night`, квоты, логи, безопасность, systemd и почасовые отчёты: [NIGHT-AGENT.md](NIGHT-AGENT.md).
