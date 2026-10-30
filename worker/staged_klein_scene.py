@@ -54,7 +54,8 @@ def verify_mask(inverse_alpha_png, source_size, protected_regions, *,
         if crop.getextrema()[1]>0:raise StagedSceneError('protected_pixels_would_change')
     anatomy=None
     if actor_change_policy is not None:
-        if not isinstance(actor_change_policy, dict) or actor_change_policy.get("action") != "stationary_upper_body_prop":
+        action=(actor_change_policy.get("action") if isinstance(actor_change_policy,dict) else None)
+        if action not in ("stationary_upper_body_prop", "stationary_upper_body_prop_strict"):
             raise StagedSceneError("unsupported_actor_change_policy")
         if source_pose is None or principal_index is None:
             raise StagedSceneError("actor_policy_requires_attributed_source_pose")
@@ -65,6 +66,12 @@ def verify_mask(inverse_alpha_png, source_size, protected_regions, *,
                 keypoint_format=actor_change_policy.get("keypoint_format", "openpose18"))
         except ActorEditPolicyError as error:
             raise StagedSceneError("actor_edit_policy_rejected:"+str(error)) from error
+        if action == "stationary_upper_body_prop_strict":
+            from leg_core_guard import LegCoreError, check_thigh_cores
+            try:
+                anatomy["thigh_cores"] = check_thigh_cores(edit,source_pose,principal_index)
+            except LegCoreError as error:
+                raise StagedSceneError("actor_edit_policy_rejected:"+str(error)) from error
     guard=None
     if source_pose is not None:
         if principal_index is None:raise StagedSceneError('principal_attribution_required')
