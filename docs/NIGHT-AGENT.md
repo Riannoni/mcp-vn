@@ -181,3 +181,8 @@ CLIProxyAPI's OAuth only transports the Codex backend requests; it does not recl
 ## 13. Уточнение исходной цели и актуальность PR
 
 С 31.10.2026 при каждой **новой итерации** селектор обновляет только Git refs `refs/remotes/origin/main` и `refs/remotes/origin/pr-49` командой `git fetch --no-tags` (без checkout/merge и без изменения грязного source worktree). Если GitHub временно недоступен, используется последнее доступное read-only состояние и явно указывается `upstream_refs=cached`; нельзя выдавать его за актуальное. В prompt всегда включается просмотр `git show refs/remotes/origin/main:docs/RENDER-HANDOFF-2026-10-31.md` и реального PR #49. Пользовательская цель больше не фиксирует один завершённый PR: она закрепляет весь P0 render-v1 #20, а конкретный следующий шаг выбирает mission-state. В существующем run 20261031-021227 файл `task.txt` обновлён с приватной резервной копией, deadline не менялся. Установленное изменение вступит в силу при автоматическом возобновлении после сброса короткого окна квоты.
+
+
+## Quota research and ChatGPT fallback
+
+Empirical model/tool context amplification, reviewed mitigations, official ChatGPT usage limitations, and hourly ChatGPT source-only fallback: [NIGHT-AGENT-QUOTA-RESEARCH-2026-10-31.md](NIGHT-AGENT-QUOTA-RESEARCH-2026-10-31.md). ChatGPT Scheduled tasks cannot run twice an hour. Never confuse a normal ChatGPT scheduled turn with an unrestricted Codex API quota.

@@ -87,6 +87,31 @@ def quota_check():
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return False, {"status": "unavailable", "reason": "quota collection failed"}
 
+def extract_completed_usage(jsonl_path):
+    """Read sanitized turn statistics, not account billing or any raw prompt."""
+    try:
+        result = {"completed_commands": 0, "tool_output_characters": 0}
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            try:
+                event_item = json.loads(line)
+            except ValueError:
+                continue
+            if event_item.get("type") == "turn.completed":
+                usage = event_item.get("usage") or {}
+                for name in ("input_tokens", "cached_input_tokens", "output_tokens",
+                             "reasoning_output_tokens"):
+                    num = usage.get(name)
+                    if type(num) is int and num >= 0:
+                        result[name] = num
+            item = event_item.get("item") or {}
+            if event_item.get("type") == "item.completed" and item.get("type") == "command_execution":
+                result["completed_commands"] += 1
+                result["tool_output_characters"] += len(str(item.get("aggregated_output") or ""))
+        return result
+    except OSError:
+        return {"status": "unavailable"}
+
+
 def tool_event_verdict(jsonl_path):
     """Treat a tool-less/failed code-mode run as failure even if Codex exits 0."""
     try:
@@ -161,6 +186,7 @@ def report(run_dir, status, hourly=False):
             "- Elapsed hours: " + str(round(status.get("elapsed_hours", 0), 2)),
             "- Deadline: " + status["deadline"],
             "- Iteration: " + str(status.get("iteration", 0)),
+            "- Usage: " + json.dumps(status.get("cumulative_usage", {}), ensure_ascii=False),
             "- Mission: " + json.dumps(status.get("mission"), ensure_ascii=False),
             "- Codex quota: " + json.dumps(status.get("quota", {}), ensure_ascii=False),
             "- Git: " + json.dumps(status["git"], ensure_ascii=False),
@@ -272,6 +298,16 @@ def daemon(run_id):
                     "If an actual PNG is not independently reviewed, state G2 UNVERIFIED. "
                     "After 2 failed attempts, stop that hypothesis. "
                     "Use only neutral synthetic fixtures; never print secrets or private prompts. "
+                    "CODE MODE EFFICIENCY: if read-only checks are already known independent "
+                    "and conflict-free, batch them into ONE exec using Promise.allSettled "
+                    "or Promise.all for all-or-nothing; inspect EVERY result. Dependent, "
+                    "writing, approval and adaptive operations stay serial. Avoid repeated "
+                    "short waits: use host-side process waiting. Never repeat completed checks. "
+                    "Bound returned tool output: no full logs, giant JSON, broad rg dumps, "
+                    "or entire tool catalogs. Preserve full evidence on local disk and output "
+                    "short indexed summaries with paths and error lines. If output truncates, "
+                    "narrow the query, do NOT simply repeat it. No loss of required testing "
+                    "or independent visual QA. See Codex issue 41450 for evidence. "
                     "Read and update NIGHT_HANDOFF.md in this checkout with: hypothesis, evidence, "
                     "tests, files, remaining failures and ONE next step. Do NOT attempt git commit: "
                     "the sandbox makes .git read-only. Leave verified source files and handoff "
@@ -323,6 +359,13 @@ def daemon(run_id):
                     if outcome == "not_started":
                         outcome = (tool_event_verdict(jsonl) if proc.returncode == 0
                                    else "codex_error_" + str(proc.returncode))
+                turn_stats = extract_completed_usage(jsonl)
+                status["last_turn_usage"] = turn_stats
+                totals = status.setdefault("cumulative_usage", {})
+                for name in ("input_tokens", "cached_input_tokens", "output_tokens",
+                             "reasoning_output_tokens", "completed_commands",
+                             "tool_output_characters"):
+                    totals[name] = totals.get(name, 0) + turn_stats.get(name, 0)
                 status["last_outcome"] = outcome
                 event(run_dir, "iteration_completed", iteration=iteration, outcome=outcome)
                 report(run_dir, status)

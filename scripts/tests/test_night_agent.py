@@ -83,6 +83,20 @@ class NightTests(unittest.TestCase):
         source = (pathlib.Path(__file__).resolve().parents[1] / "night-agent.py").read_text()
         self.assertIn('"blocked_human_gate"', source)
 
+    def test_usage_aggregation_does_not_read_prompt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fp = pathlib.Path(directory) / "run.jsonl"
+            fp.write_text(
+                json.dumps({"type":"item.completed","item":{"type":"command_execution",
+                         "aggregated_output":"short"}}) + "\n" +
+                json.dumps({"type":"turn.completed","usage":{"input_tokens":300,
+                         "cached_input_tokens":250,"output_tokens":20}}) + "\n")
+            result=mod.extract_completed_usage(fp)
+            self.assertEqual(result["input_tokens"],300)
+            self.assertEqual(result["cached_input_tokens"],250)
+            self.assertEqual(result["completed_commands"],1)
+            self.assertEqual(result["tool_output_characters"],5)
+
     def test_default_model(self):
         self.assertEqual(mod.MODEL_DEFAULT, "gpt-6-astra")
     def test_default_task_is_nonproduction(self):
