@@ -1107,7 +1107,8 @@ def assess(job,raw,background):
 
 def run_comfy(job,graph):
     OUTPUT.mkdir(parents=True,exist_ok=True)
-    saved=load_manifest(job)
+    current_graph_digest=workflow_digest(graph)
+    saved=load_manifest(job,expected_workflow_digest=current_graph_digest)
     attempt=int(job.get("attempts") or 1)
     reuse=(saved and (saved["attempt"]==attempt or
             (saved["attempt"]==attempt-1 and not job.get("error"))))
@@ -1118,7 +1119,7 @@ def run_comfy(job,graph):
         result=request(COMFY,"/prompt","POST",{"prompt":graph,
             "client_id":"mcp-vn-"+job["id"]})
         pid=result["prompt_id"]
-        persist_manifest(job,pid,workflow_digest(graph))
+        persist_manifest(job,pid,current_graph_digest)
         print("SUBMITTED",job["id"],pid,job["kind"],job.get("style"),flush=True)
     timeout=time.monotonic()+(2400 if job["kind"]=="video" else 900)
     while time.monotonic()<timeout:
