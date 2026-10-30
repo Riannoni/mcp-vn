@@ -122,7 +122,7 @@ def tool_event_verdict(jsonl_path):
 def git_snapshot():
     try:
         h = command(["git", "rev-parse", "--short=12", "HEAD"], cwd=WORK)
-        p = command(["git", "status", "--porcelain=v1", "-uno"], cwd=WORK)
+        p = command(["git", "status", "--porcelain=v1"], cwd=WORK)
         return {"head": h.stdout.strip(), "changed_files": len(p.stdout.splitlines())}
     except (OSError, subprocess.TimeoutExpired):
         return {"head": "unknown", "changed_files": None}
@@ -252,8 +252,9 @@ def daemon(run_id):
                     "After 2 failed attempts, stop that hypothesis. "
                     "Use only neutral synthetic fixtures; never print secrets or private prompts. "
                     "Read and update NIGHT_HANDOFF.md in this checkout with: hypothesis, evidence, "
-                    "tests, files, remaining failures and ONE next step. Make a LOCAL git commit "
-                    "of verified source changes only, no remote push. Finish with a concise summary. "
+                    "tests, files, remaining failures and ONE next step. Do NOT attempt git commit: "
+                    "the sandbox makes .git read-only. Leave verified source files and handoff "
+                    "in the isolated worktree for independent post-run review and local commit. "
                     "Do not ask questions; when blocked, document blockers and choose another "
                     "safe read-only/source-only improvement.\n"
                     "NIGHT GOAL: " + task + "\n"

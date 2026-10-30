@@ -63,6 +63,16 @@ class NightTests(unittest.TestCase):
                 "type": "command_execution", "exit_code": 0}}) + "\n")
             self.assertEqual(mod.tool_event_verdict(p), "ok")
 
+    def test_git_snapshot_includes_untracked(self):
+        def fake_command(args, **kwargs):
+            if "rev-parse" in args:
+                return mock.Mock(stdout="cafebabefeed\n")
+            self.assertNotIn("-uno", args)
+            return mock.Mock(stdout="?? new_file.py\n M existing.py\n")
+        with mock.patch.object(mod, "command", side_effect=fake_command):
+            snapshot = mod.git_snapshot()
+        self.assertEqual(snapshot["changed_files"], 2)
+
     def test_default_model(self):
         self.assertEqual(mod.MODEL_DEFAULT, "gpt-6-astra")
     def test_default_task_is_nonproduction(self):
