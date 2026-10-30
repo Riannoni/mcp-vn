@@ -8,7 +8,6 @@ from unittest.mock import patch
 from PIL import Image,ImageDraw
 
 os.environ.setdefault("VN_WORKER_TOKEN","test-only-panel-gate")
-sys.path.insert(0,str(Path.home()/".local/share/mcp-vn"))
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
 import worker
 

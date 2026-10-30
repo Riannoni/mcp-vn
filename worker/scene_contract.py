@@ -27,6 +27,18 @@ def scene_contract(spec):
         if not isinstance(contact,dict) or contact.get("actor") not in names or (
            contact.get("kind") not in ("touch","hold","support","lean_on")):
             raise ValueError("Contact actor/action is not anchored in cast")
+    visuals=data.get("required_visuals") or []
+    if not isinstance(visuals,list) or len(visuals)>8:
+        raise ValueError("Invalid atomic scene requirements")
+    for item in visuals:
+        if not isinstance(item,dict) or item.get("kind") not in ("object","landmark","relation"):
+            raise ValueError("Invalid atomic scene kind")
+        if not isinstance(item.get("description"),str) or not 3<=len(item["description"])<=120:
+            raise ValueError("Invalid atomic description")
+        if item.get("actor") and item["actor"] not in names:
+            raise ValueError("Unknown actor in atomic requirement")
+        if item["kind"]=="relation" and not (item.get("actor") and item.get("action")):
+            raise ValueError("Relation requires actor and action")
     return data
 
 def crowd_condition(spec):

@@ -81,6 +81,19 @@ class CommandsTests(unittest.TestCase):
   self.assertEqual(response['scene']['image_prompts'],payload['scene']['image_prompts'])
   self.assertEqual(response['scene']['visual_mode'],'cg')
 
+ def test_explicit_atomic_visuals_survive_narrator_parse_and_invalid_are_discarded(self):
+  payload={'messages':[{'text':'Персонаж с картой проходит через арку.'}],
+    'scene':{'visual_mode':'cg','required_visuals':[
+       {'kind':'object','description':'paper map','actor':'Мира','action':'studying'},
+       {'kind':'landmark','description':'stone archway'},
+       {'kind':'relation','description':'two palms on wall','actor':'Мира'},
+       {'kind':'unsupported','description':'invalid extra'}]}}
+  result=vn.parse_answer(json.dumps(payload,ensure_ascii=False))
+  atoms=result['scene']['required_visuals']
+  self.assertEqual([a['description'] for a in atoms],['paper map','stone archway'])
+  self.assertEqual(atoms[0]['actor'],'Мира')
+  self.assertEqual(atoms[1]['kind'],'landmark')
+
  def test_video_assets_are_same_origin_and_invalid_names_are_rejected(self):
   self.assertEqual(vn.asset_url('https://xavoks.jo3.org/vn/assets/'+GAME+'.mp4?sig=x'),'/api/vn/assets/'+GAME+'.mp4')
   with self.assertRaises(vn.VNError):vn.asset_bytes('../secret.mp4')

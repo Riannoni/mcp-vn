@@ -7,6 +7,20 @@ No game identifiers, character names or game lore are hard-coded here.
 from __future__ import annotations
 from pose_presets import pose_prompt
 
+
+def allow_sprite_body_img2img(spec):
+    """Use full-body source only for a canonical default outfit.
+
+    A face reference is independent of the garment; copying a prior full-body
+    image for an explicit alternate outfit causes clothing and pose leakage.
+    This errs on the side of a fresh latent rather than a stale body image.
+    """
+    if not isinstance(spec,dict):
+        return False
+    outfit=str((spec.get("variant") or {}).get("outfit","default")).strip().lower()
+    return outfit=="default" and bool(
+        spec.get("anchor_asset") or spec.get("previous_sprite_asset"))
+
 def narrator_invariants(job):
     spec=job.get("spec") or {}
     kind=job.get("kind")

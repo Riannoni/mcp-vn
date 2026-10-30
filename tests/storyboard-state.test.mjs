@@ -12,19 +12,24 @@ test("narration preserves actor region and contact without mutating another game
  const extra=await store.gameStart();
  await store.gameAction(g.id,"Watch the wall");
  const a=await store.gameNarrate({game_id:g.id,messages:[{speaker:"Narrator",text:"Mira approaches the wall."}],
-  scene:{visual_mode:"cg",crowd_policy:"none",sprites:[{name:"Мира",
+  scene:{visual_mode:"cg",crowd_policy:"none",
+    required_visuals:[{kind:"landmark",description:"stone wall"}],
+    sprites:[{name:"Мира",
     actor_region:[.1,.1,.4,.8],outfit:"cloak",pose:"standing"}],
     contacts:[{actor:"Мира",target:"wall",body_part:"hands",
       kind:"touch",target_region:[.5,.05,.14,.88]}]}});
  assert.equal(a.scene.crowd_policy,"none");
  assert.deepEqual(a.scene.sprites[0].actor_region,[.1,.1,.4,.8]);
  assert.equal(a.scene.contacts[0].target,"wall");
+ assert.equal(a.scene.required_visuals[0].description,"stone wall");
+ assert.equal((await store.gameGet(extra.id)).scene.required_visuals,undefined);
  assert.equal((await store.gameGet(extra.id)).scene.contacts,undefined);
  const before=sceneIntentFingerprint(a.scene);
  await store.gameAction(g.id,"Mira moves away");
  const b=await store.gameNarrate({game_id:g.id,messages:[{speaker:"Narrator",text:"She departs."}],
   scene:{sprites:[{name:"Мира",pose:"walking"}],visual_mode:"cg"}});
  assert.deepEqual(b.scene.contacts,[]);
+ assert.deepEqual(b.scene.required_visuals,[],"outdated required objects must clear on a new shot");
  assert.equal(b.scene.sprites[0].actor_region,null);
  assert.notEqual(sceneIntentFingerprint(b.scene),before);
  const {artSnapshot}=await import("../src/art-spec.mjs");

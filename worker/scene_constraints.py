@@ -30,14 +30,27 @@ def scene_constraints(spec, prompt):
             "shirt, blouse, top, sleeves, jacket, vest, pants, trousers, "
             "skirt, dress, fabric wrapped on body, collar, boots, underwear"
         )
-    elif len(people)==1:
-        outfit=str(people[0].get("outfit","")).strip()
-        if outfit and outfit.lower()!="default":
-            positive.append(
-                "CURRENT WARDROBE CONTRACT: match the CURRENT outfit exactly "
-                "instead of the garments from the old character reference: "+
-                outfit[:160]+"."
-            )
+    else:
+        # Actor-specific garments are authoritative even in a mixed cast.
+        # A global negative garment list would erase clothing from actors
+        # who are supposed to wear it; scope requirements by actor instead.
+        for actor in people:
+            outfit=str(actor.get("outfit","")).strip()
+            if not outfit or outfit.lower()=="default":
+                continue
+            name=str(actor.get("name","")).strip()[:80]
+            if wants_unclothed(outfit):
+                positive.append(
+                    "CURRENT WARDROBE CONTRACT for "+name+": no garments worn "
+                    "on this person's body; any discarded clothing is separate. "
+                    "Do not copy clothing from the identity reference."
+                )
+            else:
+                positive.append(
+                    "CURRENT WARDROBE CONTRACT for "+name+": "+outfit[:160]+
+                    ". Match this actor's CURRENT garments instead of the "
+                    "garments from the old character reference."
+                )
     # A per-actor declarative pose is advisory text unless it has its own
     # validated control reference. Never impose one actor's pose on the cast.
     for actor in people:
@@ -45,6 +58,17 @@ def scene_constraints(spec, prompt):
         if descriptor and descriptor["id"] not in ("stand_three_quarter",):
             positive.append("Actor "+str(actor.get("name",""))[:80]+
                 " physical pose: "+descriptor["description"]+".")
+    # Typed required objects get top priority independently of short narrator
+    # prompts. This is a generation instruction, NOT a QA acceptance verdict.
+    for item in ((spec.get("visual_contract") or {}).get("required_visuals") or [])[:8]:
+        kind=item.get("kind")
+        description=str(item.get("description") or "")[:120]
+        actor=str(item.get("actor") or "")[:80]
+        action=str(item.get("action") or "")[:80]
+        if kind in ("object","landmark","relation") and description:
+            positive.insert(0,"MANDATORY VISUAL "+kind.upper()+": "+description+
+                ("; actor "+actor if actor else "")+
+                ("; action "+action if action else "")+".")
     # The same resolved contract now governs pose selection, conditioning and QA.
     action_positive,action_negative=action_prompt_contract(spec,prompt)
     if action_positive:positive.insert(0,action_positive)

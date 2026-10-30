@@ -17,6 +17,7 @@ from scene_caption_contract import scene_caption_conflicts, scene_action_conflic
 from identity_observation import face_observability,face_similarity_decision
 from qa_profiles import load_profiles
 from scene_action_contract import wall_brace_required, check_wall_action
+from atomic_visual_evidence import atomic_prompt_pair,atomic_decision,required_atomic_items
 
 HOST="127.0.0.1"
 PORT=int(os.environ.get("VN_VISION_PORT","9312"))
@@ -127,6 +128,47 @@ def score_action_contrast(image,spec,embedding=None):
   relative=torch.softmax((emb@t.T)*30,dim=1).squeeze(0).tolist()
  return round(float(relative[0]),4)
 
+def score_atomic_claims(image,spec,embedding=None):
+    """Independent limited object/landmark checks, no prompt-conditioned success."""
+    evidence=[]
+    required=required_atomic_items(spec)
+    env=str((spec.get('environment') or {}).get('id') or '')
+    for i,item in enumerate(required[:8]):
+        label={'index':i,'kind':item.get('kind'),
+               'description':str(item.get('description') or '')[:120],
+               'actor':str(item.get('actor') or '')[:100]}
+        pair=atomic_prompt_pair(item,env)
+        score=None
+        if pair is not None:
+            # An ROI can isolate the required landmark/prop from extraneous
+            # background actors. This only crops, never changes the image.
+            region=item.get('region')
+            crop=image
+            if isinstance(region,list) and len(region)==4 and all(
+              isinstance(v,(int,float)) and not isinstance(v,bool) for v in region):
+                x,y,w,h=region
+                if 0<=x<1 and 0<=y<1 and w>0 and h>0 and x+w<=1.001 and y+h<=1.001:
+                    left,top,right,bottom=(int(image.width*x),int(image.height*y),
+                         int(image.width*(x+w)),int(image.height*(y+h)))
+                    if right-left>=64 and bottom-top>=64:
+                        crop=image.crop((left,top,right,bottom))
+            emb=embedding if crop is image and embedding is not None else image_embedding(crop)
+            tokenized=clip_processor(text=list(pair),return_tensors='pt',padding=True)
+            with torch.inference_mode():
+                feats=clip.get_text_features(**tokenized)
+                if hasattr(feats,'pooler_output'):feats=feats.pooler_output
+                feats=torch.nn.functional.normalize(feats,dim=-1)
+                score=round(float(torch.softmax((emb@feats.T)*30,dim=1)[0,0]),4)
+        verdict=atomic_decision(item,score)
+        # Actor/object action cannot be certified by full-frame CLIP; the
+        # separate contact/relation checker must provide actual support.
+        if item.get('action'):
+            label['object_verdict']=verdict
+            verdict='unobservable'
+        label.update(verdict=verdict,contrast_score=score)
+        evidence.append(label)
+    return evidence
+
 def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  t0=time.monotonic()
  env=spec.get("environment") or {}
@@ -142,6 +184,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
  scene_action_verified=None
  scene_action_observation=""
  scene_action_evidence={}
+ atomic_visual_evidence=[]
  # Reuse one image encoding for all CLIP comparisons; no verdict changes.
  clip_embedding=image_embedding(image) if kind in ("background","scene") else None
  # Always use CLIP for environment; helps catch very obvious indoors/outdoors.
@@ -179,6 +222,12 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
   scene_action_contrast=score_action_contrast(image,spec,clip_embedding)
   if scene_action_contrast is not None and scene_action_contrast<0.24:
    warnings.append("Action appears less aligned than a generic posed portrait")
+  if required_atomic_items(spec):
+   atomic_visual_evidence=score_atomic_claims(image,spec,clip_embedding)
+   for item in atomic_visual_evidence:
+    if item['verdict']!='verified':
+     reasons.append('Required visual '+str(item['kind'])+' not independently verified: '+
+                    str(item['description'])+' ('+str(item['verdict'])+')')
  caption=""
  # Cascaded QA: the deterministic CG compositor cannot invent missing
  # characters, and a confident outdoor/indoor CLIP verdict does not need
@@ -331,6 +380,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
    "scene_action_verified":scene_action_verified,
    "scene_action_observation":scene_action_observation[:420],
    "scene_action_evidence":scene_action_evidence,
+   "atomic_visual_evidence":atomic_visual_evidence,
    "duration_seconds":round(time.monotonic()-t0,2)}
 
 class Handler(BaseHTTPRequestHandler):

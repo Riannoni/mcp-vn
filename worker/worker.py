@@ -31,7 +31,8 @@ from scene_contract import scene_contract,crowd_condition
 from pose_library import select_story_pose
 from pose_reference_selector import choose_approved_reference
 from actor_layout import region_for_actor, assert_cast_supported
-from render_invariants import narrator_invariants
+from render_invariants import narrator_invariants,allow_sprite_body_img2img
+from atomic_visual_evidence import atomic_report_matches_claims
 from render_retry import retry_plan,permanent_render_failure
 from engine_policy import assert_engine_snapshot
 from scene_action_contract import wall_brace_required,resolve_scene_action
@@ -634,9 +635,9 @@ def image_graph(job):
           "destination":["10",0],"source":["6",0],"x":0,"y":0,
           "resize_source":False,"mask":["10",1]}}
         graph["7"]["inputs"]["images"]=["12",0]
-    elif kind=="sprite" and not is_unclothed(spec) and not wants_fresh_latent(
-            spec.get("variant",{}).get("pose","standing"),bool(spec.get("face_asset"))) and (
-            spec.get("anchor_asset") or spec.get("previous_sprite_asset")):
+    elif (kind=="sprite" and allow_sprite_body_img2img(spec) and
+          not wants_fresh_latent(spec.get("variant",{}).get("pose","standing"),
+                                 bool(spec.get("face_asset")))):
         try:
             # Always return to the canonical anchor, rather than iterating over the
             # last generated frame (which would cause identity drift).
@@ -1025,6 +1026,15 @@ def assess(job,raw,background):
                 metrics["identity_similarity"]=float(validation["identity_similarity"])
             if validation.get("identity_face_visibility"):
                 metrics["identity_face_visibility"]=str(validation["identity_face_visibility"])
+            requested=((job.get("spec") or {}).get("visual_contract") or {}).get("required_visuals") or []
+            if kind in ("scene","local_cg") and requested:
+                atomic=validation.get("atomic_visual_evidence")
+                if not atomic_report_matches_claims(requested,atomic):
+                    reasons.append("Atomic visual QA absent, incomplete or mismatched")
+                else:
+                    metrics["atomic_visual_evidence"]=atomic[:8]
+                    if any(x.get("verdict")!="verified" for x in atomic):
+                        reasons.append("Mandatory atomic CG requirements not verified")
             # Independent visual-grounding measurements are retained in the
             # server job record. A generic VLM answer is not proof of the cast.
             for field in ("scene_action_observation","scene_action_evidence",
