@@ -12,7 +12,7 @@ class StationaryMapMask(unittest.TestCase):
         body=[0.] * 54
         def joint(i,x,y):
             body[i*3:i*3+3] = [x,y,.96]
-        for i,x,y in [(9,130,131),(10,131,187),(12,173,129),(13,174,186)]:
+        for i,x,y in [(8,130,124),(9,130,145),(10,131,187),(11,173,124),(12,173,145),(13,174,186)]:
             joint(i,x,y)
         person={"pose_keypoints_2d":body}
         for hand, cx in (("hand_left_keypoints_2d",125),("hand_right_keypoints_2d",182)):
@@ -43,6 +43,25 @@ class StationaryMapMask(unittest.TestCase):
             source_pose=self.source_pose(),principal_index=0)["status"],"preflight_only_qa_unverified")
         with self.assertRaisesRegex(StagedSceneError,"non_target_lower_body_editable"):
             self.verify(m)
+    def test_strict_thigh_core_accepts_original_small_hand_region(self):
+        from io import BytesIO
+        r=verify_mask(self.png(self.mask()),(300,200),[(.44,.10,.56,.27)],
+            source_pose=self.source_pose(),principal_index=0,
+            actor_change_policy={"action":"stationary_upper_body_prop_strict"})
+        self.assertEqual(r["anatomy_lock"]["thigh_cores"]["status"],"source_pose_thigh_cores_locked")
+    def test_strict_thigh_core_rejects_edit_of_unchanged_pants(self):
+        m=self.mask();alpha=m.getchannel("A")
+        ImageDraw.Draw(alpha).rectangle((125,110,135,128),fill=0)
+        m.putalpha(alpha)
+        # This edit is ABOVE the observed lower-shin protection boundary.
+        normal=verify_mask(self.png(m),(300,200),[(.44,.10,.56,.27)],
+            source_pose=self.source_pose(),principal_index=0,
+            actor_change_policy={"action":"stationary_upper_body_prop"})
+        self.assertEqual(normal["anatomy_lock"]["status"],"lower_body_locked")
+        with self.assertRaisesRegex(StagedSceneError,"non_target_thigh_garment_editable"):
+            verify_mask(self.png(m),(300,200),[(.44,.10,.56,.27)],
+              source_pose=self.source_pose(),principal_index=0,
+              actor_change_policy={"action":"stationary_upper_body_prop_strict"})
     def test_unobservable_knee_fails_closed(self):
         p=self.source_pose();p["people"][0]["pose_keypoints_2d"][9*3+2]=.1
         with self.assertRaisesRegex(StagedSceneError,"lower_leg_landmarks_unobservable"):
