@@ -41,3 +41,17 @@
 ## Измерение после сброса
 
 Не менять Astra на другую модель и не снимать QA ради скорости. Сравнить два source-only кейса похожей сложности на первой попытке: 5h/7d квоты до/после, \`input_tokens\`, \`cached_input_tokens\`, завершённые команды, output chars, фактически добавленные negative regression tests, G1 pass и G2 UNVERIFIED. Для реального image QA отдельно нужен private PNG review; нельзя переводить G2/G3 в PASS по сравнению токенов.
+
+## Найденные неофициальные проекты для обычного ChatGPT Web (анализ, НЕ внедрено)
+
+**Да, такие проекты существуют** — здесь важно не путать наличие публичного proof-of-concept с устойчивым и разрешённым API. Официального supported endpoint, который переносит затратные Codex autonomous tasks в квоту обычного ChatGPT Chat, по проверенной документации **нет**.
+
+| Проект | Что заявляет автор | Проверенная зрелость на 31.10.2026 | Почему не поставлен |
+| --- | --- | --- | --- |
+| [leeguooooo/chatgpt-use](https://github.com/leeguooooo/chatgpt-use) | Использование залогиненного Chrome / ChatGPT Web как *planner/reviewer* и structured delegation в CLI агент; не Codex billing | Experimental v0.0.2, GitHub 56 stars, 3 open issues, последний push 09.10; автор прямо пишет, что реальные full-agent MCP сценарии не все end-to-end проверены, UI может зависать, requests могут throttling | Нельзя считать stable tool-calling API, рендер-критичные файлы всё равно требуют внешнего исполнителя; возможен конфликт с условиями сервиса |
+| [Octo-Lex/ChatGPT-Web2API](https://github.com/Octo-Lex/ChatGPT-Web2API) | CDP/Chrome преобразователь реального ChatGPT Web в локальный OpenAI-compatible REST/MCP | Experimental third party, GitHub 91 stars/12 open issues, последний push 22.10; есть мок-тесты, opt-in real-browser E2E, автор признаёт UI/API drift и 429; image input пока не работает | Работа с аккаунтом через browser session, зависимость от UI, риски учётной записи/автоматического извлечения ответов и несоответствие native Codex tools и G2 review |
+
+Это не доказательство, что ChatGPT-Web можно безлимитно использовать: у самого веб-чата есть message и request rate limits. Даже если в отдельных случаях расходуется другой product pool, такое решение не делает его безлимитным. **Автоматизированное или программное извлечение ответов и обход ограничений прямо запрещены [OpenAI Terms](https://openai.com/policies/row-terms-of-use/)**. Не запускать reverse-proxy, CDP/Chrome-cookie bridge, фальшивый conversation endpoint или перемаршрутизацию Chat OAuth на личном аккаунте без отдельного решения владельца и проверки легитимного способа использования. Не переносить эти инструменты в production, не хранить cookie в night-runner.
+
+**Поддерживаемая альтернатива для данного задания:** существующая [ChatGPT Scheduled task](https://help.openai.com/en/articles/10291617-scheduled-tasks-in-chatgpt) выполняет отдельную source-only работу в рамках доступного продукта и его правил, когда Codex ждёт сброса. При штатном плане — **не чаще 1 раза в час**. Нельзя утверждать, что это новый автоматически запускаемый полноценный интерактивный чат или 24/7 free capacity; результаты оцениваются на реальных hourly runs.
+
