@@ -73,6 +73,16 @@ class NightTests(unittest.TestCase):
             snapshot = mod.git_snapshot()
         self.assertEqual(snapshot["changed_files"], 2)
 
+    def test_mission_script_is_required_before_iteration(self):
+        source = (pathlib.Path(__file__).resolve().parents[1] / "night-agent.py").read_text()
+        self.assertIn('mission_script = ROOT / "bin/night-mission.py"', source)
+        self.assertIn('blocked_mission_controller', source)
+        self.assertIn('mission["instruction"]', source)
+
+    def test_mission_not_masked_by_time_completion(self):
+        source = (pathlib.Path(__file__).resolve().parents[1] / "night-agent.py").read_text()
+        self.assertIn('"blocked_human_gate"', source)
+
     def test_default_model(self):
         self.assertEqual(mod.MODEL_DEFAULT, "gpt-6-astra")
     def test_default_task_is_nonproduction(self):

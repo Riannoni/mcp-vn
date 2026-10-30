@@ -162,6 +162,7 @@ def report(run_dir, status, hourly=False):
             "- Elapsed hours: " + str(round(status.get("elapsed_hours", 0), 2)),
             "- Deadline: " + status["deadline"],
             "- Iteration: " + str(status.get("iteration", 0)),
+            "- Mission: " + json.dumps(status.get("mission"), ensure_ascii=False),
             "- Codex quota: " + json.dumps(status.get("quota", {}), ensure_ascii=False),
             "- Git: " + json.dumps(status["git"], ensure_ascii=False),
             "- Last outcome: " + str(status.get("last_outcome", "pending")),
@@ -231,6 +232,27 @@ def daemon(run_id):
                             break
                         time.sleep(15)
                     continue
+                # Select the next render-v1 task from a bounded, evidence-gated mission.
+                mission_script = ROOT / "bin/night-mission.py"
+                try:
+                    mission_output = command([sys.executable, str(mission_script),
+                                              "next", str(run_dir)], timeout=10)
+                    mission = json.loads(mission_output.stdout) if mission_output.returncode == 0 else {}
+                except (OSError, ValueError, subprocess.TimeoutExpired):
+                    mission = {}
+                if mission.get("status") == "requires_human":
+                    status["state"] = "blocked_human_gate"
+                    status["last_outcome"] = mission.get("reason", "source stages exhausted")
+                    report(run_dir, status, hourly=True)
+                    event(run_dir, "mission_requires_human")
+                    break
+                if mission.get("status") != "ready":
+                    status["state"] = "blocked_mission_controller"
+                    status["last_outcome"] = "Mission controller unavailable"
+                    report(run_dir, status, hourly=True)
+                    event(run_dir, "mission_controller_error")
+                    break
+                status["mission"] = {k: mission.get(k) for k in ("stage_id", "issue", "attempt", "history_size")}
                 status["iteration"] += 1
                 iteration = status["iteration"]
                 status["state"] = "working"
@@ -258,6 +280,9 @@ def daemon(run_id):
                     "Do not ask questions; when blocked, document blockers and choose another "
                     "safe read-only/source-only improvement.\n"
                     "NIGHT GOAL: " + task + "\n"
+                    "CURRENT AUTONOMOUS MISSION: " + mission["instruction"] + "\n"
+                    "REFERENCE: PR #49 fetched read-only as refs/remotes/origin/pr-49. "
+                    "Use git show for reference, never merge or replace uncommitted files.\n"
                     "ITERATION: " + str(iteration) + ". Limit scope to one focused improvement.\n"
                 )
                 last_path = run_dir / "last-message.txt"
@@ -312,7 +337,8 @@ def daemon(run_id):
                     failure_streak = 0
                     # Control cadence and allow other agents' source changes to remain isolated.
                     time.sleep(10)
-            if status["state"] not in ("paused_quota", "blocked_repeated_error"):
+            if status["state"] not in ("paused_quota", "blocked_repeated_error",
+                                     "blocked_mission_controller", "blocked_human_gate"):
                 status["state"] = "stopped" if STOP else "completed_time_limit"
             status["elapsed_hours"] = round((time.time() - started_ts) / 3600, 3)
             report(run_dir, status, hourly=True)
