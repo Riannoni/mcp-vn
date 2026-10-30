@@ -36,7 +36,7 @@ export function sceneIntentFingerprint(scene={}){
   norm(scene.time_of_day,""),norm(scene.weather,""),
   Number(scene.cg_revision||0),norm(scene.visual_direction,""),
   norm(scene.image_prompts?.cg,""),norm(scene.crowd_policy,"unspecified"),
-  JSON.stringify(scene.contacts||[]),people]);
+  JSON.stringify(scene.contacts||[]),JSON.stringify(scene.required_visuals||[]),people]);
 }
 export function normalizeSprite(sprite={},identity={},sceneBackground="",gameStyle=""){
  const s={...sprite};

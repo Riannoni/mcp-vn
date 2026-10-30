@@ -237,6 +237,13 @@ scene.crowd_policy="none"|"ambient"|"crowd"|"unspecified" — наличие
 "target_region":[0.6,0.1,0.1,0.8]}].
 Не придумывай точную геометрию, если она неизвестна, и не подменяй
 физический контакт текстовым утверждением.
+Для сложного CG добавь scene.required_visuals — до 8 **обязательных**
+фактов кадра, а не стилистических пожеланий:
+[{"kind":"object","description":"folded paper map","actor":"Мира","action":"studying"},
+ {"kind":"landmark","description":"large stone archway"}].
+kind="relation" только для обязательной связи двух объектов (actor и action
+обязательны). Не добавляй неподтверждённые предметы ради иллюстрации.
+Список должен меняться вместе с кадром: прошлые предметы не переносятся.
 Дополнительно scene.visual_direction можешь использовать для краткого
 резюме кадра; полные image_prompts имеют приоритет при генерации.
 Добавляй scene.visual_mode="cg" при значительном физическом действии,
@@ -319,6 +326,20 @@ def parse_answer(s):
      item["target_region"]=region
     contacts.append(item)
    scene["contacts"]=contacts
+  requirements=visual.get("required_visuals")
+  if isinstance(requirements,list):
+   atoms=[]
+   for x in requirements[:8]:
+    if not isinstance(x,dict) or x.get("kind") not in ("object","landmark","relation"):
+     continue
+    description=str(x.get("description") or "").strip()[:120]
+    actor=str(x.get("actor") or "").strip()[:100]
+    action=str(x.get("action") or "").strip()[:80]
+    if len(description)<3 or (x["kind"]=="relation" and (not actor or not action)):
+     continue
+    atoms.append({"kind":x["kind"],"description":description,
+                  "actor":actor,"action":action})
+   scene["required_visuals"]=atoms
   prompts=visual.get("image_prompts")
   if isinstance(prompts,dict):
    clean={}

@@ -225,7 +225,7 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  }]));
  const previousDirection=g.scene.visual_direction||"";
  const previousBlocking=JSON.stringify([
-  g.scene.crowd_policy||"",g.scene.contacts||[],
+  g.scene.crowd_policy||"",g.scene.contacts||[],g.scene.required_visuals||[],
   (g.scene.sprites||[]).map(x=>x.actor_region||null)]);
  const validRegion=r=>Array.isArray(r)&&r.length===4&&r.every(v=>
   typeof v==="number"&&Number.isFinite(v))&&r[0]>=0&&r[1]>=0&&
@@ -289,6 +289,24 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  }else if(scene.sprites!==undefined||scene.location!==undefined){
   g.scene.contacts=[];
  }
+ // Every mandatory image object/landmark must be declared, never guessed
+ // from the scene's free-form prose by an ungrounded prompt heuristic.
+ if(scene.required_visuals!==undefined){
+  if(!Array.isArray(scene.required_visuals)||scene.required_visuals.length>8)
+   throw Error("Invalid required visual assertions");
+  g.scene.required_visuals=scene.required_visuals.filter(x=>x&&typeof x==="object"&&
+    !Array.isArray(x)&&["object","landmark","relation"].includes(x.kind))
+   .map(x=>({kind:x.kind,description:txt(x.description,120),
+    actor:typeof x.actor==="string"?txt(x.actor,100):"",
+    action:typeof x.action==="string"?txt(x.action,80):"",
+    region:validRegion(x.region)?x.region:null}))
+   .filter(x=>x.description.length>=3&&
+     (!x.actor||((scene.sprites!==undefined?scene.sprites:g.scene.sprites)||[]).some(p=>p.name===x.actor))&&
+     (x.kind!=="relation"||(x.actor&&x.action)));
+ }else if(scene.sprites!==undefined||scene.location!==undefined||
+          scene.visual_mode!==undefined||scene.visual_direction!==undefined){
+  g.scene.required_visuals=[];
+ }
  // A prompt belongs to one visual beat, never an unrelated future pose.
  if(scene.image_prompts&&typeof scene.image_prompts==="object"&&!Array.isArray(scene.image_prompts)){
   const source=scene.image_prompts,art={};
@@ -350,7 +368,7 @@ export async function gameNarrate({game_id,messages,scene={},choices=[],inventor
  g.scene.auto_cg_requested=scene.visual_mode==="cg"?true:
   scene.visual_mode==="layers"?false:physicalChanged;
  const currentBlocking=JSON.stringify([
-  g.scene.crowd_policy||"",g.scene.contacts||[],
+  g.scene.crowd_policy||"",g.scene.contacts||[],g.scene.required_visuals||[],
   (g.scene.sprites||[]).map(x=>x.actor_region||null)]);
  const changedBlocking=previousBlocking!==currentBlocking;
  const changedShot=physicalChanged||changedBlocking||(scene.visual_mode==="cg"&&(

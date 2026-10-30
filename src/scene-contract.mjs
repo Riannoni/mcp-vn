@@ -5,6 +5,26 @@ const validRegion=r=>Array.isArray(r)&&r.length===4&&r.every(x=>
  typeof x==="number"&&Number.isFinite(x))&&r[0]>=0&&r[1]>=0&&r[2]>0&&
  r[3]>0&&r[0]+r[2]<=1.00001&&r[1]+r[3]<=1.00001;
 const CROWD=new Set(["none","ambient","crowd","unspecified"]);
+const VISUAL_KIND=new Set(["object","landmark","relation"]);
+function visualRequirements(raw,principalNames){
+ if(!Array.isArray(raw))return [];
+ const out=[];
+ for(const item of raw.slice(0,8)){
+  if(!item||typeof item!=="object"||Array.isArray(item))continue;
+  const kind=clean(item.kind,24).toLowerCase();
+  const description=clean(item.description,120);
+  const actor=clean(item.actor,100);
+  const action=clean(item.action,80);
+  if(!VISUAL_KIND.has(kind)||description.length<3)continue;
+  if(actor&&!principalNames.has(actor.toLowerCase()))continue;
+  if(kind==="relation"&&(!actor||!action))continue;
+  if(kind==="object"&&action&&!actor)continue;
+  out.push({kind,description,actor,action,
+   region:validRegion(item.region)?item.region:null});
+ }
+ return out;
+}
+
 function policy(source,id){
  const given=clean(source?.crowd_policy,30).toLowerCase();
  if(CROWD.has(given)&&given!=="unspecified")return given;
@@ -32,6 +52,8 @@ export function buildSceneContract({kind,environment,location,characters=[],stat
    anchor_face_asset:clean(ref.anchor_face_asset,64),
    anchor_asset:clean(ref.anchor_asset,64)});
  }
+ const required_visuals=visualRequirements(
+  local?state.required_visuals:scene.required_visuals,principalNames);
  const contacts=[];
  const explicit=local?state.contacts:scene.contacts;
  for(const c of (Array.isArray(explicit)?explicit:[]).slice(0,12)){
@@ -45,5 +67,5 @@ export function buildSceneContract({kind,environment,location,characters=[],stat
  return {version:1,scene_kind:kind,setting:{id,location:clean(location,180)},
   camera:clean(local?state.camera:(scene.camera||scene.visual_direction),180),
   crowd:{policy:policy(local?state:scene,id),principal_count:principals.length},
-  principals,contacts};
+  principals,contacts,required_visuals};
 }

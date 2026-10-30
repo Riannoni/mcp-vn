@@ -40,6 +40,17 @@ class SceneConstraintsTest(unittest.TestCase):
         self.assertIn("robe",positive)
         self.assertNotIn("worn clothing",negative)
 
+    def test_mandatory_object_prompt_is_not_silently_discarded(self):
+        spec={"composition":"neural_story","characters":[
+           {"name":"Ada","outfit":"blue jacket","pose":"standing"}],
+           "visual_contract":{"required_visuals":[
+             {"kind":"object","description":"folded paper map","actor":"Ada","action":"studying"},
+             {"kind":"landmark","description":"stone archway"}]}}
+        pos,_=scene_constraints(spec,"a traveler at a market")
+        self.assertIn("MANDATORY VISUAL OBJECT",pos)
+        self.assertIn("folded paper map",pos)
+        self.assertIn("stone archway",pos)
+
     def test_other_compositions_are_untouched(self):
         self.assertEqual(scene_constraints({
           "composition":"anchored_composite",

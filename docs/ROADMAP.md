@@ -75,3 +75,18 @@ Sources: https://github.com/TaleWeaverAdmin/TaleWeaver ; https://github.com/Acly
 
 ## Acceptance / evidence contract
 Each issue only closes when relevant code, tests, measured output (without private CG), deployment revision, rollback and remaining unknowns are documented. Baseline immediately after prior rollout: 372 historical jobs (281 done, 40 failed, 51 superseded); zero post-rollout visual_contract/evidence samples at that moment. This baseline is not proof of new QA accuracy. Keep a live scoreboard and prevent scope creep until render-v1 works on the test game.
+
+## Render-v1 follow-up — 30 October 2026 (second experimental iteration)
+
+**Status: NOT READY.** Shadow-only atomic QA and Z-Image FP8 compact model
+replays are documented in [RENDER-CANARY-2026-10-30](RENDER-CANARY-2026-10-30.md).
+The two curated negative SDXL CGs were rejected by independent required
+object/landmark checks, where the old scene-wide QA falsely accepted them.
+New typed `scene.required_visuals` remains optional, and actor/object physical
+relations remain unobservable rather than falsely verified. Both complete
+compact (<=1024px) model smoke series executed 4/4 first attempt without
+further ComfyUI restarts, with clear map/arch/standing sprite; identical
+character identity relative to the existing canonical reference is **not**
+verified, original user CG is **not** accepted, and exact wall contact remains
+unproven. **Block merging/deployment** until identity, scene action, QA labels,
+GPU stability and native output-size requirements are covered by gold tests.

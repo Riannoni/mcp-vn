@@ -58,6 +58,17 @@ def scene_constraints(spec, prompt):
         if descriptor and descriptor["id"] not in ("stand_three_quarter",):
             positive.append("Actor "+str(actor.get("name",""))[:80]+
                 " physical pose: "+descriptor["description"]+".")
+    # Typed required objects get top priority independently of short narrator
+    # prompts. This is a generation instruction, NOT a QA acceptance verdict.
+    for item in ((spec.get("visual_contract") or {}).get("required_visuals") or [])[:8]:
+        kind=item.get("kind")
+        description=str(item.get("description") or "")[:120]
+        actor=str(item.get("actor") or "")[:80]
+        action=str(item.get("action") or "")[:80]
+        if kind in ("object","landmark","relation") and description:
+            positive.insert(0,"MANDATORY VISUAL "+kind.upper()+": "+description+
+                ("; actor "+actor if actor else "")+
+                ("; action "+action if action else "")+".")
     # The same resolved contract now governs pose selection, conditioning and QA.
     action_positive,action_negative=action_prompt_contract(spec,prompt)
     if action_positive:positive.insert(0,action_positive)
