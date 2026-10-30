@@ -152,3 +152,62 @@ Useful upstream references:
 - https://github.com/Acly/krita-ai-diffusion
 
 **Current go/no-go remains NO-GO** for automated first-pass publishing.
+
+## 30 October 12:30 Novosibirsk — recovery after interrupted run
+
+The earlier chat run timed out before its concluding write-up. Work was
+recovered without modifying production services. The earlier GitHub Actions
+run (`40998638483`) for PR #33 / commit `9cdfadf` finished **successfully**;
+ComfyUI, production worker and production vision were active, queue empty.
+
+### Third compact first-attempt set and native output
+
+Refactored the proven FP8 Comfy workflow into the isolated
+`worker/zimage_backend.py` pure builder. **Intentional release interlock:**
+only a `private_unanchored=True` experiment can invoke this T2I graph;
+any canonical face asset is rejected, and no production call site uses this
+backend. It pins the known compatible FP8 checkpoint, Qwen3 4B, AE VAE,
+AuraFlow sampler and max 1024px source dimensions; it rejects mismatched
+model graphs and unsupported identity claims.
+
+An additional seed `2026103003` generated all four test frames consecutively
+on the real ROCm GPU, no additional Comfy restart. All four generated in their
+first GPU attempt: map 6.14s, arch 6.12s, wall 6.10s, sprite 8.96s
+(including conversion to game canvas and sprite cutout). Local postprocessing
+converted CG to **1216×704 RGB** and sprite to **832×1216 RGBA**. For that
+sprite, alpha transparent fraction **0.7793**, nonempty bbox
+`[254,64,589,1172]`; cutout geometry still needs human QA, and these are
+not proof of identity/pose. Thus the **three compact batches totaled 12/12
+technical first-attempt outputs** with no new Comfy restart in those batches,
+versus the prior high-resolution series that crashed. Complete scene
+conformance and release gate are **not** certified.
+
+### Canonical-character img2img experiment: FAIL
+
+An independently staged experiment fed the **existing full-body canonical
+reference** as a Z-Image img2img latent while changing outfit to a closed blue
+jacket (fixed seed `2026103003`). Both one-attempt graphs completed, but:
+
+- denoise **0.62**: preserved the previous green cloak/brown garments;
+  required wardrobe change failed; canonical face-crop CLIP cosine **0.7559**;
+- denoise **0.82**: changed to the correct blue jacket/dark trousers but did
+  **not** preserve the canonical face; cosine **0.7346**;
+- same T2I seed without reference: canonical face cosine **0.7579**.
+
+The CLIP scores are comparative diagnostic signals, not biometrically
+calibrated probabilities. The img2img experiment did not improve canonical
+identity and exposed the exact *wardrobe-versus-identity* coupling seen in the
+old rendering stack. Neither candidate was promoted. The two images and
+canonical references remain private to the PC; only redacted metrics are
+included in repository documentation.
+
+**Next required work:** train/evaluate a Z-Image-native identity LoRA on a
+curated authorized multi-angle data set or validate a compatible reference
+adapter (with real ROCm benchmark). Evaluate exact-object and wall-contact
+conditioning with the official Z-Image Union ControlNet; don't use SDXL
+ControlNet nodes on the transformer. Until accepted, keep existing game
+renderer unchanged and leave PR #33 draft.
+
+Sources: https://huggingface.co/Comfy-Org/Z-Image-Turbo ;
+https://docs.comfy.org/tutorials/image/z-image/z-image-turbo ;
+https://huggingface.co/blog/content-and-code/training-a-lora-for-z-image-turbo

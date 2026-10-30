@@ -4,8 +4,10 @@
 No game/server calls. Uses precisely the official Z Image text2img graph
 adapted to existing installed model files. Writes outside canonical game data.
 """
-import argparse,json,time,uuid,urllib.request,shutil
+import argparse,json,time,uuid,urllib.request,shutil,sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
+from zimage_backend import create_graph,prepare_game_canvas
 
 COMFY='http://127.0.0.1:8188'
 MODELS={
@@ -24,26 +26,17 @@ def req(path,method='GET',data=None,timeout=20):
     request=urllib.request.Request(COMFY+path,data=payload,method=method,headers={'Content-Type':'application/json'} if payload else {})
     with urllib.request.urlopen(request,timeout=timeout) as response:return json.load(response)
 def graph(prompt,seed,prefix,width,height):
-    return {
-        '1':{'class_type':'UNETLoader','inputs':{'unet_name':MODELS['unet'],'weight_dtype':'default'}},
-        '2':{'class_type':'CLIPLoader','inputs':{'clip_name':MODELS['clip'],'type':'lumina2','device':'default'}},
-        '3':{'class_type':'VAELoader','inputs':{'vae_name':MODELS['vae']}},
-        '4':{'class_type':'CLIPTextEncode','inputs':{'clip':['2',0],'text':prompt}},
-        '5':{'class_type':'ConditioningZeroOut','inputs':{'conditioning':['4',0]}},
-        '6':{'class_type':'ModelSamplingAuraFlow','inputs':{'model':['1',0],'shift':3}},
-        '7':{'class_type':'EmptySD3LatentImage','inputs':{'width':width,'height':height,'batch_size':1}},
-        '8':{'class_type':'KSampler','inputs':{'model':['6',0],'positive':['4',0],'negative':['5',0],
-             'latent_image':['7',0],'seed':seed,'steps':8,'cfg':1.0,'sampler_name':'res_multistep','scheduler':'simple','denoise':1.0}},
-        '9':{'class_type':'VAEDecode','inputs':{'samples':['8',0],'vae':['3',0]}},
-        '10':{'class_type':'SaveImage','inputs':{'images':['9',0],'filename_prefix':prefix}},
-    }
+    return create_graph(prompt,seed=seed,prefix=prefix,width=width,height=height,
+                        private_unanchored=True)
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output-dir',required=True,type=Path)
     p.add_argument('--only',choices=[*PROMPTS,'all'],default='all');p.add_argument('--seed',type=int,default=2026103001)
     p.add_argument('--compact',action='store_true',help='Constrain native Z-Image dimensions to at most 1024 pixels')
+    p.add_argument('--native',action='store_true',help='Resize accepted PNG to game size and extract sprite alpha (experimental)')
     args=p.parse_args();out=args.output_dir;out.mkdir(parents=True,exist_ok=True,mode=0o700)
     names=list(PROMPTS) if args.only=='all' else [args.only]
     results=[]
+    alpha_session=None
     for n in names:
       start=time.monotonic();wid,hei=((704,1024) if n=='sprite' else (1024,592)) if args.compact else ((832,1216) if n=='sprite' else (1216,704))
       summary={'kind':n,'seed':args.seed,'model':MODELS,'status':'unknown'}
@@ -64,7 +57,29 @@ def main():
           source=(Path.home()/'.local/share/mcp-vn-comfy/output'/image.get('subfolder','')/image['filename']).resolve()
           if not source.is_file():raise RuntimeError('output missing: '+str(source))
           dest=out/(n+'.png');shutil.copy2(source,dest);dest.chmod(0o600)
-          summary['output']=str(dest);summary['status']='ok';break
+          summary['output']=str(dest);summary['status']='ok'
+          if args.native:
+            raw=dest.read_bytes()
+            if n=='sprite':
+                from rembg import new_session,remove
+                if alpha_session is None:
+                    alpha_session=new_session('isnet-general-use',providers=['CPUExecutionProvider'])
+                cutout=lambda im:remove(im,session=alpha_session,alpha_matting=False).convert('RGBA')
+            else:
+                cutout=None
+            from PIL import Image
+            native_bytes=prepare_game_canvas(raw,n,sprite_cutout=cutout)
+            native_path=out/(n+'.native.png')
+            native_path.write_bytes(native_bytes)
+            native_path.chmod(0o600)
+            with Image.open(native_path) as native:
+                summary['native_output']=str(native_path)
+                summary['native_size']=native.size
+                if n=='sprite':
+                    a=native.getchannel('A')
+                    summary['transparent_fraction']=round(sum(a.histogram()[:24])/(a.width*a.height),4)
+                    summary['foreground_bbox']=a.point(lambda v:255 if v>80 else 0).getbbox()
+          break
         else:raise TimeoutError('generation timeout')
       except Exception as error:summary['status']='failed';summary['error']=str(error)[:1500]
       summary['seconds']=round(time.monotonic()-start,2);results.append(summary)

@@ -90,3 +90,15 @@ character identity relative to the existing canonical reference is **not**
 verified, original user CG is **not** accepted, and exact wall contact remains
 unproven. **Block merging/deployment** until identity, scene action, QA labels,
 GPU stability and native output-size requirements are covered by gold tests.
+
+### 2026-10-30 interrupted-run recovery
+
+The third real compact Z-Image batch completed 4/4 GPU first attempts, with
+native-size PNGs and a transparent sprite (three compact batches: 12/12
+technical first-attempt completions). A private canonical full-body img2img
+A/B at denoise 0.62/0.82 failed the combined outfit-and-identity gate:
+low denoise reused the **old cloak**, high denoise lost face similarity.
+The new isolated Z-Image builder remains **private-only**, not production.
+See #34 and `docs/RENDER-CANARY-2026-10-30.md`. Outstanding P0 is a native
+identity-conditioning strategy plus action pose/contact controls and >=30
+human-labeled QA examples. No acceptance-gate status change.
