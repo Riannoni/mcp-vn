@@ -1,6 +1,19 @@
 """Read-only per-shot scene-contract validation and human-readable conditioning.
 Do not guess named actors or contact geometry from the model's prose.
 """
+from math import isfinite
+
+def _valid_contact_region(region):
+    # Missing ROI is allowed; fabricated or malformed ROI is not.
+    if region is None:
+        return True
+    return (isinstance(region, list) and len(region) == 4
+            and all(type(v) in (int, float) and isfinite(v) for v in region)
+            and region[0] >= 0 and region[1] >= 0
+            and region[2] > 0 and region[3] > 0
+            and region[0] + region[2] <= 1.00001
+            and region[1] + region[3] <= 1.00001)
+
 def scene_contract(spec):
     data=spec.get("visual_contract")
     if not isinstance(data,dict) or data.get("version")!=1:
@@ -24,9 +37,14 @@ def scene_contract(spec):
     if not isinstance(contacts,list) or len(contacts)>12:
         raise ValueError("Invalid scene contacts")
     for contact in contacts:
-        if not isinstance(contact,dict) or contact.get("actor") not in names or (
-           contact.get("kind") not in ("touch","hold","support","lean_on")):
-            raise ValueError("Contact actor/action is not anchored in cast")
+        if not isinstance(contact, dict):
+            raise ValueError("Malformed mandatory contact")
+        target = contact.get("target")
+        if (contact.get("actor") not in names
+                or contact.get("kind") not in ("touch", "hold", "support", "lean_on")
+                or not isinstance(target, str) or not target.strip()
+                or not _valid_contact_region(contact.get("target_region"))):
+            raise ValueError("Malformed mandatory contact: actor, action, target or ROI")
     return data
 
 def crowd_condition(spec):
