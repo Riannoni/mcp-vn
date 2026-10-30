@@ -960,6 +960,26 @@ def assess(job,raw,background):
             reasons.append("Cannot validate new CG against original: "+str(error)[:90])
     output=pil_png(image)
     metrics["result_bytes"]=len(output)
+    # Shadow-only local biometric embedding comparison. Generic CLIP is not
+    # a calibrated identity recognizer; do not change QA acceptance here.
+    # An unavailable, ambiguous or rear face can only be unobservable.
+    if os.environ.get('VN_SFACE_SHADOW_DIR') and kind in ('scene','sprite','local_cg'):
+        try:
+            from identity_sface_shadow import SFaceShadow
+            principals=(job.get('spec') or {}).get('characters') or []
+            canonical=(principals[0].get('anchor_face_asset') if len(principals)==1
+                       else None) if kind!='sprite' else (job.get('spec') or {}).get('face_asset')
+            reference=fetch_asset(canonical) if canonical else None
+            if reference is not None:
+                metrics['face_identity_shadow']=SFaceShadow(
+                    os.environ['VN_SFACE_SHADOW_DIR']).compare(reference,image)
+            else:
+                metrics['face_identity_shadow']={
+                    'verdict':'unobservable','reason':'canonical_face_or_actor_missing'}
+        except (ImportError,OSError,ValueError,RuntimeError) as error:
+            metrics['face_identity_shadow']={
+                'verdict':'unobservable','reason':'shadow_metric_unavailable',
+                'detail':str(error)[:90]}
     semantic="unavailable"
     warnings=[]
     qa_t0=time.monotonic()
