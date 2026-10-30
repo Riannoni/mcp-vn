@@ -17,6 +17,20 @@ class Manifest(unittest.TestCase):
   self.assertEqual(key(self.job).stat().st_mode&0o777,0o600)
   changed={**self.job,"spec":{"spec_version":6}}
   self.assertIsNone(load(changed))
+ def test_changed_workflow_cannot_resume_old_prompt(self):
+  first=digest({"checkpoint":"A","steps":8})
+  second=digest({"checkpoint":"B","steps":8})
+  item=persist(self.job,"22222222-2222-4222-8222-222222222222",first)
+  self.assertEqual(load(self.job,expected_workflow_digest=first)["prompt_id"],item["prompt_id"])
+  self.assertIsNone(load(self.job,expected_workflow_digest=second))
+  self.assertIsNone(load(self.job,expected_workflow_digest=""))
+ def test_missing_stored_workflow_digest_fails_closed(self):
+  item=persist(self.job,"22222222-2222-4222-8222-222222222222",digest({"checkpoint":"A"}))
+  path=key(self.job)
+  import json
+  payload=json.loads(path.read_text());payload.pop("workflow_digest")
+  path.write_text(json.dumps(payload))
+  self.assertIsNone(load(self.job,expected_workflow_digest=item["workflow_digest"]))
  def test_graph_digest_is_stable(self):
   self.assertEqual(digest({"b":2,"a":1}),digest({"a":1,"b":2}))
 if __name__=="__main__":unittest.main()
