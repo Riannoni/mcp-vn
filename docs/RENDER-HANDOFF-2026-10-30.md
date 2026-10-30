@@ -4,6 +4,24 @@
 
 This is a **durable operational handoff**, not a successful acceptance report. A private evidence manifest on the PC, \`render-fix-20261030/private-handoff-20261030.json\` under the current user's local VN research directory, includes exact paths, SHA256s, prompt/job IDs and source references. Keep that manifest/CG/save bytes off GitHub. It existed with **16/16** referenced files at the time of this handoff (manifest SHA256 \`bc6bbc94aaa6523db873a146fbd3e98714531bb92b79ea7d448a72fb15678d46\`). If absent later, STOP and inspect before any rerun.
 
+## **UPDATE — 2026-10-30 21:26–21:27 Asia/Novosibirsk — deployment happened after original snapshot**
+
+The table below describes the **21:07 pre-deployment baseline**, not current live status. **NOW DEPLOYED**: [P0 issue #39](https://github.com/Riannoni/web-vn/issues/39) / [PR #40](https://github.com/Riannoni/web-vn/pull/40), **squash-merged to main** at \`e42de14c7165033bd01142e5f72f5f7b7374e4a9\`, then manually deployed as an **exact two-file production vision patch** to the PC (\`mcp-vn-vision\` only; worker and ComfyUI untouched). Both original pre-patch production files matched their GitHub-main historical bytes exactly; a local rollback copy was taken before the atomic replacement. Live post-patch hashes:
+
+- \`vision_daemon.py\` SHA256 \`627a2bdac2a7890a63b7936c5fcc622a535a3dc9e1d3a9e050f34f390f091f2b\`
+- \`wardrobe_contract.py\` SHA256 \`17804a721b3d7e435b8d1033c203e3f1ff7d7024866aec8bdd1c1ad28f7aad96\`
+- Legacy rollback copies in the PC protected research folder \`live-rollback-pr40\`; exact absolute path in private manifest.
+- Restarted \`mcp-vn-vision\` and observed active \`/healthz\`; GPU queue idle. Startup briefly refused connections during the warm model load, then recovered.
+
+**Crucial real deployed positive/negative verification, 21:26 local:** identical prior raw PNG SHA256 \`1a76766103c0e38f99f6c432f81d13b04f99a47f2ceebbe9f12c4192e4709d57\` against the actual production daemon:
+
+| Contract on same pixels | Live \`worker.assess\` | QA duration |
+|---|---|---:|
+| Current blue jacket, old green cloak explicitly excluded | \`passed\`, zero reasons/warnings, CLIP face 0.9229 | 12.27s |
+| Required green cloak while pixels show blue jacket | \`rejected\` with \`Wardrobe color incorrect: requested green, image shows blue\` | 12.29s |
+
+The tested isolated helper exactly matched merged source, five unit tests passed, and no GPU generation was rerun for either QA replay. Private manifest updated SHA256 \`9399c91549782eb562768b6fc775316f9ecb2fa93a5311b5583c730ae3381e07\` (it contains the rollback path and live hashes). This is **source+deployed+isolated live QA verified FOR THE OUTFIT PARSER ONLY**. **No game/save E2E, browser publish, 3 CG continuation or global render-v1 quality proof.** Run read-only preflight again; source and live versions can drift after this timestamp.
+
 ## Exact repository and live state (must be rechecked before work)
 
 | Dimension | 2026-10-30 observed state | Implication |
