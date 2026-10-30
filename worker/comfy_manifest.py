@@ -30,13 +30,22 @@ def signature(job):
     return hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False,
                                   default=str).encode()).hexdigest()
 
-def load(job):
+def load(job, expected_workflow_digest=None):
+    """Resume only the exact workflow when its digest is supplied.
+
+    Legacy callers can omit the digest, but GPU execution must provide it.
+    A stale graph may produce different pixels even with the same job spec.
+    """
     path=key(job)
     if not path.is_file():return None
     try:
         d=json.loads(path.read_text())
         if (d.get("version")!=1 or d.get("signature")!=signature(job) or
-            not re.fullmatch(r"[0-9a-f-]{36}",str(d.get("prompt_id","")))):
+            not re.fullmatch(r"[0-9a-f-]{36}",str(d.get("prompt_id",""))) or
+            (expected_workflow_digest is not None and
+             (not isinstance(expected_workflow_digest,str) or
+              not expected_workflow_digest or
+              d.get("workflow_digest")!=expected_workflow_digest))):
             return None
         return d
     except (OSError,ValueError,TypeError):
