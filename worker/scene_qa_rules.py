@@ -6,11 +6,44 @@ location and principal-person count. A one-word SmolVLM answer such as
 "Two." is not evidence by itself. No content-category filters are here.
 """
 
+from math import isfinite
+
+
+def _finite_softmax_scores(scores, keys):
+    """Fail closed on malformed CLIP probabilities, not just low confidence.
+
+    The vision daemon produces softmax probabilities for these label sets.
+    Missing labels retain the historical zero default; a present invalid
+    value must never become positive evidence for a required scene fact.
+    """
+    if not isinstance(scores, dict):
+        return None
+    clean = {}
+    for key in keys:
+        raw = scores.get(key, 0.0)
+        if isinstance(raw, bool):
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not isfinite(value) or not 0.0 <= value <= 1.0:
+            return None
+        clean[key] = value
+    return clean
+
+
 def principal_count_evidence(expected_count, scores, crowd_policy="none"):
     """Return (verified, reasons, confidence) for visible principals."""
     n=int(expected_count or 0)
     if n <= 0:
         return False, ["Scene has no declared principal characters"], 0.0
+    scores = _finite_softmax_scores(scores, (
+        "solo_portrait", "solo_person", "solo_woman",
+        "pair_people", "pair_interaction", "pair_mixed",
+        "group_three", "group_many", "no_people"))
+    if scores is None:
+        return False, ["Invalid CLIP principal-count probabilities"], 0.0
     solo=sum(float(scores.get(k,0)) for k in ("solo_portrait","solo_person","solo_woman"))
     pair=sum(float(scores.get(k,0)) for k in ("pair_people","pair_interaction","pair_mixed"))
     group=sum(float(scores.get(k,0)) for k in ("group_three","group_many"))
@@ -61,6 +94,9 @@ def scene_location_evidence(expected, scores):
     expected=str(expected or "")
     if expected not in categories:
         return False,[],0.0  # unknown setting: not eligible for reference reuse
+    scores = _finite_softmax_scores(scores, categories)
+    if scores is None:
+        return False, ["Invalid CLIP scene-location probabilities"], 0.0
     val=float(scores.get(expected,0))
     forest=float(scores.get("outdoor_forest",0))
     market=float(scores.get("outdoor_market_square",0))
