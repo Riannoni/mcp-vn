@@ -22,7 +22,7 @@ def _name(name):
 
 
 def verify_mask(inverse_alpha_png, source_size, protected_regions, *,
-                source_pose=None, principal_index=None):
+                source_pose=None, principal_index=None, actor_change_policy=None):
     """Preflight mask: Comfy LoadImage mask comes from inverse PNG alpha."""
     from PIL import Image,ImageOps
     try:
@@ -52,6 +52,19 @@ def verify_mask(inverse_alpha_png, source_size, protected_regions, *,
         w,h=edit.size
         crop=edit.crop((int(x0*w),int(y0*h),int(x1*w),int(y1*h)))
         if crop.getextrema()[1]>0:raise StagedSceneError('protected_pixels_would_change')
+    anatomy=None
+    if actor_change_policy is not None:
+        if not isinstance(actor_change_policy, dict) or actor_change_policy.get("action") != "stationary_upper_body_prop":
+            raise StagedSceneError("unsupported_actor_change_policy")
+        if source_pose is None or principal_index is None:
+            raise StagedSceneError("actor_policy_requires_attributed_source_pose")
+        from actor_edit_policy import ActorEditPolicyError, check_stationary_upper_body_mask
+        try:
+            anatomy=check_stationary_upper_body_mask(
+                edit, source_pose, principal_index,
+                keypoint_format=actor_change_policy.get("keypoint_format", "openpose18"))
+        except ActorEditPolicyError as error:
+            raise StagedSceneError("actor_edit_policy_rejected:"+str(error)) from error
     guard=None
     if source_pose is not None:
         if principal_index is None:raise StagedSceneError('principal_attribution_required')
@@ -60,7 +73,7 @@ def verify_mask(inverse_alpha_png, source_size, protected_regions, *,
         if guard['verdict']!='covered_for_replacement':
             raise StagedSceneError('source_hands_not_fully_editable:'+guard['reason'])
     return {'edit_fraction':round(fraction,5), 'protected_regions':len(protected_regions),
-            'source_hand_coverage':guard,
+            'source_hand_coverage':guard, 'anatomy_lock':anatomy,
             'status':'preflight_only_qa_unverified'}
 
 
