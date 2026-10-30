@@ -41,12 +41,15 @@ def load(job, expected_workflow_digest=None):
     try:
         d=json.loads(path.read_text())
         if (d.get("version")!=1 or d.get("signature")!=signature(job) or
-            not re.fullmatch(r"[0-9a-f-]{36}",str(d.get("prompt_id",""))) or
-            (expected_workflow_digest is not None and
-             (not isinstance(expected_workflow_digest,str) or
-              not expected_workflow_digest or
-              d.get("workflow_digest")!=expected_workflow_digest))):
+            not re.fullmatch(r"[0-9a-f-]{36}",str(d.get("prompt_id","")))):
             return None
+        if expected_workflow_digest is not None and (
+                not isinstance(expected_workflow_digest,str) or
+                not expected_workflow_digest or
+                d.get("workflow_digest")!=expected_workflow_digest):
+            # A different graph with the same job ID may already be in the
+            # Comfy queue. Never silently POST a second GPU execution.
+            raise RuntimeError("Comfy manifest workflow digest mismatch; manual reconciliation required")
         return d
     except (OSError,ValueError,TypeError):
         return None
