@@ -123,3 +123,44 @@ A serious five-worker system for `web-vn` should **not** use five Chrome tabs as
 **Gate A outcome:** `chatgpt-use` offline Rust suite PASS; `ChatGPT-Web2API` full mocked integration suite NOT PASSED (five reproducible tab-isolation timeouts, 46 selected cases pass). **Gate B/live NOT STARTED** for both. 
 
 **No browser bridge has been connected to the actual account or enabled as a nightly model provider.** Existing Codex, quota monitor, timers and ChatGPT hourly reporting are unchanged. This is a deliberately separate **draft research PR** to keep the experiment reviewable and avoid accidental production deployment.
+
+## 7. Расширенная офлайн-проверка и двухворкерный пилот (2026-10-31)
+
+Тестовая инфраструктура: независимые Git-clone в `~/.local/share/web-vn-bridge-eval/20261031/src/`. Зависимости получали в ограниченных контейнерах; `npm ci --ignore-scripts` (не исполнять install hooks). **Сами тесты запускались с network=none**, cap-drop=all, no-new-privileges, CPU/RAM/pids bounds, без Chrome-профилей, OAuth, production данных и игрового GPU. Никаких реальных запросов в ChatGPT не отправляли.
+
+| Кандидат | Upstream SHA (начало) | Фактический офлайн-результат |
+| --- | --- | --- |
+| chatgpt-use | `ecb204d4f4a4` | **218 PASS, 2 ignored**; браузер не подключён |
+| ChatGPT-Web2API | `497527dceabf` | **46 PASS, 5 TIMEOUT** в tab-isolation (Python 3.12); исправление одной фикстуры не помогло; оригинал восстановлен |
+| chatgpt-web-provider | `eac9c993d2fd` | **99 PASS / 12 suites**, npm build PASS |
+| tab2api | `decba9acb419` | **292 PASS, 1 skipped / 32 suites**, npm build PASS |
+| chatgpt-web-session-proxy | `753d7d8c5f0f` | **32 PASS**, npm build PASS |
+| gpt-web-gateway | `fbf0141035af` | `npm test` exit 0, 11 TAP sub-suites без ошибок; build script не определён |
+| browser-llm-bridge | `e12ee318c363` | npm ci PASS, test/build scripts отсутствуют — **UNTESTED** |
+| MCP-LinkGPT | `30dbc618115a` | первые коллекции тестов BLOCKED: dependency browser-use и конфликт mount/profile path; полную повторную проверку пока нельзя назвать успешной |
+| ChatCmd | `e604ac8cb533` | Cargo fetch успешно завершён; тяжёлый workspace test был запущен, финальный код выхода пока не подтверждён — **NOT VERIFIED** |
+
+**Ни один кандидат не прошёл live Gate B**: ручной вход через dedicated browser profile, нормальный ответ, полноценные tool calls и подтверждённая тарификация обычного ChatGPT не проверены. Следовательно, ни один не установлен в CLIProxyAPI в качестве рабочего backend. Более подробные данные стенда сохранены локально.
+
+### Реально выполненный двухворкерный тест
+
+Прототип [`scripts/parallel_task_coordinator.py`](../scripts/parallel_task_coordinator.py), [9 regression tests](../scripts/tests/test_parallel_task_coordinator.py). SQLite WAL, атомарный claim задачи, два независимых detached Git-worktree, ограничение пересекающихся write scopes, зависимости, deadline leases, fencing tokens для запрета stale completion, 2 attempts максимум и отдельные SHA256 evidence. Нет сетевых/модельных запросов, GPU, изменения игры или GitHub main.
+
+- **9/9** собственных unit tests прошли.
+- Первый live source-only demo на ПК: 1 PASS / 1 BLOCKED из-за ожидания конкретных Python-файлов, отсутствующих в закреплённом старом SHA `ca10be4`. Ошибка не была скрыта.
+- Исправлена одна причина: синтаксический аудит ищет существующие `scripts/**/*.py`, а не будущие файлы.
+- Повторное выполнение **двумя независимыми процессами**: оба завершились `exit=0`, SQLite `done=2/2`, 6 audit events, длительность **0.815 с**. Состояние/evidence в приватном `pilot-2-workers-v2/`.
+- Это **два параллельных локальных исполнителя source/CPU задач**, а не два одновременно генерирующих ChatGPT диалога. Квоты и браузерная устойчивость пока НЕ проверены.
+
+Пример для отдельного одноразового теста:
+
+~~~bash
+python3 scripts/parallel_task_coordinator.py demo --root /tmp/new-web-vn-pilot --base /path/to/isolation-only-web-vn-checkout
+python3 scripts/parallel_task_coordinator.py status --db /tmp/new-web-vn-pilot/tasks.sqlite3
+~~~
+
+Вторая команда read-only по смыслу, но открывает существующую SQLite БД. Для сохранности запуска выбирайте НОВУЮ директорию; demo намеренно отказывает, если папка уже существует. Нельзя делать `demo` на каталоге с чужими worktrees.
+
+### Решение по внедрению
+
+Из протестированных browser shims `tab2api` и `chatgpt-web-provider` наиболее перспективны по офлайн покрытию. Однако 292 и 99 зелёных mock-тестов **не доказывают доступность и допустимость автоматизированного ChatGPT Web backend**. Проект `ChatGPT-Web2API` имеет пять неисправленных/необъяснённых таймаутов. Не объявлять какой-либо вариант «работающим без Codex API» без Gate B и проверки правил сервиса. Уже внедрён лишь изолированный **двухпроцессный координационный пилот**; ни одна модель не получила доступ к пользовательской сессии. 4–5 таких независимых worktrees — задача следующего архитектурного этапа, а не оправдание запуска пяти запросов к одному аккаунту.
