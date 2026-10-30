@@ -39,3 +39,30 @@ def clothing_alignment(caption):
     if explicitly_bare and not (garment and worn):
         return "passed"
     return "uncertain"
+
+
+# Select a *worn* upper garment; never take a palette color from
+# the description of a removed, prohibited or previous garment.
+_WARDROBE_EXCLUSION=re.compile(
+    r"^\s*(?:no|without|not\s+wearing|removed|discarded|old|previous)\b",re.I)
+_OUTERWEAR_COLOR=re.compile(
+    r"\b(?P<color>black|white|green|red|blue|brown|purple|yellow|grey|gray)\b"
+    r"[-\w\s]{0,45}?\b(?:jacket|cloak|cape|coat|tunic|shirt|dress|robe|vest|"
+    r"blouse|sweater|armor|armour)\b",re.I)
+
+def requested_outerwear_color(outfit):
+    """Return primary upper-garment color without counting old/removed outfits.
+
+    This is a conservative lexical observation, not visual proof of garment
+    correctness. If no positively worn garment is specified, return None.
+    """
+    description=str(outfit or "")
+    if wants_unclothed(description):
+        return None
+    segments=[segment for segment in re.split(r"[;,]",description)
+              if not _WARDROBE_EXCLUSION.search(segment)]
+    for segment in segments:
+        match=_OUTERWEAR_COLOR.search(segment)
+        if match:
+            return "gray" if match["color"].lower()=="grey" else match["color"].lower()
+    return None
