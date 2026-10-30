@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from PIL import Image
 from scene_qa_rules import principal_count_evidence, scene_location_evidence
 from visual_contract import action_contrast_captions
-from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment
+from wardrobe_contract import wants_unclothed as outfit_requires_bare, clothing_alignment,requested_outerwear_color
 from scene_caption_contract import scene_caption_conflicts, scene_action_conflicts, insufficient_scene_caption, caption_asserts_single_person
 from identity_observation import face_observability,face_similarity_decision
 from qa_profiles import load_profiles
@@ -282,8 +282,7 @@ def analyze(kind,image,spec,quality,identity_ref=None,candidate_face=None):
     if verdict=="failed":
      reasons.append("Required wardrobe state not met: VLM detects clothing on the character")
    # Strong wardrobe constraints are handled as warnings when VLM is unsure.
-   expected_color=next((c for c in ("black","white","green","red","blue","brown","purple","yellow","grey","gray")
-       if re.search(r"\b"+c+r"\b",outfit)),None)
+   expected_color=requested_outerwear_color(outfit)
    if expected_color and not wants_unclothed:
     same_color=expected_color in desc or (expected_color in ("grey","gray") and ("gray" in desc or "grey" in desc))
     observed=re.search(r"\b(black|white|green|red|blue|brown|purple|yellow|gray|grey)\s+"
