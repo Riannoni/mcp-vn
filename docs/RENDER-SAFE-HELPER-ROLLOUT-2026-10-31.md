@@ -1,5 +1,17 @@
 # Safe render helper rollout — 2026-10-31
 
+## Deployment verification — 2026-10-31
+
+- **GitHub merged:** PR #48 → `main` merge SHA `202af42b80f64a71793fb36e8fc10d119ea94880`.
+- **PC installed:** seven exact source files to `~/.local/share/mcp-vn/` from PC-validated candidate v2 `3b10732ab1525071ea9ea82677a3acbe897eb174`; all seven were previously absent, so no preexisting module overwritten. Each matched candidate byte-for-byte; Python `py_compile` PASS after install.
+- **Tests:** 46/46 clean candidate Python tests on the actual Bazzite Python runtime.
+- **Live services:** `mcp-vn-worker`, `mcp-vn-comfy`, `mcp-vn-vision` each `active`. Last queue read `queue_running=[]`, `queue_pending=[]` (snapshot only).
+- **No process restart, no runtime import/caller switch, no changed checkpoint, no user-save/canonical-asset mutation.** The active worker still uses the existing SDXL path; therefore this is **safe helper installation, not generator activation**.
+- The home deployment worktree had divergent history (local main ahead one / behind five); deliberately **not pulled/reset/restarted**. The new GitHub main was merged through its own branch, not by changing that production checkout.
+- Rollback for this release alone: remove these exact seven added modules from `~/.local/share/mcp-vn/` after verifying no process has begun importing them. Do not restart anything merely for rollback if they remain unused.
+
+
+
 Scope: **source and PC-runtime helper deployment**, NOT activation of experimental CG rendering.
 
 This changes only importable, side-effect-free helpers under `worker/`: source-hand coverage, actor-edit strict policy, thigh/lower-body pixel protection, preflight staged inpaint validation, source-attributed bimanual spatial planner, projected object-scale evidence, and the explicit Z-Image graph builder.
