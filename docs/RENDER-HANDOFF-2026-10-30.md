@@ -4,6 +4,19 @@
 
 This is a **durable operational handoff**, not a successful acceptance report. A private evidence manifest on the PC, \`render-fix-20261030/private-handoff-20261030.json\` under the current user's local VN research directory, includes exact paths, SHA256s, prompt/job IDs and source references. Keep that manifest/CG/save bytes off GitHub. It existed with **16/16** referenced files at the time of this handoff (manifest SHA256 \`bc6bbc94aaa6523db873a146fbd3e98714531bb92b79ea7d448a72fb15678d46\`). If absent later, STOP and inspect before any rerun.
 
+## UPDATE — 2026-10-30, later continuation: prop geometry experiments — NO-GO
+
+PC SSH access via [REMOTE-ACCESS.md](REMOTE-ACCESS.md) verified; worker, vision and Comfy user services active; Comfy queue empty after testing. Original private source-job SHA256 `0bb1a6c953f3000f0a60b228015e48374e31e378c5e6810f8d3922bbee1a8231` unchanged. Production was not modified.
+
+[Issue #44](https://github.com/Riannoni/web-vn/issues/44) now documents the current blocking defect. [Draft PR #45](https://github.com/Riannoni/web-vn/pull/45) supplies shadow-only projected object-to-shoulder scale detection (8 tests passed on PC; real prior map/shoulder ratio 2.1418 versus required maximum 1.0). [Draft PR #43](https://github.com/Riannoni/web-vn/pull/43) remains source-tested only; neither was deployed.
+
+Controlled private GPU experiments, each exactly one attempt and without publishing:
+- Bent-arm pose reference, 10.01s, Comfy prompt `8bc88b35-95bd-4dba-a941-45376eae85ca`: map too wide, **G2 FAIL**.
+- Small prepositioned map in source, same other variables, 4.01s, prompt `b49e248d-3256-4fda-aeba-c227982edbf1`: map enlarged anyway, **G2 FAIL**.
+- Same source/seed/pose/text, narrow edit mask with immutable map core, 4.01s, prompt `939fcb70-5148-41ca-957b-6e0a96d969c9`: small map retained but hands/contact broken, sleeve artifacts, **G2 FAIL**. Fully locked original pixels **589,170 unchanged**. Read-only production assessment: REJECT because atomic evidence unavailable, although broad semantic status was passed; QA 12.92s.
+
+Direct original pixels inspected for all. Private candidate PNG SHA256s are indexed in issue #44 / PC private research directory; no PNG or private story in Git. **STOP random Klein prompt/mask/pose rerolls for this defect.** Next architectural step: independently controlled actor-limb staging and exact prop layer with limited contact-seam editing, or evaluate installed SDXL ControlNet structural guidance. Installed ControlNetLoader only offers `xinsir-openpose-sdxl-1.0.safetensors`, not Klein-compatible native pose conditioning. This is NOT merged/deployed, NOT first-attempt 1 sprite + 3 CG E2E, and NOT render-v1 release.
+
 ## UPDATE — 2026-10-30 22:21–22:31 Asia/Novosibirsk — PC connection + real guard regression
 
 **Exact, tested SSH path is now documented permanently:** [docs/REMOTE-ACCESS.md](REMOTE-ACCESS.md), linked from `AGENTS.md`. Use SSH-MCP `infra_exec(host="home", as_root=true)` and, *on home*, `ssh -i /opt/homeassistant/config/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes Xavok@192.168.50.27 '<command>'`. PC is `xavok-pc`, remote login is **capital-X `Xavok`**; production VN services are **`systemctl --user`**, not system services. Do not use missing `ssh pc` alias. Never put the key contents in Git.
