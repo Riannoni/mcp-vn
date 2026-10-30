@@ -18,7 +18,7 @@ Lab files: `~/.local/share/web-vn-bridge-eval/20261031/` on `Xavok-PC`. Only the
 
 **Safety properties:** rootless Podman; disposable filesystem/process; `--network=none` during actual tests, `--cap-drop=all`, `--security-opt=no-new-privileges`, memory/CPU limits, and mounts restricted to lab source and disposable build cache. Package download/build and Rust crate fetching occurred in isolated bootstrap containers *before* offline tests, without home profiles. `W2A_E2E_RUN` never enabled. Upstream's 31 real-account E2E cases are excluded.
 
-**Rust verification** (Fedora 44 toolbox image + cargo fetched dependencies; offline testing):
+**Rust verification** (Fedora 44 toolbox image + cargo fetched dependencies; offline testing, and binary `--help` confirmed `ask/run/review/serve/mcp/work` commands):
 ```bash
 cargo fetch --locked                         # earlier dependency bootstrap
 cargo test --offline --locked -- --test-threads=2
@@ -29,7 +29,16 @@ Result observed: **218 passed, 0 failed, 2 ignored** (213+2+3 passed, 2 ignored)
 ```bash
 python -m pytest -m 'not e2e' -q --disable-warnings
 ```
-The large suite reached **83%** but stopped making progress; a lab-only timeout/stop ended the container. This is **NOT** a full passing suite; may be a test deadlock, environment limitation or genuine regression. A focused concurrency subset likewise stalled during an owned-tab isolation test. Reproduction under **Python 3.12** with `pytest-timeout` is being separately recorded; do not report it as passed without the actual final exit code.
+The large suite reached **83%** but stopped making progress; a lab-only timeout/stop ended the container. This is **NOT** a full passing suite; may be a test deadlock, environment limitation or genuine regression. A focused concurrency subset likewise stalled during an owned-tab isolation test. Reproduction under **Python 3.12** with `pytest-timeout` completed as a bounded, targeted 11-file concurrency/locking suite: **46 passed, 5 failed due to 12-second timeouts** (not a full pass). The five failures were:
+- `test_tab_isolation.py::test_connect_creates_owned_tab`
+- `test_tab_isolation.py::test_connect_waits_for_chatgpt_ready`
+- `test_tab_isolation.py::test_connect_adopts_existing_chatgpt_tab_in_adopt_mode`
+- `test_tab_isolation.py::test_default_owned_mode_creates_tab_even_when_chatgpt_tab_exists`
+- `test_tab_isolation.py::test_two_owned_drivers_get_distinct_target_ids`
+
+The initial warning was `identity_listener_attach_failed: CDP timeout: Network.enable`: the minimal fake WebSocket in these fixtures does not acknowledge the added CDP Network domain. A **lab-only, one-factor fixture experiment** stubbed `_attach_identity_listener` in `_make_driver()` (not the app runtime). That removed the warning but **did not remove the five timeouts**: repeat was still **46 passed / 5 failed**, this time ~77 seconds instead of ~97 seconds. Therefore the identity-listener mock alone is NOT the complete root cause. Following the project's STOP rule, no additional blind patching was attempted. The test file was restored exactly from backup; `git status --porcelain` on both lab source checkouts is clean.
+
+**Interpretation:** standalone MCP pool/capacity/lease tests leading up to that tab-isolation block passed; the per-tab ownership/integration behavior is **not independently established**, and the sandbox/no-network fake CDP environment could be a contributing factor. These failures do **not** prove the live browser is broken, but they DO prohibit calling Gate A passed for the complete parallel stack. No real account E2E was attempted.
 
 ## 3. Architecture and functional suitability
 
@@ -110,5 +119,7 @@ A serious five-worker system for `web-vn` should **not** use five Chrome tabs as
 **Gate E — Render quality:** separately verified G1/G2/G3 from [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md); mock API tests alone do not satisfy any visual gate.
 
 ### Current disposition
+
+**Gate A outcome:** `chatgpt-use` offline Rust suite PASS; `ChatGPT-Web2API` full mocked integration suite NOT PASSED (five reproducible tab-isolation timeouts, 46 selected cases pass). **Gate B/live NOT STARTED** for both. 
 
 **No browser bridge has been connected to the actual account or enabled as a nightly model provider.** Existing Codex, quota monitor, timers and ChatGPT hourly reporting are unchanged. This is a deliberately separate **draft research PR** to keep the experiment reviewable and avoid accidental production deployment.
