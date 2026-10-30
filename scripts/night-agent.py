@@ -25,14 +25,13 @@ MODEL_DEFAULT = "gpt-6-astra"
 STOP = False
 
 DEFAULT_TASK = (
-    "web-vn render-v1 P0 source-only: read current AGENTS.md, "
-    "docs/DEVELOPMENT-AND-TESTING.md and newest docs/RENDER-HANDOFF-2026-10-31.md, "
-    "docs/ROADMAP.md and issue #20. Prioritize the current #49 atomic required-prop / "
-    "actor-contact evidence integration as a non-publishing read-only SHADOW validator, "
-    "plus tests on neutral fixtures. Distinguish required object evidence from "
-    "unobservable, and retain fail-closed behavior. No production, no game saves, "
-    "no GPU queue, no model downloads. If this is blocked, investigate the next "
-    "P0 source-level issue and document evidence rather than guessing."
+    "web-vn render-v1 P0 source-only, master issue #20. The goal remains one "
+    "correct changed-wardrobe Sprite and sequential constrained CG with reliable QA. "
+    "Use the current night-mission stage and newest PR #49 / render handoff. "
+    "Perform only non-publishing, independent source and synthetic test work. "
+    "No production, no live saves, no private assets, no GPU queue or model downloads. "
+    "Do not duplicate already implemented PRs, merge, push or claim G2/G3 visual success. "
+    "Document blockers and the next bounded render-v1 experiment."
 )
 
 def utcnow():

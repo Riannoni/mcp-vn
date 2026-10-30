@@ -134,6 +134,19 @@ def next_task(run_dir):
             "history_size": len(state["history"])}
 
 
+def refresh_readonly_refs():
+    """Fetch latest main and PR #49 refs without merging into the dirty checkout."""
+    try:
+        result = subprocess.run([
+            "git", "fetch", "--quiet", "--no-tags", "origin",
+            "refs/heads/main:refs/remotes/origin/main",
+            "refs/pull/49/head:refs/remotes/origin/pr-49",
+        ], cwd=WORK, capture_output=True, text=True, timeout=18)
+        return "fresh" if result.returncode == 0 else "cached"
+    except (OSError, subprocess.TimeoutExpired):
+        return "cached"
+
+
 def main():
     if len(sys.argv) != 3 or sys.argv[1] != "next":
         print("Usage: night-mission.py next RUN_DIRECTORY", file=sys.stderr)
@@ -143,7 +156,15 @@ def main():
     if run_dir.parent != expected:
         print("Invalid run directory", file=sys.stderr)
         return 2
-    print(json.dumps(next_task(run_dir), ensure_ascii=False))
+    refs = refresh_readonly_refs()
+    result = next_task(run_dir)
+    result["upstream_refs"] = refs
+    if result.get("status") == "ready":
+        result["instruction"] += (" Read latest handoff from git show "
+                                  "refs/remotes/origin/main:docs/RENDER-HANDOFF-2026-10-31.md; "
+                                  "compare with latest refs/remotes/origin/pr-49, "
+                                  "but never merge/push/overwrite dirty worktree.")
+    print(json.dumps(result, ensure_ascii=False))
     return 0
 
 
