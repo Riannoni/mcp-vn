@@ -37,6 +37,37 @@ class SceneConstraintsTest(unittest.TestCase):
         self.assertNotIn("CURRENT WARDROBE CONTRACT",positive)
         self.assertNotIn("worn clothing",negative)
 
+    def test_mixed_cast_keeps_both_actor_specific_outfits(self):
+        spec={"composition":"neural_story","characters":[
+            {"name":"One","outfit":"unclothed","pose":"standing"},
+            {"name":"Two","outfit":"blue jacket","pose":"standing"}
+        ]}
+        positive,negative=scene_constraints(spec,"Two people on a road.")
+        self.assertIn("Actor One CURRENT outfit: unclothed.",positive)
+        self.assertIn("Actor Two CURRENT outfit: blue jacket.",positive)
+        self.assertIn("Never transfer another actor's wardrobe",positive)
+        self.assertNotIn("all visible characters wear no garments",positive)
+        self.assertNotIn("worn clothing",negative)
+
+    def test_mixed_cast_ignores_default_without_erasing_named_outfit(self):
+        spec={"composition":"neural_story","characters":[
+            {"name":"One","outfit":"default","pose":"standing"},
+            {"name":"Two","outfit":"green robe","pose":"standing"}
+        ]}
+        positive,negative=scene_constraints(spec,"Two people on a road.")
+        self.assertIn("Actor Two CURRENT outfit: green robe.",positive)
+        self.assertNotIn("Actor One CURRENT outfit:",positive)
+        self.assertNotIn("worn clothing",negative)
+
+    def test_mixed_cast_does_not_assign_unnamed_outfit_to_named_actor(self):
+        spec={"composition":"neural_story","characters":[
+            {"name":"","outfit":"red cloak","pose":"standing"},
+            {"name":"Two","outfit":"blue jacket","pose":"standing"}
+        ]}
+        positive,_=scene_constraints(spec,"Two people on a road.")
+        self.assertIn("Actor Two CURRENT outfit: blue jacket.",positive)
+        self.assertNotIn("red cloak",positive)
+
     def test_other_compositions_are_untouched(self):
         self.assertEqual(scene_constraints({
           "composition":"anchored_composite",
