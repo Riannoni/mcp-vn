@@ -98,7 +98,7 @@ def queue(root, p):
 
 def tick(root):
     root = setup(root)
-    with (root / "gpu-exclusive-lab.lock").open("a+") as lock:
+    with (root.parent.parent / "gpu-exclusive-lab.lock").open("a+") as lock:
         try:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
