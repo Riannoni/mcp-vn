@@ -67,6 +67,10 @@ def terminal_history(data, prompt_id):
     state = item["status"].get("status_str")
     if state not in TERMINAL:
         raise ValueError("unrecognized_history_status")
+    # A success label without completed=true is not a terminal proof.
+    # Never release the GPU owner and admit another job on partial history.
+    if state == "success" and item["status"].get("completed") is not True:
+        raise ValueError("success_history_not_completed")
     return True
 
 

@@ -294,6 +294,29 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.broker.status()["foreign_jobs"], 1)
         self.assertFalse(self.broker.status()["ready"])
 
+    async def test_incomplete_success_history_cannot_release_gpu_owner(self):
+        # RED: status_str=success without completed=true is not terminal.
+        status, first = await self.post(91)
+        self.assertEqual(status, 200)
+        pid = first["prompt_id"]
+        await self.until(lambda: len(self.fake.posts) == 1)
+        async with self.broker.guard:
+            self.fake.running.remove(pid)
+            self.fake.history[pid] = {
+                "status": {"status_str": "success", "completed": False},
+                "outputs": {}}
+            with self.assertRaisesRegex(ValueError, "success_history_not_completed"):
+                await self.broker.reconcile()
+            self.assertEqual(self.broker.owner(), pid)
+        status, second = await self.post(92)
+        self.assertEqual(status, 200)
+        await asyncio.sleep(.1)
+        self.assertEqual(self.fake.posts, [pid])
+        self.assertEqual(self.broker.owner(), pid)
+        self.fake.history[pid]["status"]["completed"] = True
+        await self.until(lambda: len(self.fake.posts) == 2)
+        self.assertEqual(self.fake.posts[1], second["prompt_id"])
+
     async def test_history_500_holds_owner_and_blocks_next(self):
         first = await self.post(1)
         pid = first[1]["prompt_id"]
