@@ -73,8 +73,9 @@ class LocalDispatchTests(unittest.TestCase):
             name = "vn_zimage_probe_ab_cg03_lean_v2_exact.png"
             (output/name).write_bytes(b"\x89PNG\r\n\x1a\nfake")
             pid = "11111111-1111-4111-8111-111111111111"
-            def fake_api(endpoint, data=None, timeout=8):
+            def fake_api(endpoint, data=None, timeout=8, idempotency_key=None):
                 if endpoint == "/prompt":
+                    self.assertEqual(idempotency_key, "first-shot-ab:CG03_LEAN_V2")
                     return {"prompt_id": pid}
                 if endpoint == "/history/" + pid:
                     return {pid: {"status": {"status_str": "success"},
