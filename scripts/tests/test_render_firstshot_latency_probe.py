@@ -102,6 +102,36 @@ class LatencyProbeTests(unittest.TestCase):
         self.assertFalse(row["human_label"])
         self.assertNotIn("sha_bound_pixel_review", row["evidence"])
 
+    def test_forged_human_claim_with_real_png_sha_remains_unverified(self):
+        import hashlib
+        import struct
+        import zlib
+        def chunk(kind, payload):
+            return (struct.pack(">I", len(payload)) + kind + payload
+                    + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff))
+        raw = b"\x00" + b"\x00" * 4  # filter byte + transparent RGBA pixel
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        pixels = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                  + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+        png = self.root / "real-original.png"
+        png.write_bytes(pixels)
+        d = self.case()
+        d["original_png_path"] = str(png)
+        d["png_sha256"] = hashlib.sha256(pixels).hexdigest()
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        # Anyone with local JSON write access can falsely claim to be a human.
+        review = {"case": "BG-01", "prompt_id": "p1",
+                  "png_sha256": d["png_sha256"],
+                  "original_pixels_reviewed": True,
+                  "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_human", "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertFalse(row["human_label"])
+        self.assertTrue(row["human_label_claim_unverified"])
+
     def test_verified_original_png_can_pass_independent_review(self):
         import hashlib
         data = b"real checked bytes, not a generated image"
