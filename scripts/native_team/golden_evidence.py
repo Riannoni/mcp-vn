@@ -59,6 +59,7 @@ def ensure_schema(db):
         g2 TEXT NOT NULL,
         png_sha256 TEXT NOT NULL,
         note_sha256 TEXT NOT NULL,
+        note TEXT NOT NULL,
         reviewed_at REAL NOT NULL
     );
     """)
@@ -202,6 +203,13 @@ def enqueue(db, spec):
     try:
         if db.execute("SELECT 1 FROM task WHERE id=?", (spec["task_id"],)).fetchone():
             raise ValueError("visual task ID replay forbidden")
+        for previous in db.execute("SELECT spec_json FROM visual_task"):
+            old = json.loads(previous["spec_json"])
+            if old["prompt_id"] == spec["prompt_id"] or (
+                old["artifacts"]["original_png"]["sha256"] ==
+                spec["artifacts"]["original_png"]["sha256"]
+            ):
+                raise ValueError("visual GPU output/prompt replay forbidden")
         for dep in spec["dependencies"]:
             if db.execute("SELECT 1 FROM task WHERE id=?", (dep,)).fetchone() is None:
                 raise ValueError("missing dependency")
@@ -331,7 +339,7 @@ def submit(db, task_id, owner, fence, evidence):
 def review(db, task_id, reviewer, approve, note, verified_png_sha=None):
     """Independent chief rehashes original artifacts and receipt before CAS."""
     _name(reviewer)
-    if not isinstance(note, str) or len(note.strip()) < 20:
+    if not isinstance(note, str) or not 20 <= len(note.strip()) <= 1500:
         raise ValueError("independent visual review note required")
     row, spec = _task(db, task_id)
     if row["state"] != "review_pending":
@@ -371,10 +379,10 @@ def review(db, task_id, reviewer, approve, note, verified_png_sha=None):
             db.execute("ROLLBACK")
             return {"approved": False, "reason": "review CAS changed"}
         db.execute(
-            "INSERT INTO visual_review(task_id,reviewer,approved,g2,png_sha256,note_sha256,reviewed_at)"
-            " VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO visual_review(task_id,reviewer,approved,g2,png_sha256,note_sha256,note,reviewed_at)"
+            " VALUES(?,?,?,?,?,?,?,?)",
             (task_id, reviewer, int(bool(approve)), label, record["png_sha256"],
-             digest(note.encode("utf-8")), time.time())
+             digest(note.encode("utf-8")), note, time.time())
         )
         changed = db.execute(
             "UPDATE task SET state=? WHERE id=? AND state='review_pending'",
