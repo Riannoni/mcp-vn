@@ -162,6 +162,28 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.post(1))[1]["prompt_id"], a[1]["prompt_id"])
         self.assertEqual(len(self.fake.posts), 1)
 
+    async def test_explicit_new_run_key_does_not_reuse_terminal_same_graph(self):
+        # Same frozen prompt/seed can be a NEW, deliberately authorized lab run.
+        # Implicit payload hash alone would silently replay the old image.
+        a_status,a = await self.post(17,headers={"Idempotency-Key":"first-shot-run-A"})
+        self.assertEqual(a_status,200)
+        pid_a=a["prompt_id"]
+        await self.until(lambda: len(self.fake.posts)==1)
+        self.fake.finish(pid_a)
+        await self.until(lambda: self.broker.owner() is None)
+        b_status,b = await self.post(17,headers={"Idempotency-Key":"first-shot-run-B"})
+        self.assertEqual(b_status,200)
+        pid_b=b["prompt_id"]
+        self.assertNotEqual(pid_a,pid_b)
+        await self.until(lambda: len(self.fake.posts)==2)
+        self.assertEqual(self.fake.posts,[pid_a,pid_b])
+        self.fake.finish(pid_b)
+        await self.until(lambda: self.broker.owner() is None)
+        retry_status,retry = await self.post(17,headers={"Idempotency-Key":"first-shot-run-A"})
+        self.assertEqual(retry_status,200)
+        self.assertEqual(retry["prompt_id"],pid_a)
+        self.assertEqual(len(self.fake.posts),2)
+
     async def test_crash_restart_active_recovers_no_resubmit(self):
         status, data = await self.post(1)
         self.assertEqual(status, 200)
