@@ -31,6 +31,7 @@ export function decodeScreenshotPng(bytes){
  let p=PNG_MAGIC.length,ihdr=false,idat=false,endedIdat=false,iend=false;
  let width=0,height=0,bpp=0,seenPalette=false;
  const seenMetadata=new Set();
+ let declaredGamma=null,declaredChromaticities=null;
  const compressed=[];
  while(p<bytes.length){
   if(bytes.length-p<12)invalid("truncated_chunk");
@@ -77,6 +78,12 @@ export function decodeScreenshotPng(bytes){
     invalid("invalid_metadata_shape");
    if((kind==="gAMA"||kind==="sRGB"||kind==="cHRM")&&seenPalette)
     invalid("invalid_metadata_after_palette");
+   // W3C PNG sRGB compatibility: a legacy gAMA/cHRM declaration
+   // must agree with the sRGB profile, regardless of chunk ordering.
+   // Otherwise the PNG does not carry a coherent color-space claim.
+   if(kind==="gAMA")declaredGamma=bytes.readUInt32BE(start);
+   if(kind==="cHRM")
+    declaredChromaticities=Array.from({length:8},(_,i)=>bytes.readUInt32BE(start+4*i));
    seenMetadata.add(kind);
   }else if(kind==="tRNS"){
    // This decoder accepts only truecolor and RGBA. tRNS is invalid in RGBA,
@@ -89,6 +96,13 @@ export function decodeScreenshotPng(bytes){
   if(iend)break;
  }
  if(!ihdr||!idat||!iend||p!==bytes.length)invalid("incomplete_png");
+ if(seenMetadata.has("sRGB")){
+  const expectedChromaticities=[31270,32900,64000,33000,30000,60000,15000,6000];
+  if(declaredGamma!==null&&declaredGamma!==45455)invalid("srgb_gamma_conflict");
+  if(declaredChromaticities!==null&&
+     !declaredChromaticities.every((v,i)=>v===expectedChromaticities[i]))
+   invalid("srgb_chromaticity_conflict");
+ }
  const rowBytes=width*bpp,expected=(rowBytes+1)*height;
  let inflated;
  try{
