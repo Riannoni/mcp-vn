@@ -110,7 +110,13 @@ def _trusted_original_review(candidate, review):
     for key in mandatory:
         if review["mandatory"][key] != trusted["mandatory"][key]["verdict"]:
             raise ValueError("trusted_visual_verdict_not_from_reviewer")
-    if candidate.get("factor") == "sdxl_sprite_body_source":
+    # Native contract is immutable at this boundary; LAB result.factor is not.
+    # If an approved native sprite contract requires alpha, changing that
+    # mutable factor may never downgrade the final-RGBA technical gate.
+    sprite_required = "sprite_alpha" in mandatory
+    if sprite_required != (candidate.get("factor") == "sdxl_sprite_body_source"):
+        raise ValueError("trusted_sprite_factor_mismatch")
+    if sprite_required:
         # The typed native receipt must bind the POSTPROCESSED result too:
         # accepting a fresh hash chosen by the caller would not establish
         # that the independent Golden task saw this particular derivative.
