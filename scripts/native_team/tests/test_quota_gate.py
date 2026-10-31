@@ -18,6 +18,18 @@ class QuotaGateTests(unittest.TestCase):
     def write(self, five=0, week=36, delta=0, ok=True):
         at=datetime.datetime.fromtimestamp(time.time()-delta,datetime.timezone.utc).isoformat()
         (self.root/"state"/"quota-latest.json").write_text(json.dumps({"utc":at,"ok":ok,"5h_used":five,"7d_used":week}))
+    def test_native_chatgpt_does_not_depend_on_codex_oauth_meter(self):
+        x=permit(self.root,provider="chatgpt_scheduled")
+        self.assertTrue(x["eligible"])
+        self.assertEqual(x["quota_meter"],"not_available_locally")
+        self.write(five=100,week=100)
+        self.assertTrue(permit(self.root,provider="chatgpt_scheduled")["eligible"])
+        self.assertFalse(permit(self.root)["eligible"])
+
+    def test_reject_unknown_quota_surface(self):
+        with self.assertRaises(ValueError):
+            permit(self.root,provider="paid_api")
+
     def test_healthy_meter_allows_wake(self):
         self.write()
         self.assertTrue(permit(self.root)["eligible"])
