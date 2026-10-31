@@ -62,6 +62,13 @@ class LabPoseTests(unittest.TestCase):
             "both_palms_visible_on_wall": True, "forward_lean": True,
             "both_feet_visible": True,
         }
+        self.trusted_hashes = {
+            "reference": self._sha("refs/a.jpg"),
+            "guide": self._sha("guides/a.png"),
+            "extraction": self._sha("extractions/a.json"),
+            "pack": self._sha("pack.json"),
+        }
+        self.observation["reference_sha256"] = self.trusted_hashes["reference"]
 
     def _sha(self, name):
         return hashlib.sha256((self.root / name).read_bytes()).hexdigest()
@@ -78,7 +85,7 @@ class LabPoseTests(unittest.TestCase):
 
     def _build(self):
         return build_proposal(self.root, self.pack, "wall_push_rear_oblique_01",
-                              self.observation)
+                              self.observation, self.trusted_hashes)
 
     def _reject(self, code):
         with self.assertRaisesRegex(LabPoseError, code):
@@ -95,6 +102,8 @@ class LabPoseTests(unittest.TestCase):
         self.assertEqual(result["scene_seed"], 202610310105)
         self.assertTrue(result["source_footwear_not_target_wardrobe_proof"])
         self.assertIn("both_feet_visible", result["source_photo_observation"]["checks"])
+        self.assertEqual(result["source_photo_observation"]["reference_sha256"],
+                         self.trusted_hashes["reference"])
         self.assertNotIn("both_boots_visible", result["source_photo_observation"]["checks"])
         self.assertEqual(before, (self.root / "manifest.json").read_bytes())
 
@@ -157,6 +166,34 @@ class LabPoseTests(unittest.TestCase):
         pack["mode"] = "best_of_many"
         self.pack.write_text(json.dumps(pack))
         self._reject("pack_not_first_attempt")
+
+    def test_observer_photo_is_bound_to_exact_source_sha(self):
+        self.observation["reference_sha256"] = "0" * 64
+        self._reject("source_photo_observation_hash_mismatch")
+
+    def test_source_and_manifest_cannot_be_changed_together(self):
+        Image.new("RGB", (160, 140), "purple").save(self.root / "refs" / "a.jpg")
+        self.item["reference_sha256"] = self._sha("refs/a.jpg")
+        self._write_manifest()
+        self.observation["reference_sha256"] = self.item["reference_sha256"]
+        self._reject("pinned_reference_hash_mismatch")
+
+    def test_guide_and_manifest_cannot_be_changed_together(self):
+        Image.new("RGB", (1216, 704), "yellow").save(self.root / "guides" / "a.png")
+        self.item["guide_sha256"] = self._sha("guides/a.png")
+        self._write_manifest()
+        self._reject("pinned_guide_hash_mismatch")
+
+    def test_extraction_coordinates_are_frozen(self):
+        self.points[9][0] += 3
+        self._write_points()
+        self._reject("pinned_extraction_hash_mismatch")
+
+    def test_seed_cannot_change_silently_in_frozen_pack(self):
+        pack = json.loads(self.pack.read_text())
+        pack["cases"][0]["seed"] += 1
+        self.pack.write_text(json.dumps(pack))
+        self._reject("pinned_pack_hash_mismatch")
 
     def test_untrusted_usage_scope_rejected(self):
         self.item["usage_scope"] = "redistribute_photo"
