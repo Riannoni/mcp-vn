@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Non-generating validation of v6.3 graphs on the actual ROCm worker Python."""
 import os,sys
+from pathlib import Path
 os.environ.setdefault("VN_WORKER_TOKEN","test-only-graph-token")
 os.environ["VN_POSE_CONTROL"]="0"
 os.environ["VN_IPADAPTER"]="0"
 os.environ.setdefault("VN_LOCAL_CG_CHECKPOINT","CyberRealisticPony_V18.0_F16.safetensors")
-sys.path.insert(0,"/home/Xavok/.local/share/mcp-vn")
+runtime=Path("/home/Xavok/.local/share/mcp-vn")
+source=Path(__file__).resolve().parents[1]/"worker"
+sys.path.insert(0,str(runtime if (runtime/"worker.py").is_file() else source))
 from worker import image_graph,STYLES
 
 styles={
