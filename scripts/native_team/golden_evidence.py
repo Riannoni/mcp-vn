@@ -195,6 +195,8 @@ def enqueue(db, spec):
     _verified_spec(spec)
     db.execute("BEGIN IMMEDIATE")
     try:
+        if db.execute("SELECT 1 FROM task WHERE id=?", (spec["task_id"],)).fetchone():
+            raise ValueError("visual task ID replay forbidden")
         for dep in spec["dependencies"]:
             if db.execute("SELECT 1 FROM task WHERE id=?", (dep,)).fetchone() is None:
                 raise ValueError("missing dependency")
