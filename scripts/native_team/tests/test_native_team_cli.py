@@ -158,8 +158,8 @@ class FourLaneControlTests(unittest.TestCase):
         m.watchdog(self.db)
         self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"], "blocked")
         x = m.claim(self.db, "R", "new")
-        self.assertFalse(x["claimed"])
-        self.assertEqual(x["reason"], "blocked_requires_recovery_review")
+        self.assertTrue(x["claimed"])
+        self.assertEqual(x["id"], "R-02")
 
     def test_dirty_worktree_cannot_start_another_task(self):
         w = self.root / "lane-renderer"
@@ -182,11 +182,17 @@ class FourLaneControlTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"host reboot detected"):
             m.claim(self.db,"R","second")
 
-    def test_blocked_lane_cannot_claim_followup_until_review(self):
+    def test_independent_lane_work_ignores_unrelated_blocked_scope(self):
         self.db.execute("UPDATE task SET state='blocked' WHERE id='R-01'")
         answer=m.claim(self.db,"R","new-owner")
+        self.assertTrue(answer["claimed"])
+        self.assertEqual(answer["id"],"R-02")
+
+    def test_conflicting_blocked_scope_is_still_fenced(self):
+        self.db.execute("UPDATE task SET state='blocked',paths=? WHERE id='R-01'",('["worker/bimanual_scene_planner.py"]',))
+        self.db.execute("UPDATE task SET paths=? WHERE id='R-02'",('["worker/bimanual_scene_planner.py"]',))
+        answer=m.claim(self.db,"R","new-owner")
         self.assertFalse(answer["claimed"])
-        self.assertEqual(answer["reason"],"blocked_requires_recovery_review")
 
     def test_no_reboot_does_not_fence_live_lease(self):
         import time
