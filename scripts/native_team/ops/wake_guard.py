@@ -13,10 +13,10 @@ import time
 from pathlib import Path
 
 LANES={"R":"renderer","Q":"qa","G":"golden","S":"reliability"}
-COOLDOWN_S=600
-MAX_LANE_WAKES_PER_HOUR=2
-MAX_GLOBAL_WORKER_WAKES_PER_HOUR=8
-MAX_CHIEF_WAKES_PER_HOUR=2
+COOLDOWN_S=3600
+MAX_LANE_WAKES_PER_HOUR=1
+MAX_GLOBAL_WORKER_WAKES_PER_HOUR=4
+MAX_CHIEF_WAKES_PER_HOUR=1
 
 
 def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
