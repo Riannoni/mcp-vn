@@ -181,4 +181,19 @@ test("signed source face byte mutation after enqueue rejects old receipt",async(
  await fs.writeFile(path.join(root,"assets",face),Buffer.from("substituted-face-bytes"));
  await assert.rejects(()=>jobs.verifyCreationReceipt(job),/receipt|asset|source|mismatch/i);
 });
+
+test("producer refuses to sign narrator CG prompt not authored by the current committed turn",async()=>{
+ const {game}=await fixture();
+ game.scene.image_prompts.cg="unrelated story CG request";
+ await fs.writeFile(path.join(root,"games",game.id+".json"),JSON.stringify(game));
+ const before=(await fs.readdir(path.join(root,"jobs"))).filter(x=>x.endsWith(".json")).length;
+ await assert.rejects(()=>enqueue(game),/narrator|prompt|canonical.*origin|creation.*receipt/i);
+ assert.equal((await fs.readdir(path.join(root,"jobs"))).filter(x=>x.endsWith(".json")).length,before);
+});
+test("producer refuses to sign a stale unlinked narrator/player action",async()=>{
+ const {game}=await fixture();
+ game.turn_metrics.last.action_id="wrong-player-action";
+ await fs.writeFile(path.join(root,"games",game.id+".json"),JSON.stringify(game));
+ await assert.rejects(()=>enqueue(game),/narrator|action|canonical.*origin|creation.*receipt/i);
+});
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));
