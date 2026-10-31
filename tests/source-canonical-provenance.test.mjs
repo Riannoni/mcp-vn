@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import {PNG} from "pngjs";
 import {artSnapshot} from "../src/art-spec.mjs";
 import {deriveNarrativeSourceProvenance,verifyNarrativeSourceProvenance,verifyOriginalImageChain} from "../src/source-canonical-provenance.mjs";
 
@@ -101,6 +102,34 @@ test("absent narrator text or scene cg prompt is labeled unproven, not fabricate
  assert.equal(p.narrative_message_sha256,null);
  assert.equal(p.narrator_cg_prompt_sha256,null);
 });
+function validPng(){
+ const image=new PNG({width:2,height:2});
+ image.data.fill(255);
+ return PNG.sync.write(image);
+}
+function crc32(bytes){
+ let crc=0xffffffff;
+ for(const byte of bytes){
+  crc^=byte;
+  for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);
+ }
+ return (crc^0xffffffff)>>>0;
+}
+function signedButUndecodablePng(bytes){
+ const altered=Buffer.from(bytes);
+ for(let pos=8;pos<altered.length;){
+  const length=altered.readUInt32BE(pos);
+  const type=altered.toString("ascii",pos+4,pos+8);
+  if(type==="IDAT"){
+   assert.ok(length>2);
+   altered[pos+8]=0; // break zlib header, but update PNG CRC correctly
+   altered.writeUInt32BE(crc32(altered.subarray(pos+4,pos+8+length)),pos+8+length);
+   return altered;
+  }
+  pos+=12+length;
+ }
+ throw Error("test PNG missing IDAT");
+}
 function sourceJob(){
  const game=fixture(),spec=snapshot(game);
  const job={id:id(90),game_id:game.id,attempts:1,kind:"scene",spec,
@@ -147,7 +176,7 @@ function audit(job,binding,originalBytes,expectedPromptId=id(91)){
   producerKeyHex:producerKey,resultKeyHex:resultKey});
 }
 test("signed source to workflow/prompt/original PNG is byte-bound but NOT G2",()=>{
- const job=sourceJob(),png=Buffer.from("exact private original bytes");
+ const job=sourceJob(),png=validPng();
  const result=audit(job,resultChain(job,png),png);
  assert.equal(result.verified,true);
  assert.equal(result.g2,"NOT_REVIEWED");
@@ -171,7 +200,7 @@ test("forged source receipt, missing pre-submit intent, stale attempt fail close
  assert.throws(()=>audit(stale,chain,png),/attempt|stale/i);
 });
 test("signed PNG chain must reject missing, substituted and misattributed canonical bytes",()=>{
- const job=sourceJob(),png=Buffer.from("exact original png for source-byte test");
+ const job=sourceJob(),png=validPng();
  const chain=resultChain(job,png);
  const source=job.creation_receipt_v1.source_assets.map(x=>({
   role:x.role,actor:x.actor,asset:x.asset,
@@ -216,4 +245,16 @@ test("unsigned producer/result and placeholder keys cannot authenticate pixels",
   expectedPromptId:id(91),producerKeyHex:"",resultKeyHex:resultKey}),/key|signer/i);
  const altered=clone(chain);altered.final.final_sha256="f".repeat(64);
  assert.throws(()=>audit(job,altered,png),/signed|signature|chain|hash/i);
+});
+
+test("correctly signed non-PNG, truncated PNG and CRC-consistent corrupt IDAT reject original-image verification",()=>{
+ const job=sourceJob(),good=validPng();
+ const variants=[Buffer.from("forged signed original bytes"),good.subarray(0,good.length-8),
+  signedButUndecodablePng(good)];
+ for(const candidate of variants){
+  const chain=resultChain(job,candidate); // deliberately signed as if authentic
+  assert.throws(()=>audit(job,chain,candidate),/PNG|decod|image|corrupt/i);
+ }
+ // Genuine signed and fully decodable PNG remains eligible for byte-level audit, never G2.
+ assert.equal(audit(job,resultChain(job,good),good).g2,"NOT_REVIEWED");
 });

@@ -4,6 +4,7 @@
 // R-11's worker HMAC separately binds graph -> prompt -> original bytes.
 // The checks below cannot establish semantic G2 or independent Comfy history.
 import crypto from "node:crypto";
+import {PNG} from "pngjs";
 import {buildSceneContract} from "./scene-contract.mjs";
 import {sceneIntentFingerprint} from "./visual-state.mjs";
 
@@ -246,6 +247,47 @@ function verifyCreationSourceBytes(signedAssets,sourceAssetBytes){
  }
  return signedAssets.length;
 }
+const PNG_SIGNATURE=Buffer.from([137,80,78,71,13,10,26,10]);
+function requireDecodableOriginalPng(bytes){
+ requireTrue(Buffer.isBuffer(bytes)&&bytes.length>=57&&
+  bytes.length<=64*1024*1024&&bytes.subarray(0,8).equals(PNG_SIGNATURE),
+  "original PNG signature or size invalid");
+ let offset=8,seenIHDR=false,seenIDAT=false,seenIEND=false;
+ let width=0,height=0,chunkCount=0;
+ while(offset+12<=bytes.length){
+  requireTrue(++chunkCount<=100000,"original PNG excessive chunks");
+  const length=bytes.readUInt32BE(offset);
+  requireTrue(length<=bytes.length-offset-12,"original PNG truncated chunk");
+  const type=bytes.toString("ascii",offset+4,offset+8);
+  if(!seenIHDR)requireTrue(type==="IHDR","original PNG missing first IHDR");
+  if(type==="IHDR"){
+   requireTrue(!seenIHDR&&length===13,"original PNG duplicate/invalid IHDR");
+   seenIHDR=true;
+   width=bytes.readUInt32BE(offset+8);
+   height=bytes.readUInt32BE(offset+12);
+   requireTrue(width>0&&height>0&&width<=8192&&height<=8192&&
+    width*height<=16*1024*1024,"original PNG dimensions outside limit");
+  }
+  if(type==="IDAT")seenIDAT=true;
+  if(type==="IEND"){
+   requireTrue(length===0&&seenIDAT&&
+    offset+12===bytes.length,"original PNG truncated or trailing bytes after IEND");
+   seenIEND=true;
+   break;
+  }
+  offset+=length+12;
+ }
+ requireTrue(seenIHDR&&seenIDAT&&seenIEND,"original PNG missing IDAT/IEND");
+ try{
+  // CRC-correct corrupt IDAT is still rejected by full inflate/pixel decode.
+  const decoded=PNG.sync.read(bytes,{checkCRC:true});
+  requireTrue(decoded.width===width&&decoded.height===height&&
+   Buffer.isBuffer(decoded.data)&&decoded.data.length>0,
+   "original PNG decoded pixels/dimensions mismatch");
+ }catch{
+  fail("original PNG full decode/CRC/IDAT invalid");
+ }
+}
 const sorted=payload=>Object.fromEntries(Object.keys(payload).sort().map(k=>[k,payload[k]]));
 const PHASES=["intent","dispatch","result","final"];
 
@@ -313,7 +355,8 @@ export function verifyOriginalImageChain({job,binding,originalBytes,sourceAssetB
  const originalSha=digest(originalBytes);
  requireTrue(binding.result.original_sha256===originalSha,
   "original PNG SHA256 does not match signed Comfy result");
- return {verified:true,scope:"trusted_worker_signed_source_to_original_bytes",
+ requireDecodableOriginalPng(originalBytes);
+ return {verified:true,scope:"trusted_worker_signed_source_to_decodable_original_png",
   source_signature:sourceSignature,source_assets_count:sourceAssetsCount,
   original_sha256:originalSha,
   graph_sha256:graph,comfy_prompt_id:prompt,g2:"NOT_REVIEWED",g3:"NO_GO",
