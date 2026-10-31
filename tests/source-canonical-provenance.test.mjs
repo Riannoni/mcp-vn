@@ -93,7 +93,12 @@ function sourceJob(){
   scene_fingerprint_sha256:sha(spec.cg_basis_snapshot),
   visual_contract_sha256:sha(JSON.stringify(spec.visual_contract)),
   spec_sha256:sha(JSON.stringify(spec)),prompt_sha256:sha(job.prompt),
-  model_sha256:sha(job.model),source_assets:[],
+  model_sha256:sha(job.model),source_assets:[
+   {role:"background",asset:spec.background_asset,sha256:sha("background source bytes")},
+   {role:"actor_face",actor:"Mira",asset:spec.characters[0].anchor_face_asset,
+    sha256:sha("canonical face bytes")},
+   {role:"actor_anchor",actor:"Mira",asset:spec.characters[0].anchor_asset,
+    sha256:sha("canonical body bytes")}],
   graph_sha256:null,comfy_prompt_id:null,result_sha256:null,output_binding:"pending_not_verified"};
  job.creation_receipt_v1={...payload,signature:hmac(payload,producerKey)};
  return job;
