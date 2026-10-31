@@ -272,6 +272,7 @@ class LatencyProbeTests(unittest.TestCase):
         d["job_id"] = "authentic-job-A"
         (self.lab / "BG-01-result.json").write_text(json.dumps(d))
         observed = {"kind": "stage", "job_id": "authentic-job-A", "prompt_id": "p1",
+                    "png_sha256": "a" * 64,
                     "stage": "gpu", "started_at": "2026-10-31T10:00:01Z",
                     "completed_at": "2026-10-31T10:00:09Z"}
         row = probe.build_report(self.lab, [observed], verify_png=False)["lab"][0]

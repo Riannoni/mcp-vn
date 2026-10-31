@@ -131,6 +131,9 @@ def _new_row(case=None, prompt_id=None, job_id=None, png_sha256=None):
         "human_label": False, "human_label_claim_unverified": False,
         "g2_claim_unverified": False, "mandatory_set_authenticated": False,
         "original_png_sha_verified": None,
+        "original_png_validation": None, "original_png_decoded": False,
+        "g1_claim": None,
+        "stage_receipts_authenticated": False,
         "stages_s": {s: None for s in STAGES},
         "evidence": [],
     }
@@ -146,6 +149,34 @@ def _put(row, stage, seconds, source):
     row["stages_s"][stage] = val
     if source not in row["evidence"]:
         row["evidence"].append(source)
+
+
+def _check_lab_stage_timeline(row, event, stage):
+    """Enforce source-job order; a stage JSONL line is not source authentication."""
+    began = _timestamp(event["started_at"], stage + ".started_at")
+    ended = _timestamp(event["completed_at"], stage + ".completed_at")
+    source_began = _timestamp(row["lab_started_at"], "lab.started_at")
+    source_ended = _timestamp(row["lab_completed_at"], "lab.completed_at")
+    if source_began > source_ended:
+        raise EvidenceError("lab lifecycle timestamps inverted")
+    if stage == "full_turn":
+        if began > source_began or ended < source_ended:
+            raise EvidenceError("full_turn timeline does not enclose lab lifecycle")
+        if (not isinstance(row.get("action_id"), str) or not row["action_id"]
+                or event.get("action_id") != row["action_id"]):
+            raise EvidenceError("full_turn lifecycle lacks original action_id binding")
+    elif stage in ("gpu", "submit_to_png", "comfy_roundtrip"):
+        if began < source_began or ended > source_ended:
+            raise EvidenceError("GPU stage timeline outside lab lifecycle")
+    elif stage in ("queue_wait", "preflight", "graph_prepare"):
+        source_enqueued = row.get("asset_enqueued_at")
+        if not isinstance(source_enqueued, str) or not source_enqueued:
+            raise EvidenceError("preflight timeline lacks source enqueue boundary")
+        if began < _timestamp(source_enqueued, "lab.asset_enqueued_at") or ended > source_ended:
+            raise EvidenceError("preflight timeline outside source lifecycle")
+    elif stage in ("postprocess", "cpu_vlm", "qa", "retry", "publish"):
+        if ended < source_began:
+            raise EvidenceError("stale QA/postprocess timeline before lab lifecycle")
 
 
 def _lab_rows(lab_dir, verify_png):
@@ -164,10 +195,20 @@ def _lab_rows(lab_dir, verify_png):
         if prompt in by_prompt or any(r["case"] == case for r in rows):
             raise EvidenceError("duplicate lab case or prompt_id")
         sha = _sha(d.get("png_sha256"), "lab.png_sha256")
-        row = _new_row(case=case, prompt_id=prompt, png_sha256=sha)
-        row["g1"] = d.get("g1")
+        source_job = d.get("job_id")
+        if source_job is not None and (not isinstance(source_job, str) or not source_job):
+            raise EvidenceError("lab job_id invalid")
+        row = _new_row(case=case, prompt_id=prompt, job_id=source_job, png_sha256=sha)
+        row["lab_started_at"] = d.get("started_at")
+        row["lab_completed_at"] = d.get("completed_at")
+        row["action_id"] = d.get("action_id")
+        row["asset_enqueued_at"] = d.get("asset_enqueued_at")
+        # A self-reported G1 PASS and PNG chunk CRCs do not prove a
+        # decodable image or a real Comfy terminal history.
+        row["g1_claim"] = d.get("g1")
+        row["g1"] = "UNVERIFIED"
         row["first_attempt"] = (d.get("first_attempt") is True or (type(d.get("first_attempt")) is int and d["first_attempt"] == 1))
-        if row["g1"] != "PASS" or not row["first_attempt"]:
+        if row["g1_claim"] != "PASS" or not row["first_attempt"]:
             raise EvidenceError("lab G1/first_attempt provenance missing")
         if verify_png:
             original = d.get("original_png_path")
@@ -181,6 +222,7 @@ def _lab_rows(lab_dir, verify_png):
                 raise EvidenceError("original PNG bytes do not match exact SHA")
             _validate_png_container(contents)
             row["original_png_sha_verified"] = True
+            row["original_png_validation"] = "container_crc_only"
         measured = _finite_nonnegative(d.get("total_submit_to_output_seconds"), "submit_to_png")
         clock = _duration(d.get("started_at"), d.get("completed_at"), "lab")
         if abs(measured - clock) > 0.25:
@@ -249,11 +291,13 @@ def _join_events(events, by_prompt):
             previous = prompt_owner.setdefault(prompt, job_id)
             if previous != job_id:
                 raise EvidenceError("same prompt_id attributed to multiple jobs")
-        if prompt in by_prompt:
+        lab_matched = prompt in by_prompt
+        if lab_matched:
             row = by_prompt[prompt]
-            if row["job_id"] is not None and row["job_id"] != job_id:
-                raise EvidenceError("lab prompt mapped to multiple jobs")
-            row["job_id"] = job_id
+            if row["job_id"] is None:
+                raise EvidenceError("lab job_id unanchored; cannot join stage events")
+            if row["job_id"] != job_id:
+                raise EvidenceError("lab job_id mismatch for same prompt")
             if event.get("png_sha256") and event["png_sha256"] != row["png_sha256"]:
                 raise EvidenceError("event PNG SHA differs from lab original")
         else:
@@ -286,8 +330,12 @@ def _join_events(events, by_prompt):
                 raise EvidenceError("unsupported stage event")
             if "started_at" not in event or "completed_at" not in event:
                 raise EvidenceError("stage needs explicit start and end timestamps")
-            _put(row, stage, _duration(event["started_at"], event["completed_at"], stage),
-                 "timestamped_" + kind)
+            measured = _duration(event["started_at"], event["completed_at"], stage)
+            if lab_matched:
+                _check_lab_stage_timeline(row, event, stage)
+                if event.get("png_sha256") != row["png_sha256"]:
+                    raise EvidenceError("lab stage missing or mismatched original PNG SHA")
+            _put(row, stage, measured, "timestamped_" + kind)
         else:
             raise EvidenceError(f"unrecognized event kind: {kind}")
     return list(live_by_job.values())
@@ -333,7 +381,11 @@ def build_report(lab_dir, events, verify_png=True):
             "All local pixel-review JSON claims remain unattested regardless of matching original PNG SHA.",
             "Mandatory review lists lack authenticated canonical Scene Contract linkage.",
             "External stage receipts require independent source authentication; this parser cannot certify their origin.",
+            "G1 is a source claim (UNVERIFIED), even with matching PNG SHA and chunk CRC; full image decode and terminal Comfy history are not checked.",
+            "Lab stage joins require original job, prompt, PNG SHA and causal source timestamps; full_turn also requires an original action_id.",
+            "Reported standalone full_turn durations are not authenticated browser E2E; verified browser cohort remains NOT MEASURED.",
         ],
+        "trusted_browser_e2e": {"status": "NOT_MEASURED", "n": 0},
         "g3": "NO_GO",
     }
 
