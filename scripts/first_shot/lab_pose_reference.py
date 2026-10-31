@@ -21,6 +21,16 @@ class LabPoseError(ValueError):
     pass
 
 
+# The one grounded source/guide and the public frozen pack for CG-03 v1.
+# Do not accept an updated source+manifest, or an edited pack, as the same A/B.
+# A new baseline needs a separately reviewed hash set and a new proposal version.
+PINNED_CG03_01 = {
+    "reference": "730b51efb109b5c6834ada6699d43141f17111f8731f05ea5416bcd9d71bc631",
+    "guide": "7391e30022bc83c89a4d5105c1efd5ce939d9cd460648a0ff7aa6121109793a2",
+    "extraction": "d506a43e308cc8f9a30885f74223a35689d5b95101d289ad4b898edb10e1018b",
+    "pack": "aa5a8f94859ff6b5e8c99386757cc9fccd1fa5e88a2fdd3e6970e556f8438910",
+}
+
 REQUIRED_PHOTO_OBSERVATIONS = (
     "rear_three_quarter",
     "vertical_wall",
@@ -97,9 +107,11 @@ def _geometry(joints, width, height):
     }
 
 
-def build_proposal(root, pack_file, reference_id, photo_observation):
+def build_proposal(root, pack_file, reference_id, photo_observation, trusted_hashes):
     root = Path(root).resolve()
     pack_file = Path(pack_file).resolve()
+    if not isinstance(trusted_hashes, dict) or set(trusted_hashes) != set(PINNED_CG03_01):
+        raise LabPoseError("trusted_hash_set_required")
     if not isinstance(photo_observation, dict):
         raise LabPoseError("missing_photo_observation")
     if not photo_observation.get("reviewer") or not photo_observation.get("reviewed_at"):
@@ -153,6 +165,23 @@ def build_proposal(root, pack_file, reference_id, photo_observation):
         raise LabPoseError("camera_contact_or_boots_not_in_contract")
     if not all(token in expected for token in ("both palms", "forward body lean")):
         raise LabPoseError("mandatory_expected_missing")
+    # Bind the observer's visual statements to the exact *reviewed photo* and
+    # independently pin all actual test inputs against the frozen baseline.
+    # Checking only each manifest entry against its own mutable hash is weak:
+    # changing BOTH bytes and metadata would otherwise silently pass.
+    actual_hashes = {
+        "reference": _sha(reference),
+        "guide": _sha(guide),
+        "extraction": _sha(extraction),
+        "pack": _sha(pack_file),
+    }
+    if photo_observation.get("reference_sha256") != actual_hashes["reference"]:
+        raise LabPoseError("source_photo_observation_hash_mismatch")
+    for name, digest in actual_hashes.items():
+        if (not isinstance(trusted_hashes[name], str) or
+                len(trusted_hashes[name]) != 64 or
+                trusted_hashes[name] != digest):
+            raise LabPoseError("pinned_" + name + "_hash_mismatch")
     return {
         "schema": "web-vn-lab-pose-proposal-v1",
         "status": "experimental_unapproved",
@@ -173,6 +202,7 @@ def build_proposal(root, pack_file, reference_id, photo_observation):
         "source_photo_observation": {
             "reviewer": photo_observation["reviewer"],
             "reviewed_at": photo_observation["reviewed_at"],
+            "reference_sha256": actual_hashes["reference"],
             "checks": {k: True for k in REQUIRED_PHOTO_OBSERVATIONS},
             "scope": "source_photo_only_not_generated_result",
         },
@@ -201,7 +231,10 @@ def main():
     parser.add_argument("--output", required=True, help="Private local JSON destination, not GitHub")
     args = parser.parse_args()
     observation = json.loads(Path(args.photo_observation).read_text())
-    result = build_proposal(args.root, args.pack, args.reference_id, observation)
+    if args.reference_id != "wall_push_rear_oblique_01":
+        raise LabPoseError("reference_not_pinned_for_this_experiment")
+    result = build_proposal(args.root, args.pack, args.reference_id,
+                            observation, PINNED_CG03_01)
     output = Path(args.output)
     if output.exists():
         raise LabPoseError("refuse_overwrite")
