@@ -83,6 +83,10 @@ async function receiptPayload(j,expectedVersion){
     !Array.isArray(j.spec.characters)||j.spec.characters.length===0)
   throw Error("Creation receipt typed scene contract missing");
  verifyNarrativeSourceProvenance(game,j.spec);
+ // Signed creation material must come from the current, committed narrator
+ // turn. A caller-controlled or legacy fallback prompt is not source truth.
+ if(j.spec.source_provenance_v1?.narrative_origin!=="canonical_narration_and_scene_cg_prompt")
+  throw Error("Creation receipt canonical narrator action/prompt origin not verified");
  const assets=[{role:"background",asset:j.spec.background_asset}];
  for(const actor of j.spec.characters){
   if(!actor.name||(!actor.anchor_asset&&!actor.anchor_face_asset))
