@@ -19,7 +19,11 @@ function fixture(){
   story:{summary:"Fixture only",qa_profile:"fantasy-medieval-v1"},
   hero:{name:"Other",description:""},
   identities:{Mira:{name:"Mira",face_url:url(face),base_sprite_url:url(body),base_style:"realistic"}},
-  messages:[{id:"narrator-1",role:"narrator",speaker:"Narrator",
+  turn_metrics:{last:{action_id:"player-1"}},
+  awaiting_narrator:false,
+  messages:[{id:"player-1",role:"player",speaker:"Player",
+   text:"Mira reaches the wall.",at:"2026-10-30T23:59:58Z"},
+   {id:"narrator-1",role:"narrator",speaker:"Narrator",
    text:"Mira braces her left palm against the wall.",at:"2026-10-31T00:00:00Z"}],
   scene:{location:"Private courtyard",background_url:url(bg),background_style:"realistic",
    cg_revision:7,visual_direction:"rear three-quarter, full body, visible boots",
@@ -33,7 +37,8 @@ function fixture(){
 }
 function snapshot(g){
  return artSnapshot(g,{kind:"scene",style:"realistic",character:"",
-  prompt:"Private source-backed scene image prompt",neural_scene:true,narrator_prompt:true});
+  prompt:g.scene.image_prompts?.cg||"Non-narrator fallback image prompt",
+  neural_scene:true,narrator_prompt:!!g.scene.image_prompts?.cg});
 }
 test("neural CG creation pins canonical narrator, face, outfit, action and scene source",()=>{
  const game=fixture(),spec=snapshot(game),p=spec.source_provenance_v1;
@@ -75,6 +80,17 @@ test("stale version and cross-scene typed contract are rejected",()=>{
  const other=clone(game);other.scene.location="Different courtyard";
  assert.throws(()=>verifyNarrativeSourceProvenance(other,spec),/scene|source|location/i);
 });
+test("forged narrator image prompt cannot claim canonical narrative provenance",()=>{
+ const game=fixture();
+ assert.throws(()=>artSnapshot(game,{kind:"scene",style:"realistic",
+  prompt:"unrelated synthetic prompt",neural_scene:true,narrator_prompt:true}),
+  /narrator|canonical.*prompt/i);
+});
+test("prior-turn narrator without a linked player action is not certified",()=>{
+ const game=fixture();game.turn_metrics.last.action_id="different-action";
+ const spec=snapshot(game);
+ assert.equal(spec.source_provenance_v1.narrative_origin,"incomplete_not_narrative_verified");
+});
 test("absent narrator text or scene cg prompt is labeled unproven, not fabricated",()=>{
  const game=fixture();game.messages=[];delete game.scene.image_prompts;
  const p=snapshot(game).source_provenance_v1;
@@ -85,7 +101,7 @@ test("absent narrator text or scene cg prompt is labeled unproven, not fabricate
 function sourceJob(){
  const game=fixture(),spec=snapshot(game);
  const job={id:id(90),game_id:game.id,attempts:1,kind:"scene",spec,
-  prompt:"Private source-backed scene image prompt",model:"disposable-model"};
+  prompt:game.scene.image_prompts.cg,model:"disposable-model"};
  const payload={schema:"web_vn_creation_receipt_v1",producer:"src/jobs.mjs:enqueue",
   job_id:job.id,game_id:game.id,job_kind:"scene",job_style:"realistic",
   job_character:"",game_version:game.version,scene_revision:7,issued_at:"2026-10-31T00:00:00Z",
