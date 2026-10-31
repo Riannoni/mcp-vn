@@ -167,6 +167,35 @@ class FourLaneControlTests(unittest.TestCase):
         x = m.claim(self.db, "R", "owner")
         self.assertEqual(x["reason"], "dirty_worktree_needs_review")
 
+    def test_watchdog_emits_only_on_state_change(self):
+        before=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
+        first=m.watchdog(self.db)
+        n1=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
+        self.assertEqual(n1,before+1)
+        second=m.watchdog(self.db)
+        n2=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
+        self.assertEqual(n2,n1)
+        self.assertEqual(first["warnings"],second["warnings"])
+        m.claim(self.db,"R","writer")
+        m.watchdog(self.db)
+        self.assertGreater(self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0],n2+1)
+
+    def test_submit_no_git_symlink_in_output(self):
+        task=m.claim(self.db,"R","writer")
+        w=self.root/"lane-renderer"
+        dest=w/"worker/bimanual_scene_planner.py"
+        dest.parent.mkdir(parents=True)
+        dest.symlink_to(self.root/"AGENTS.md")
+        git(w,"add","worker/bimanual_scene_planner.py")
+        git(w,"commit","-qm","bad symlink output")
+        evidence=self.root/"evidence/renderer/symlink.json"
+        evidence.parent.mkdir(parents=True,exist_ok=True)
+        evidence.write_text(json.dumps({"source_status":"tested_isolated",
+            "g2":"UNVERIFIED","g3":"NO_GO","tests":["syntax"],
+            "changed_paths":["worker/bimanual_scene_planner.py"]}))
+        with self.assertRaisesRegex(ValueError,"symlink|escapes"):
+            m.submit(self.db,"R","writer",task["fence"],task["id"],evidence)
+
     def test_stop_disables_claims(self):
         self.db.execute("UPDATE team_meta SET v='stopped' WHERE k='state'")
         x = m.claim(self.db, "R", "owner")
