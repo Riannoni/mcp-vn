@@ -149,5 +149,5 @@ test("unsigned producer/result and placeholder keys cannot authenticate pixels",
  assert.throws(()=>verifyOriginalImageChain({job,binding:chain,originalBytes:png,
   expectedPromptId:id(91),producerKeyHex:"",resultKeyHex:resultKey}),/key|signer/i);
  const altered=clone(chain);altered.final.final_sha256="f".repeat(64);
- assert.throws(()=>audit(job,altered,png),/signature|chain|hash/i);
+ assert.throws(()=>audit(job,altered,png),/signed|signature|chain|hash/i);
 });
