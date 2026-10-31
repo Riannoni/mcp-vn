@@ -72,12 +72,6 @@ def run(root, dispatcher, *, ops=None):
     for path in ("pending","running","review_pending"):
         if not (root/path).is_dir():
             raise FileNotFoundError("firstshot_state_directory_missing_"+path)
-    if list((root/"review_pending").glob("*.json")):
-        return {"status":"WAIT_GOLDEN_PIXEL_REVIEW","gpu_submits":0}
-    if list((root/"running").glob("*.json")):
-        return {"status":"BLOCKED_UNKNOWN_PREVIOUS_SUBMIT","gpu_submits":0}
-    if not list((root/"pending").glob("*.json")):
-        return {"status":"NO_APPROVED_WORK","gpu_submits":0}
     lock=root.parent/"exclusive-dev-lab-maintenance.lock"
     lock.touch(mode=0o600,exist_ok=True)
     with lock.open("r+") as handle:
@@ -87,7 +81,41 @@ def run(root, dispatcher, *, ops=None):
             return {"status":"LAB_MAINTENANCE_IN_PROGRESS","gpu_submits":0}
         saved=root/"service-state.json"
         if saved.exists():
-            return {"status":"BLOCKED_UNRESOLVED_PRIOR_LAB_SESSION","gpu_submits":0}
+            try:
+                old=json.loads(saved.read_text())
+            except (OSError,ValueError):
+                return {"status":"BLOCKED_UNREADABLE_PRIOR_LAB_SESSION","gpu_submits":0}
+            # The dispatcher *moves* a queued candidate into running before
+            # any /prompt POST. No running file + empty Comfy queue means
+            # a crash occurred before submit (or after a known terminal
+            # result), so formerly active dev services may be restored.
+            recoverable = (old.get("schema")=="firstshot-lab-service-state-v1"
+                and old.get("status") in (
+                    "preparing","quiesced","completed","BLOCKED_UNKNOWN_GPU_OR_QUISCE")
+                and isinstance(old.get("before"),dict)
+                and set(old["before"])==set(SERVICES)
+                and not list((root/"running").glob("*.json")))
+            if not recoverable:
+                return {"status":"BLOCKED_UNRESOLVED_PRIOR_LAB_SESSION","gpu_submits":0}
+            if not operations["queue_empty"]():
+                return {"status":"BLOCKED_PREVIOUS_GPU_STILL_ACTIVE","gpu_submits":0}
+            restored=[]
+            try:
+                for unit in SERVICES:
+                    if old["before"][unit] and not operations["is_active"](unit):
+                        operations["start"](unit)
+                        restored.append(unit)
+            except BaseException:
+                return {"status":"BLOCKED_RESTORE_FAILED","restored":restored}
+            saved.unlink()
+            return {"status":"LAB_PREVIOUS_SESSION_RECOVERED","restored":restored,
+                    "gpu_submits":0}
+        if list((root/"review_pending").glob("*.json")):
+            return {"status":"WAIT_GOLDEN_PIXEL_REVIEW","gpu_submits":0}
+        if list((root/"running").glob("*.json")):
+            return {"status":"BLOCKED_UNKNOWN_PREVIOUS_SUBMIT","gpu_submits":0}
+        if not list((root/"pending").glob("*.json")):
+            return {"status":"NO_APPROVED_WORK","gpu_submits":0}
         if not operations["queue_empty"]():
             return {"status":"BLOCKED_COMFY_QUEUE_NOT_EMPTY","gpu_submits":0}
         before={name:bool(operations["is_active"](name)) for name in SERVICES}
