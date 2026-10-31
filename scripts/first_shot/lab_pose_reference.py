@@ -26,7 +26,7 @@ REQUIRED_PHOTO_OBSERVATIONS = (
     "vertical_wall",
     "both_palms_visible_on_wall",
     "forward_lean",
-    "both_boots_visible",
+    "both_feet_visible",
 )
 
 
@@ -169,6 +169,7 @@ def build_proposal(root, pack_file, reference_id, photo_observation):
         "target_action": "both_palms_on_vertical_wall_forward_lean",
         "source_camera_manifest": item["camera"],
         "source_license": item.get("source_license", "unknown"),
+        "source_footwear_not_target_wardrobe_proof": True,
         "source_photo_observation": {
             "reviewer": photo_observation["reviewer"],
             "reviewed_at": photo_observation["reviewed_at"],
