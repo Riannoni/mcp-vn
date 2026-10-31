@@ -1,6 +1,5 @@
 import {environmentFor} from "./environment.mjs";
 import {buildSceneContract} from "./scene-contract.mjs";
-import {deriveNarrativeSourceProvenance} from "./source-canonical-provenance.mjs";
 import {engineSnapshot} from "./engine-policy.mjs";
 import {variantKey,visualFingerprint,sceneIntentFingerprint} from "./visual-state.mjs";
 import {requireStyle} from "./art-style.mjs";
@@ -138,8 +137,6 @@ export function artSnapshot(g,{kind,style,character,prompt,quality="standard",
  if(["scene","local_cg"].includes(kind))
   spec.visual_contract=buildSceneContract({kind,environment,location,characters,
     state:local_visual_state,scene});
- if(kind==="scene"&&spec.composition==="neural_story")
-  spec.source_provenance_v1=deriveNarrativeSourceProvenance(g,spec);
  return spec;
 }
 export function currentSceneMatches(g,spec){
