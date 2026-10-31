@@ -4,9 +4,12 @@ from pathlib import Path
 import importlib.util, os, unittest
 from unittest.mock import patch
 p=Path.home()/".local/share/mcp-vn-kobold/gateway.py"
-spec=importlib.util.spec_from_file_location("vn_gateway",p)
-g=importlib.util.module_from_spec(spec)
-spec.loader.exec_module(g)
+g=None
+if p.is_file():
+ spec=importlib.util.spec_from_file_location("vn_gateway",p)
+ g=importlib.util.module_from_spec(spec)
+ spec.loader.exec_module(g)
+@unittest.skipUnless(g is not None, "Requires separately installed PC gateway, not present in CI")
 class BackendTests(unittest.TestCase):
  def setUp(self):g.ROCM_DISABLED.clear()
  def tearDown(self):g.ROCM_DISABLED.clear()
