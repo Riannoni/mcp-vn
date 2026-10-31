@@ -1,5 +1,6 @@
 """Synthetic CPU integration of native #76 receipt -> LAB review fence (no pixels judged)."""
 import hashlib
+from contextlib import closing
 import importlib.util
 import io
 import json
@@ -149,7 +150,7 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
             "prompt_id": self.prompt_id, "png_sha256": self.candidate["png_sha256"],
             "g2": "FAIL", "g3": "NO_GO"
         }
-        with sqlite3.connect(self.native / "state/team.sqlite3") as db:
+        with closing(sqlite3.connect(self.native / "state/team.sqlite3")) as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS task (id TEXT PRIMARY KEY, action TEXT, state TEXT, result TEXT);
                 CREATE TABLE IF NOT EXISTS visual_task (task_id TEXT PRIMARY KEY, spec_sha256 TEXT, spec_json TEXT);
@@ -163,6 +164,7 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
                        (self.task_id, spec_hash, spec_text))
             db.execute("INSERT INTO visual_review VALUES(?,?,?,?,?)",
                        (self.task_id, self.chief_reviewer, self.native_approved, "FAIL", self.candidate["png_sha256"]))
+            db.commit()
 
     def assert_denied_without_transition(self, expected):
         with self.assertRaisesRegex(ValueError, expected):
@@ -214,7 +216,7 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
 
     def test_exact_original_png_changed_keeps_candidate_held(self):
         self.original.write_bytes(png(rgba=True))
-        self.assert_denied_without_transition("original private artifact sha256 mismatch")
+        self.assert_denied_without_transition("original_png_missing_or_changed")
 
 
 if __name__ == "__main__":
