@@ -142,6 +142,17 @@ def validate_sdxl_identity_graph(job, graph, intent, *, checkpoint, face_uploads
         if _node(graph, image_id, "LoadImage").get("image") != upload:
             raise IdentityGraphBlocked(f"{name} face image swapped or disconnected")
         adapter = _node(graph, apply_id, "IPAdapterAdvanced")
+        # The installed IPAdapterAdvanced also accepts optional image_negative
+        # and attn_mask inputs.  An unverified negative face or a zero sprite
+        # attention mask can suppress canonical conditioning while all
+        # mandatory face edges still appear correctly wired.
+        approved = {"model", "image", "ipadapter", "clip_vision", "weight",
+                    "start_at", "end_at", "weight_type", "combine_embeds",
+                    "embeds_scaling"}
+        if not is_sprite:
+            approved.add("attn_mask")  # CG: mandatory actor-bound mask below.
+        if set(adapter) - approved:
+            raise IdentityGraphBlocked(f"{name} IPAdapter unapproved optional input")
         for field, value in (("model", previous), ("image", [image_id, 0]),
                              ("ipadapter", [loader_id, 0]), ("clip_vision", [vision_id, 0])):
             if adapter.get(field) != value:

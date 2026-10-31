@@ -121,6 +121,24 @@ class IdentityGraphContractTests(unittest.TestCase):
             ):
                 check(SJOB,g,ONE,SU)
 
+    def test_optional_sprite_mask_cannot_zero_out_face_conditioning(self):
+        graph = sprite()
+        graph["90"] = node("SolidMask", value=0, width=832, height=1216)
+        graph["18"]["inputs"]["attn_mask"] = ["90", 0]
+        with self.assertRaisesRegex(IdentityGraphBlocked, "IPAdapter.*(optional|mask|input)"):
+            check(SJOB, graph, ONE, SU)
+
+    def test_optional_negative_image_cannot_override_canonical_face(self):
+        for job, graph, intent, faces, masks, adapter_id in (
+            (SJOB, sprite(), ONE, SU, None, "18"),
+            (CJOB, cg(), TWO, CU, CM, "64"),
+        ):
+            with self.subTest(kind=job["kind"]):
+                graph["91"] = node("LoadImage", image="other_face.png")
+                graph[adapter_id]["inputs"]["image_negative"] = ["91", 0]
+                with self.assertRaisesRegex(IdentityGraphBlocked, "IPAdapter.*(optional|negative|input)"):
+                    check(job, graph, intent, faces, masks)
+
     def test_current_worker_silent_face_fallback_cannot_pass(self):
         g=sprite();g["5"]["inputs"]["model"]=["1",0]
         with self.assertRaisesRegex(IdentityGraphBlocked,"bypasses"):
