@@ -96,13 +96,16 @@ export function decodeScreenshotPng(bytes){
   if(iend)break;
  }
  if(!ihdr||!idat||!iend||p!==bytes.length)invalid("incomplete_png");
- if(seenMetadata.has("sRGB")){
-  const expectedChromaticities=[31270,32900,64000,33000,30000,60000,15000,6000];
-  if(declaredGamma!==null&&declaredGamma!==45455)invalid("srgb_gamma_conflict");
-  if(declaredChromaticities!==null&&
-     !declaredChromaticities.every((v,i)=>v===expectedChromaticities[i]))
-   invalid("srgb_chromaticity_conflict");
- }
+ // Deliberately support the bounded Chromium screenshot color profile,
+ // not arbitrary PNG/CIE colorimetry. Even a standalone cHRM must have the
+ // standard sRGB primaries: accepting unknown custom primaries would require
+ // a separately reviewed full color-space parser. Fail closed instead.
+ const expectedChromaticities=[31270,32900,64000,33000,30000,60000,15000,6000];
+ if(declaredChromaticities!==null&&
+    !declaredChromaticities.every((v,i)=>v===expectedChromaticities[i]))
+  invalid("unsupported_screenshot_chromaticities");
+ if(seenMetadata.has("sRGB")&&declaredGamma!==null&&declaredGamma!==45455)
+  invalid("srgb_gamma_conflict");
  const rowBytes=width*bpp,expected=(rowBytes+1)*height;
  let inflated;
  try{
