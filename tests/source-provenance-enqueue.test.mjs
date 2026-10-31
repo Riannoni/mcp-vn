@@ -145,4 +145,40 @@ test("source plate swapped after successful byte preflight must reject job",asyn
  assert.equal(swapped,true,"the source swap must occur after original plate preflight");
  assert.equal((await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length,before);
 });
+
+test("creation receipt HMAC binds actual canonical face, body and source plate at enqueue",async()=>{
+ const {game,face,background}=await fixture();
+ const job=await enqueue(game);
+ const receipt=job.creation_receipt_v1;
+ assert.ok(receipt?.signature,"creation-time HMAC receipt must be persisted on the queued job");
+ assert.equal(receipt.schema,"web_vn_creation_receipt_v1");
+ const dig=bytes=>crypto.createHash("sha256").update(bytes).digest("hex");
+ const entries=receipt.source_assets;
+ for(const [role,file] of [["background",background],["actor_face",face]]){
+  const matched=entries.find(x=>x.role===role&&x.asset===file);
+  assert.ok(matched,"missing signed source bytes for "+role);
+  assert.equal(matched.sha256,dig(await fs.readFile(path.join(root,"assets",file))));
+ }
+ assert.equal(receipt.game_id,game.id);
+ assert.equal(receipt.game_version,game.version);
+ assert.equal(receipt.spec_sha256,dig(JSON.stringify(job.spec)));
+ assert.equal((await jobs.verifyCreationReceipt(job)).scope,"creation_source_only");
+});
+test("signed canonical receipt rejects replayed cross-game or re-pinned wardrobe",async()=>{
+ const {game}=await fixture(),other=(await fixture()).game;
+ const job=await enqueue(game);
+ const cross=structuredClone(job);cross.game_id=other.id;
+ await assert.rejects(()=>jobs.verifyCreationReceipt(cross),/receipt|scene|game|signature/i);
+ const wardrobe=structuredClone(job);
+ wardrobe.spec.characters[0].outfit="wrong historical coat";
+ await assert.rejects(()=>jobs.verifyCreationReceipt(wardrobe),/receipt|scene|source|signature|outfit/i);
+ const forged=structuredClone(job);
+ forged.creation_receipt_v1.source_assets.find(x=>x.role==="actor_face").sha256="0".repeat(64);
+ await assert.rejects(()=>jobs.verifyCreationReceipt(forged),/receipt|source|signature|mismatch/i);
+});
+test("signed source face byte mutation after enqueue rejects old receipt",async()=>{
+ const {game,face}=await fixture(),job=await enqueue(game);
+ await fs.writeFile(path.join(root,"assets",face),Buffer.from("substituted-face-bytes"));
+ await assert.rejects(()=>jobs.verifyCreationReceipt(job),/receipt|asset|source|mismatch/i);
+});
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));
