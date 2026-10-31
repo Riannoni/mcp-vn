@@ -8,10 +8,12 @@ import unittest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "worker"))
 import pose_graph_native as pose
+import zimage_backend
 
-CASE = {"id": "CG-03", "type": "cg", "seed": 202610310105,
-        "canvas": [1024, 592], "prompt": "three quarter rear full body actress against wall"}
+PACK = json.loads((Path(__file__).resolve().parents[1] / "pack-v1.json").read_text())
+CASE = next(c for c in PACK["cases"] if c["id"] == "CG-03")
 NODES = {n: {"input": {"required": {k: [] for k in fields}}} for n, fields in {
     "LoadImage": ["image"],
     "ImageScale": ["image", "upscale_method", "width", "height", "crop"],
@@ -22,20 +24,11 @@ NODES["ModelPatchLoader"]["input"]["required"]["name"] = [[pose.POSE_PATCH_NAME]
 
 
 def base():
-    classes = ["UNETLoader", "CLIPLoader", "VAELoader", "CLIPTextEncode",
-               "ConditioningZeroOut", "ModelSamplingAuraFlow",
-               "EmptySD3LatentImage", "KSampler", "VAEDecode", "SaveImage"]
-    g = {str(i): {"class_type": kind, "inputs": {}} for i, kind in enumerate(classes, 1)}
-    g["2"]["inputs"]["type"] = "lumina2"
-    g["4"]["inputs"]["text"] = CASE["prompt"]
-    g["7"]["inputs"].update(width=1024, height=592)
-    g["8"]["inputs"].update(model=["6", 0], positive=["4", 0],
-        negative=["5", 0], latent_image=["7", 0], seed=CASE["seed"],
-        steps=8, cfg=1.0, sampler_name="res_multistep",
-        scheduler="simple", denoise=1.0)
-    g["10"]["inputs"]["filename_prefix"] = "vn_zimage_probe_abc"
-    return g
-
+    return zimage_backend.create_graph(
+        CASE["prompt"], seed=CASE["seed"], prefix="vn_zimage_probe_abc",
+        width=CASE["canvas"][0], height=CASE["canvas"][1],
+        private_unanchored=True,
+    )
 
 def build(graph=None, case=None, nodes=None, filename="vn_pose_probe_rear_sha.png"):
     return pose.add_native_pose_to_frozen_cg03(
@@ -84,17 +77,17 @@ class NativePoseGraphTests(unittest.TestCase):
     def test_other_case_seed_size_prompt_and_sampler_rejected(self):
         for change in ({"id": "CG-02"}, {"seed": 4}, {"canvas": [1024, 576]}):
             with self.subTest(change=change), self.assertRaisesRegex(
-                pose.NativePoseUnavailable, "not_frozen"):
+                pose.NativePoseUnavailable, "not_frozen|frozen_case"):
                 build(case=CASE | change)
         for key, value in (("seed", 42), ("steps", 3), ("model", ["1", 0])):
             g = base()
             g["8"]["inputs"][key] = value
             with self.subTest(key=key), self.assertRaisesRegex(
-                pose.NativePoseUnavailable, "baseline_sampler"):
+                pose.NativePoseUnavailable, "frozen_baseline_graph"):
                 build(graph=g)
         g = base()
         g["4"]["inputs"]["text"] = "different prompt"
-        with self.assertRaisesRegex(pose.NativePoseUnavailable, "baseline_prompt"):
+        with self.assertRaisesRegex(pose.NativePoseUnavailable, "frozen_baseline_graph"):
             build(graph=g)
 
     def test_staged_filename_rejects_path_traversal(self):
