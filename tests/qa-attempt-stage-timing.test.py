@@ -7,6 +7,7 @@ import ast
 import io
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -47,7 +48,7 @@ class QATiming(unittest.TestCase):
         self.assertEqual(response["qa_stage_ms"]["model_analyze"], 400.0)
         self.assertEqual(response["status"], "passed")
 
-    def run_synthetic(self, response=None, *, error=None, expected=(128, 192)):
+    def run_synthetic(self, response=None, *, error=None, expected=(128, 192), delay_seconds=0):
         image = Image.new("RGBA", (128, 192), (0, 0, 0, 0))
         for x in range(36, 92):
             for y in range(10, 182):
@@ -61,6 +62,8 @@ class QATiming(unittest.TestCase):
         def fake_request(*_args, **_kwargs):
             if error:
                 raise OSError("synthetic /judge unavailable")
+            if delay_seconds:
+                time.sleep(delay_seconds)
             return response
         with patch.dict(os.environ, {"VN_VISION_QA": "1"}), \
              patch.object(worker, "cutout", side_effect=lambda img: img), \
@@ -71,19 +74,58 @@ class QATiming(unittest.TestCase):
     def test_same_attempt_server_and_client_spans_are_preserved(self):
         report = self.run_synthetic({
             "status": "passed", "duration_seconds": 0.4,
-            "qa_stage_ms": {"input_decode": 2.0, "lock_wait": 200.0,
-                            "model_analyze": 400.0, "handler_before_send": 610.0},
-            "vlm_caption_ms": 300.0,
-        })
+            "qa_stage_ms": {"input_decode": 1.0, "lock_wait": 2.0,
+                            "model_analyze": 3.0, "handler_before_send": 8.0},
+            "vlm_caption_ms": 1.5,
+        }, delay_seconds=0.025)
         metrics = report["metrics"]
-        self.assertEqual(metrics["qa_vision_server_stage_ms"]["lock_wait"], 200.0)
-        self.assertEqual(metrics["qa_vision_server_stage_ms"]["model_analyze"], 400.0)
-        self.assertEqual(metrics["qa_vision_caption_ms"], 300.0)
+        self.assertEqual(metrics["qa_vision_server_stage_ms"]["lock_wait"], 2.0)
+        self.assertEqual(metrics["qa_vision_server_stage_ms"]["model_analyze"], 3.0)
+        self.assertEqual(metrics["qa_vision_caption_ms"], 1.5)
         self.assertGreaterEqual(metrics["qa_vision_http_ms"], 0)
         self.assertGreaterEqual(metrics["qa_vision_prepare_ms"], 0)
         self.assertIn("qa_pose_geometry_ms", metrics)
         self.assertIn("qa_ms", report["timings"])
         self.assertEqual(report["semantic_status"], "passed")
+
+    def test_impossible_remote_handler_exceeds_local_http_span_is_untrusted(self):
+        report = self.run_synthetic({
+            "status": "failed", "reasons": ["synthetic mandatory rejection"],
+            "qa_stage_ms": {"input_decode": 1, "lock_wait": 120000,
+                            "model_analyze": 120000,
+                            "handler_before_send": 240000},
+            "vlm_caption_ms": 100000,
+        })
+        m = report["metrics"]
+        self.assertFalse(report["passed"])
+        self.assertEqual(m["qa_vision_server_stage_ms"], {})
+        self.assertNotIn("qa_vision_caption_ms", m)
+        self.assertEqual(m["qa_vision_stage_integrity"], "untrusted")
+        self.assertEqual(m["qa_vision_stage_integrity_reason"], "handler_exceeds_http")
+
+    def test_nested_server_spans_must_fit_handler(self):
+        report = self.run_synthetic({
+            "status": "failed", "reasons": ["synthetic mandatory rejection"],
+            "qa_stage_ms": {"input_decode": 10, "lock_wait": 20,
+                            "model_analyze": 30, "handler_before_send": 5},
+            "vlm_caption_ms": 2,
+        }, delay_seconds=0.025)
+        m = report["metrics"]
+        self.assertEqual(m["qa_vision_server_stage_ms"], {})
+        self.assertNotIn("qa_vision_caption_ms", m)
+        self.assertEqual(m["qa_vision_stage_integrity_reason"], "nested_spans_exceed_handler")
+
+    def test_caption_cannot_exceed_analyze(self):
+        report = self.run_synthetic({
+            "status": "failed", "reasons": ["synthetic mandatory rejection"],
+            "qa_stage_ms": {"input_decode": 1, "lock_wait": 2,
+                            "model_analyze": 3, "handler_before_send": 8},
+            "vlm_caption_ms": 200,
+        }, delay_seconds=0.025)
+        m = report["metrics"]
+        self.assertEqual(m["qa_vision_server_stage_ms"], {})
+        self.assertNotIn("qa_vision_caption_ms", m)
+        self.assertEqual(m["qa_vision_stage_integrity_reason"], "caption_exceeds_analyze")
 
     def test_invalid_remote_timings_are_not_trusted(self):
         report = self.run_synthetic({
@@ -111,4 +153,3 @@ class QATiming(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
