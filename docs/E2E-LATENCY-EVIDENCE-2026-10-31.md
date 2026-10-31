@@ -18,6 +18,7 @@ Aggregate derived directly from existing private `/opt/mcp-vn/data/jobs/*.json`,
 |---|---:|---:|---:|---|
 | **Previous 48h, scene jobs, `generation_ms`** | 9 | 23.05s | 58.34s | worker's Comfy roundtrip, **not pure GPU inference** |
 | **Previous 48h, scene jobs, `qa_ms`** | 9 | 30.46s | 68.76s | worker QA stage, **not proven CPU VLM alone** |
+| **Previous 48h, scene jobs, `qa.metrics.vlm_seconds`** | 7 | 12.78s | 27.10s | internal vision-daemon `/judge` analysis (CLIP + VLM + analysis), **not standalone inference** |
 | **Previous 48h, scene jobs, `timings.total_ms`** | 9 | 92.81s | 104.36s | job enqueue-to-finish, **not browser roundtrip** |
 | **Previous 48h, scene jobs, `postprocess_ms`** | 9 | 1.02s | 1.64s | worker image postprocess stage |
 | **All 158 historical scene jobs, with `generation_ms` receipts** | 106 | 14.01s | 39.04s | heterogeneous historical Comfy rounds |
@@ -27,6 +28,8 @@ Aggregate derived directly from existing private `/opt/mcp-vn/data/jobs/*.json`,
 | **Five frozen first-shot Comfy submit→original PNG** | 5 | 6.028s | 9.4356s | isolated disposable lab GPU path, excludes game/QA/browsers |
 
 The **last-48h scene cohort is only 9 jobs (4 done, 5 failed)**; not an independently randomized benchmark or successful game turns. All 382 stored historical jobs include background, sprite, scene and local CG; 285 done / 51 superseded / 46 failed. These samples include retries, mixed workflows and failure outcomes; cannot establish a causal regression or future SLO. Their timestamps and sample sizes must be preserved; no selective comparison of the 5 fast T2I jobs against 9 slow production CGs. The separately reported screenshots around ~103–108 seconds full scene and ~57–81 seconds QA are anecdotal until independent exact receipts; do not recast them as percentile series.
+
+**Additional causal lead (measured, not yet attributed):** 7 of the 9 recent scene jobs contain both a worker QA duration and a vision-daemon `vlm_seconds` duration; paired observations include **80.93s worker QA versus 25.47s daemon analysis**, **57.41s versus 27.06s**, and **65.72s versus 27.15s**. The residual covers any DWPose geometry RPC, local processing, network, scheduling and other QA work; **it is not automatically all DWPose**. In current source `worker/worker.py`, `qa_t0` encloses the mandatory `verify_with_comfy` geometry call before the `/judge` request, without a separate pose timing. Falsifiable follow-up: add isolated per-stage monotonic timing around pose geometry, vision transport/response and residual CPU logic; compare the *same* job/PNG on an owner-fenced disposable run, no QA policy change. Two jobs lacking a `vlm_seconds` receipt are excluded from daemon percentiles, not counted as zero seconds.
 
 **MISSING:** zero verified action→narrator→asset-published continuous sessions with actual signed stage receipts and a corresponding exact Comfy prompt/original PNG job. Full browser-turn P50/P90 and independent CPU-VLM-only P50/P90 remain **NOT MEASURED (n=0)**. Current QA semantics are still mandatory fail-closed; no proposed bypass to obtain speed.
 
