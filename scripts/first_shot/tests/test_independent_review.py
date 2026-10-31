@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import io
+from contextlib import closing
 import sqlite3
 from unittest.mock import patch
 from PIL import Image
@@ -120,7 +121,7 @@ class GoldenTrustBoundaryTests(unittest.TestCase):
         self.blocked("trusted_visual_review_database_missing")
 
     def test_forged_native_approval_with_no_original_source_contract_fails(self):
-        with sqlite3.connect(self.native / "state/team.sqlite3") as db:
+        with closing(sqlite3.connect(self.native / "state/team.sqlite3")) as db:
             db.executescript("""
                 CREATE TABLE task(id TEXT, action TEXT, state TEXT, result TEXT);
                 CREATE TABLE visual_task(task_id TEXT, spec_sha256 TEXT, spec_json TEXT);
@@ -132,10 +133,11 @@ class GoldenTrustBoundaryTests(unittest.TestCase):
                        ("G-999", hashlib.sha256(b"{}").hexdigest(), "{}"))
             db.execute("INSERT INTO visual_review VALUES (?,?,?,?,?)",
                        ("G-999", "self-asserted", 1, "PASS", self.candidate["png_sha256"]))
+            db.commit()
         self.blocked("invalid Golden visual task schema")
 
     def test_native_task_not_approved_fails_closed(self):
-        with sqlite3.connect(self.native / "state/team.sqlite3") as db:
+        with closing(sqlite3.connect(self.native / "state/team.sqlite3")) as db:
             db.executescript("""
                 CREATE TABLE task(id TEXT, action TEXT, state TEXT, result TEXT);
                 CREATE TABLE visual_task(task_id TEXT, spec_sha256 TEXT, spec_json TEXT);
@@ -147,6 +149,7 @@ class GoldenTrustBoundaryTests(unittest.TestCase):
                        ("G-999", hashlib.sha256(b"{}").hexdigest(), "{}"))
             db.execute("INSERT INTO visual_review VALUES (?,?,?,?,?)",
                        ("G-999", "other-reviewer", 0, "FAIL", self.candidate["png_sha256"]))
+            db.commit()
         self.blocked("trusted_visual_review_not_independently_approved")
 
     def test_missing_derived_rgba_fails_before_any_release(self):
