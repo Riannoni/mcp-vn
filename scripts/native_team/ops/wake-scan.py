@@ -19,8 +19,10 @@ result={"at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "lanes":{lane:check(ROOT,lane) for lane in LANES},
         "chief_review":check_review(ROOT),
         "latency":latency,
+        "review_backlog_over_10m":[lane for lane,entry in latency.items() if entry.get("review_over_10_minutes")],
+        "planning_deficit_over_10m":[lane for lane,entry in latency.items() if entry.get("planning_deficit_over_10_minutes")],
         "sla_violations":[lane for lane,entry in latency.items()
-                          if entry["over_10_minutes"] or entry.get("planning_deficit_over_10_minutes")],
+                          if entry["over_10_minutes"] or entry.get("review_over_10_minutes")],
         "five_minute_alerts":[lane for lane,entry in latency.items()
                           if (entry.get("ready_idle_seconds") or 0)>300 or entry.get("planning_deficit_over_5_minutes")]}
 print(json.dumps(result,ensure_ascii=False,sort_keys=True))
