@@ -36,7 +36,7 @@ const styles={anime:"waiIllustriousSDXL_v170.safetensors",
 // Creation preflight only: R-10 still owns the immutable SHA256/HMAC receipt.
 // Do not mistake URL/filename presence for accessible canonical source bytes.
 async function requireCanonicalSourceBytes(name,role){
- if(!/^[a-f0-9-]{36}\\.(png|jpg|webp)$/i.test(name))
+ if(!/^[a-f0-9-]{36}\.(png|jpg|webp)$/i.test(name))
   throw Error("Canonical "+role+" source asset name invalid");
  const handle=await fs.open(path.join(dataRoot,"assets",name),
   fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW);
