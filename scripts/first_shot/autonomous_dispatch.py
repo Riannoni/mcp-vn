@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO / "worker"))
+sys.path.insert(0, str(HERE))
 import zimage_backend as z
 import run_one as r
 
