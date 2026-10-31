@@ -33,7 +33,7 @@ Health/metrics: /broker/health, /broker/metrics, /broker/jobs/{prompt_id}; queue
 
 ## Tests and regression
 
-CPU-only fake-Comfy tests, **zero GPU submits**: 26/26 broker, 4/4 Kobold integration, 28/28 first-shot suite PASS in the isolated home checkout (Python 3.10, aiohttp 3.13.5; Pillow installed only in isolated test target).
+CPU-only fake-Comfy tests, **zero GPU submits**: 27/27 broker, 4/4 Kobold integration, 28/28 first-shot suite PASS in the isolated home checkout (Python 3.10, aiohttp 3.13.5; Pillow installed only in isolated test target).
 - Two simultaneous distinct submitters, same-key retries, restart with active prompt, crash between reservation and POST, HTTP 500 before/after acceptance, malformed queue, invalid graph, foreign queue, foreign disappearance without history, history HTTP 500, queue timeout, /api/prompt alias, websocket text/binary, upload/view/history, unsafe mutations, external lease and restart.
 - Kobold gateway no-GPU tests cover lease scope, free authorization header, exception cleanup, CPU fallback without false ROCm circuit break.
 - Dispatcher regression exercises pending -> running -> review_pending. Previously the code attempted path.replace from the stale pending path, causing FileNotFoundError; it now uses saved running_path.
@@ -45,7 +45,7 @@ Commands in isolated checkout:
 - python3 -m py_compile scripts/comfy_broker/broker.py deploy/kobold-gateway.py
 - git diff --check
 
-The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 36df3ad531cc114329f0cbbea92e5e14ea07fbc4 was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 26/26 broker, 4/4 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
+The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 53083ae7c750e877ad364a40576427d7c52b479c was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 27/27 broker, 4/4 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
 
 ## Explicit deployment gates — DO NOT EXECUTE UNTIL INDEPENDENT REVIEW
 
