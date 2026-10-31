@@ -1,0 +1,89 @@
+{
+  "schema": "web-vn-first-shot-pack-v1",
+  "target_gpu_seconds": 20,
+  "mode": "first_attempt_only",
+  "notes": "Public synthetic benchmark. Exact private source/reference ID and hashes are supplied on PC only. No player story, faces or saves in GitHub.",
+  "cases": [
+    {
+      "id": "BG-01",
+      "type": "background",
+      "seed": 202610310101,
+      "canvas": [
+        1024,
+        592
+      ],
+      "expected": [
+        "outdoor medieval market square",
+        "stone cobbles and distinctive arch",
+        "market stalls",
+        "no foreground named principal"
+      ],
+      "prompt": "Wide cinematic exterior establishing shot of a medieval European marketplace. Cobblestone town square, distinctive stone arch, merchant awnings, timber-framed houses, clear architecture and perspective, coherent natural midday light, no foreground posed hero, no text, one continuous environment, realistic cinematic photography."
+    },
+    {
+      "id": "SPR-01",
+      "type": "sprite",
+      "seed": 202610310102,
+      "canvas": [
+        704,
+        1024
+      ],
+      "expected": [
+        "single adult female",
+        "full body head-to-boots",
+        "dark navy CLOSED jacket and trousers",
+        "reference identity and alpha after cutout"
+      ],
+      "prompt": "Character design full-body single adult female adventurer facing camera, long auburn hair, CLOSED dark navy jacket over ordinary shirt, dark trousers and tall leather boots, arms at sides, both complete hands and shoes visible, standing isolated on a plain evenly lit neutral background, symmetrical feet, faithful anatomy, no other people, realistic illustration."
+    },
+    {
+      "id": "CG-01",
+      "type": "cg",
+      "seed": 202610310103,
+      "canvas": [
+        1024,
+        592
+      ],
+      "expected": [
+        "market continuity",
+        "one adult principal",
+        "closed navy jacket/boots",
+        "folded paper map held with both hands and correct scale"
+      ],
+      "prompt": "Cinematic wide coherent medieval market square, one adult auburn-haired woman in fully closed dark navy jacket, dark trousers and leather boots, standing in market near distinct stone arch, holding ONE folded paper navigation map in both hands at chest level with visibly believable finger contact, anatomically correct hands, matching old-town cobbled environment, camera frontal three-quarter view."
+    },
+    {
+      "id": "CG-02",
+      "type": "cg",
+      "seed": 202610310104,
+      "canvas": [
+        1024,
+        592
+      ],
+      "expected": [
+        "market continuity",
+        "one adult principal",
+        "closed navy outfit",
+        "small closed wooden box held with two hands near waist at believable scale"
+      ],
+      "prompt": "Cinematic wide view in same medieval cobblestone marketplace, one adult auburn-haired woman in CLOSED navy jacket, trousers and tall boots, standing beside wooden market stall, holding one SMALL CLOSED carved wooden keepsake box at waist level, visibly supported by both hands with fingers contacting opposite sides, box narrower than shoulder joint span, believable proportions, no duplicates, full character."
+    },
+    {
+      "id": "CG-03",
+      "type": "cg",
+      "seed": 202610310105,
+      "canvas": [
+        1024,
+        592
+      ],
+      "expected": [
+        "stone arch wall",
+        "one adult principal",
+        "same outfit",
+        "both palms on stone masonry",
+        "forward body lean and observable contact"
+      ],
+      "prompt": "Cinematic three-quarter rear view at stone arch in same medieval market, one adult woman auburn hair CLOSED navy jacket dark trousers tall boots, full-body leaning forward with BOTH open hands actually pressed flat against vertical stone wall at shoulder height, shoulders and forearms supporting lean, both hand-wall contacts visibly clear, realistic anatomy, believable masonry perspective, no duplicates."
+    }
+  ]
+}
