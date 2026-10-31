@@ -224,6 +224,21 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
         self.save()  # native GPU/source receipt deliberately still binds the old derivative
         self.assert_denied_without_transition("trusted_sprite_derivative_not_in_native_gpu_receipt")
 
+    def test_native_sprite_factor_spoof_cannot_skip_missing_final_rgba(self):
+        # Native typed contract and GPU receipt still require sprite_alpha/RGBA;
+        # the mutable LAB result may NOT recast it as a non-sprite experiment.
+        self.candidate["factor"] = "native_pose"
+        self.candidate.pop("derived_rgba_path")
+        self.candidate.pop("derived_rgba_sha256")
+        self.derived.unlink()
+        self.save()
+        self.assert_denied_without_transition("trusted_sprite_factor_mismatch")
+
+    def test_native_sprite_factor_spoof_rejected_even_with_rgba_present(self):
+        self.candidate["factor"] = "native_pose"
+        self.save()
+        self.assert_denied_without_transition("trusted_sprite_factor_mismatch")
+
     def test_absent_native_task_id_does_not_accept_claim(self):
         self.review["reviewer_task"] = "G-999"
         self.rf.write_bytes(blob(self.review))
