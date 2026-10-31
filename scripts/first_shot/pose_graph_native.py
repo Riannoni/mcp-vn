@@ -13,6 +13,74 @@ import re
 
 from PIL import Image
 
+import json
+
+# Immutable CPU-only trust anchors. Updating the frozen pack or model backend
+# requires an explicit independently reviewed hash revision, not mutable
+# case metadata passed by a dispatcher or an arbitrary locally edited graph.
+_PACK_PATH = Path(__file__).resolve().with_name("pack-v1.json")
+_BACKEND_PATH = Path(__file__).resolve().parents[2] / "worker" / "zimage_backend.py"
+_PACK_SHA256 = "aa5a8f94859ff6b5e8c99386757cc9fccd1fa5e88a2fdd3e6970e556f8438910"
+_BACKEND_SHA256 = "610a616a1c2d90fe00b4ec747d173c7f324d5e5e6b6b28d9c62153d82186c990"
+
+
+def _pinned_bytes(path, expected_sha, label):
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise NativePoseUnavailable("frozen_" + label + "_missing_or_symlink")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha:
+        raise NativePoseUnavailable("frozen_" + label + "_bytes_mismatch")
+    return raw
+
+
+def _serialized(value):
+    # JSON encoding distinguishes bool from int, and floats from integers.
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _canonical_baseline(graph, case):
+    """Reconstruct the *complete* baseline; no caller-supplied trusted fields."""
+    raw_pack = _pinned_bytes(_PACK_PATH, _PACK_SHA256, "pack")
+    try:
+        pack = json.loads(raw_pack)
+        matches = [entry for entry in pack["cases"] if entry["id"] == "CG-03"]
+        if len(matches) != 1 or _serialized(case) != _serialized(matches[0]):
+            raise NativePoseUnavailable("frozen_case_provenance_mismatch")
+        expected_case = matches[0]
+    except (TypeError, KeyError, ValueError, json.JSONDecodeError) as exc:
+        if isinstance(exc, NativePoseUnavailable):
+            raise
+        raise NativePoseUnavailable("frozen_pack_or_case_invalid") from exc
+
+    if not isinstance(graph, dict) or not isinstance(graph.get("10"), dict):
+        raise NativePoseUnavailable("not_native_unconditioned_base_graph")
+    node10_inputs = graph["10"].get("inputs")
+    if not isinstance(node10_inputs, dict):
+        raise NativePoseUnavailable("not_native_unconditioned_base_graph")
+    prefix = node10_inputs.get("filename_prefix")
+    # Compile the already-verified source bytes to close a verify/load TOCTOU
+    # gap. No arbitrary user-supplied code or network is ever evaluated.
+    backend_raw = _pinned_bytes(_BACKEND_PATH, _BACKEND_SHA256, "backend")
+    ns = {"__name__": "_webvn_pinned_zimage_backend"}
+    exec(compile(backend_raw, str(_BACKEND_PATH), "exec"), ns)
+    try:
+        return ns["create_graph"](
+            expected_case["prompt"], seed=expected_case["seed"],
+            prefix=prefix,
+            width=expected_case["canvas"][0],
+            height=expected_case["canvas"][1],
+            private_unanchored=True,
+            canonical_face_asset=None,
+            model=ns["DEFAULT_MODEL"],
+            encoder=ns["DEFAULT_ENCODER"],
+            vae=ns["DEFAULT_VAE"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise NativePoseUnavailable("frozen_baseline_reconstruction_invalid") from exc
+
+
+
 
 POSE_REFERENCE_ID = "wall_push_rear_oblique_01"
 POSE_GUIDE_SHA256 = "7391e30022bc83c89a4d5105c1efd5ce939d9cd460648a0ff7aa6121109793a2"
@@ -88,40 +156,18 @@ def add_native_pose_to_frozen_cg03(graph, case, *, staged_guide_name, object_inf
     work, marks guide approved, or infers canonical identity/contact.
     """
     validate_native_nodes(object_info)
-    if (not isinstance(case, dict) or case.get("id") != "CG-03"
-            or case.get("type") != "cg"
-            or case.get("seed") != _EXPECTED_CASE_SEED
-            or tuple(case.get("canvas", ())) != _EXPECTED_CANVAS):
+    if not isinstance(case, dict) or case.get("id") != "CG-03":
         raise NativePoseUnavailable("not_frozen_cg03_scene")
     if not isinstance(staged_guide_name, str) or not _FILENAME.fullmatch(staged_guide_name):
         raise NativePoseUnavailable("staged_guide_invalid_filename")
-    if not isinstance(graph, dict) or set(graph) != {str(i) for i in range(1, 11)}:
-        raise NativePoseUnavailable("not_native_unconditioned_base_graph")
-    expected_nodes = {
-        "1": "UNETLoader", "2": "CLIPLoader", "3": "VAELoader",
-        "4": "CLIPTextEncode", "5": "ConditioningZeroOut",
-        "6": "ModelSamplingAuraFlow", "7": "EmptySD3LatentImage",
-        "8": "KSampler", "9": "VAEDecode", "10": "SaveImage",
-    }
-    if any(not isinstance(graph[k], dict) or graph[k].get("class_type") != kind
-           for k, kind in expected_nodes.items()):
-        raise NativePoseUnavailable("baseline_graph_node_mismatch")
-    sampler = graph["8"].get("inputs", {})
-    if (sampler.get("model") != ["6", 0] or sampler.get("seed") != _EXPECTED_CASE_SEED
-            or sampler.get("positive") != ["4", 0]
-            or sampler.get("negative") != ["5", 0]
-            or sampler.get("latent_image") != ["7", 0]
-            or sampler.get("steps") != 8 or sampler.get("cfg") != 1.0
-            or sampler.get("sampler_name") != "res_multistep"
-            or sampler.get("scheduler") != "simple"
-            or sampler.get("denoise") != 1.0):
-        raise NativePoseUnavailable("baseline_sampler_changed")
-    if (graph["4"].get("inputs", {}).get("text") != case.get("prompt")
-            or graph["7"].get("inputs", {}).get("width") != _EXPECTED_CANVAS[0]
-            or graph["7"].get("inputs", {}).get("height") != _EXPECTED_CANVAS[1]
-            or graph["2"].get("inputs", {}).get("type") != "lumina2"
-            or not graph["10"].get("inputs", {}).get("filename_prefix", "").startswith("vn_zimage_probe_")):
-        raise NativePoseUnavailable("baseline_prompt_model_or_canvas_changed")
+    expected_baseline = _canonical_baseline(graph, case)
+    try:
+        if _serialized(graph) != _serialized(expected_baseline):
+            raise NativePoseUnavailable("frozen_baseline_graph_mismatch")
+    except (TypeError, ValueError) as exc:
+        if isinstance(exc, NativePoseUnavailable):
+            raise
+        raise NativePoseUnavailable("frozen_baseline_graph_unserializable") from exc
     output = deepcopy(graph)
     output.update({
         "11": {"class_type": "LoadImage", "inputs": {"image": staged_guide_name}},
