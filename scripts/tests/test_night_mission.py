@@ -13,14 +13,16 @@ sp.loader.exec_module(m)
 class MissionTests(unittest.TestCase):
     def test_first_stage(self):
         with tempfile.TemporaryDirectory() as d:
-            r = m.next_task(d)
+            with patch.object(m, "WORK", pathlib.Path(d)):
+                r = m.next_task(d)
             self.assertEqual(r["stage_id"], "pr49-review")
             self.assertEqual(r["attempt"], 1)
     def test_bounded_retry_moves_on(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(m.next_task(d)["stage_id"], "pr49-review")
-            self.assertEqual(m.next_task(d)["stage_id"], "pr49-review")
-            self.assertEqual(m.next_task(d)["stage_id"], "shadow-adapter")
+            with patch.object(m, "WORK", pathlib.Path(d)):
+                self.assertEqual(m.next_task(d)["stage_id"], "pr49-review")
+                self.assertEqual(m.next_task(d)["stage_id"], "pr49-review")
+                self.assertEqual(m.next_task(d)["stage_id"], "shadow-adapter")
             s=m.read(pathlib.Path(d)/"mission-state.json")
             self.assertEqual(s["history"][0]["status"], "blocked")
     def test_complete_requires_real_test(self):
