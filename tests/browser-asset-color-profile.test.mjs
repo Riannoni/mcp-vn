@@ -22,7 +22,12 @@ const fixtures={
  bad_chrm:png([srgb,gamma(45455),chrm([31270,32900,63999,33000,30000,60000,15000,6000])]),
  bad_gamma_after_srgb:png([srgb,gamma(45000)]),
  valid_srgb_with_standard_gamma_chrm:png([gamma(45455),chrm(standard),srgb]),
- valid_gamma_without_srgb:png([gamma(60000)])
+ valid_gamma_without_srgb:png([gamma(60000)]),
+ // Screenshot-only color admission: no unreviewed custom cHRM primaries,
+ // even when the PNG omits the sRGB chunk.
+ impossible_standalone_chrm:png([chrm([0xffffffff,32900,64000,33000,30000,60000,15000,6000])]),
+ unsupported_custom_standalone_chrm:png([chrm([31271,32900,64000,33000,30000,60000,15000,6000])]),
+ valid_standalone_standard_chrm:png([chrm(standard)])
 };
 test("W3C PNG sRGB+gAMA compatibility values reject conflicts regardless of order",()=>{
  assert.throws(()=>decodeScreenshotPng(fixtures.bad_gamma),/not a fully decoded PNG/);
@@ -36,6 +41,14 @@ test("valid compatible sRGB+gAMA+cHRM stays decodable, standalone other gAMA per
   const got=decodeScreenshotPng(v);assert.equal(got.width,2);assert.equal(got.height,2);
  }
 });
+test("unsupported standalone cHRM is refused by the bounded screenshot profile",()=>{
+ for(const bytes of [fixtures.impossible_standalone_chrm,fixtures.unsupported_custom_standalone_chrm])
+  assert.throws(()=>decodeScreenshotPng(bytes),/not a fully decoded PNG/);
+});
+test("standalone canonical sRGB chromaticities remain supported",()=>{
+ const got=decodeScreenshotPng(fixtures.valid_standalone_standard_chrm);
+ assert.deepEqual([got.width,got.height],[2,2]);
+});
 test("invalid color profile screenshot never persists file",async()=>{
  const uuid="11111111-1111-4111-8111-111111111111";
  const binding={game_id:uuid,action_id:uuid,job_id:uuid,prompt_id:uuid,
@@ -46,7 +59,10 @@ test("invalid color profile screenshot never persists file",async()=>{
   locator:()=>({screenshot:async()=>fixtures.bad_chrm})};
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"e2e-srgb-profile-")),f=path.join(dir,"private.png");
  try{
-  await assert.rejects(captureDisposableBrowserAsset(page,binding,{capture_path:f}),/not a fully decoded PNG/);
-  await assert.rejects(fs.stat(f),{code:"ENOENT"});
+  for(const bytes of [fixtures.bad_chrm,fixtures.impossible_standalone_chrm]){
+   page.locator=()=>({screenshot:async()=>bytes});
+   await assert.rejects(captureDisposableBrowserAsset(page,binding,{capture_path:f}),/not a fully decoded PNG/);
+   await assert.rejects(fs.stat(f),{code:"ENOENT"});
+  }
  }finally{await fs.rm(dir,{recursive:true,force:true})}
 });
