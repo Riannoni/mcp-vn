@@ -54,7 +54,7 @@ class WakeGuardTests(unittest.TestCase):
         self.assertTrue(first["reserved"])
         second=m.check(self.root,"R",reserve=True,now=101)
         self.assertFalse(second["eligible"])
-        self.assertEqual(second["reason"],"wake_cooldown")
+        self.assertEqual(second["reason"],"lane_hourly_wake_budget")
         later=m.check(self.root,"R",now=3701)
         self.assertTrue(later["eligible"])
 
@@ -65,7 +65,7 @@ class WakeGuardTests(unittest.TestCase):
                 lambda _:m.check(self.root,"R",reserve=True,now=100),
                 range(4)))
         self.assertEqual(sum(bool(a.get("reserved")) for a in attempts),1)
-        self.assertEqual(sum(a.get("reason")=="wake_cooldown" for a in attempts),3)
+        self.assertEqual(sum(a.get("reason")=="lane_hourly_wake_budget" for a in attempts),3)
 
     def test_hourly_lane_budget_prevents_wake_storm(self):
         first=m.check(self.root,"R",reserve=True,now=100)
@@ -129,7 +129,7 @@ class WakeGuardTests(unittest.TestCase):
         first=m.check_review(self.root,reserve=True,now=200,requestor="R-worker")
         self.assertTrue(first.get("reserved"))
         next_=m.check_review(self.root,reserve=True,now=201,requestor="Q-worker")
-        self.assertEqual(next_["reason"],"chief_wake_cooldown")
+        self.assertEqual(next_["reason"],"chief_hourly_wake_budget")
         self.assertTrue(m.check_review(self.root,now=3801)["eligible"])
 
     def test_chief_review_waits_briefly_on_live_workers(self):
