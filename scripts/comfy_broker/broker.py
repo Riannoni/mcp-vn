@@ -576,6 +576,10 @@ async def passthrough(request):
     broker = request.app[BROKER_KEY]
     canonical_path = request.path[4:] if request.path.startswith("/api/") else request.path
     if request.method == "POST" and canonical_path == "/free":
+        # Lease UUID is routing metadata, never a peer credential. Require
+        # the same file-backed capability used for lease acquire/release.
+        if not external_authorized(request, broker):
+            return web.json_response({"error": "external_client_auth_required"}, status=401)
         # /free is a GPU mutation. Keep the same guard for its COMPLETE
         # upstream round-trip, and persist the in-flight fence BEFORE I/O.
         # A crash or transport timeout leaves UNKNOWN (no unsafe lease release).
@@ -601,6 +605,10 @@ async def passthrough(request):
 
 async def forward_read_or_upload(request, broker, canonical_path):
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
+    # This capability authenticates *to broker*, not to ComfyUI; do not
+    # expose it to the backend or plugins handling GPU memory release.
+    if request.method == "POST" and canonical_path == "/free":
+        headers = {k: v for k, v in headers.items() if k.lower() != "authorization"}
     if request.method == "GET" and canonical_path == "/queue":
         try:
             data = await broker.get_json("/queue")
