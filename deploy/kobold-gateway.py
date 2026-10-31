@@ -112,7 +112,8 @@ def free_comfy(lease_id):
     req = urllib.request.Request(
         "http://127.0.0.1:8188/free",
         data=b'{"unload_models":true,"free_memory":true}',
-        headers={"Content-Type": "application/json", "X-GPU-Lease-ID": lease_id},
+        headers={"Content-Type": "application/json", "X-GPU-Lease-ID": lease_id,
+                 "Authorization": "Bearer " + broker_lease_token()},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as r:
