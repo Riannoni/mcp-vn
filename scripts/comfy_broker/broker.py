@@ -430,6 +430,11 @@ async def submit(request):
     if row["state"] == "UNCERTAIN":
         return web.json_response({"error": "submission_outcome_unknown", "prompt_id": pid,
                                   "retry_safe": False}, status=503)
+    if row["state"] == "EXPIRED":
+        # An idempotent reconnect cannot revive a timed-out logical action.
+        # Do not return a success-shaped receipt for a job that will never run.
+        return web.json_response({"error": "queue_wait_expired", "prompt_id": pid,
+                                  "retry_safe": False}, status=410)
     # Durable receipt immediately; the actual Comfy POST is serialized later.
     # Legacy clients can safely poll /history/{prompt_id} while QUEUED.
     if row["response"] and row["state"] in ("ACTIVE", "TERMINAL"):
