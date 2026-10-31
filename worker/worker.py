@@ -25,7 +25,8 @@ from wardrobe_contract import wants_unclothed
 from neural_scene_guards import neural_scene_guards
 from panel_guard import detect_four_panel_collage
 from local_repair import archive_rejected_candidate,apply_inpaint_graph,cleanup as cleanup_repair
-from comfy_manifest import load as load_manifest,persist as persist_manifest,digest as workflow_digest
+from comfy_manifest import (load as load_manifest,persist as persist_manifest,
+                            load_intent,persist_intent,digest as workflow_digest)
 from scene_constraints import scene_constraints
 from scene_contract import scene_contract,crowd_condition
 from pose_library import select_story_pose
@@ -1119,6 +1120,9 @@ def run_comfy(job,graph):
         # second Comfy GPU job. The attempt number separates deliberate retries;
         # changed graph under the SAME key is rejected by the broker (HTTP 409).
         key="mcp-vn:"+str(job["id"])+":attempt:"+str(attempt)
+        # Disk intent is fsynced before network delivery: after a crash between
+        # backend accept and receipt, a reconnect must use the original seed.
+        persist_intent(job,graph)
         result=request(COMFY,"/prompt","POST",{"prompt":graph,
             "client_id":"mcp-vn-"+job["id"]},
             headers={"Idempotency-Key":key})
@@ -1217,7 +1221,16 @@ def finalize(job,raw,background,generation_ms=0,composition_metrics=None):
 def generate_gpu(job):
     stage(job,"preparing")
     t0=time.monotonic()
-    if job["kind"]=="video":
+    frozen=load_intent(job)
+    if frozen is not None:
+        # Do not call image_graph/video_graph again: it chooses a random seed.
+        # Reuse exactly the pre-POST graph after an uncertain HTTP response.
+        graph=frozen["graph"]
+        spec=job.get("spec") or {}
+        background=(fetch_asset(spec.get("background_asset"))
+                    if job["kind"] in ("sprite","scene","local_cg")
+                    and spec.get("background_asset") else None)
+    elif job["kind"]=="video":
         graph=video_graph(job);background=None
     else:
         graph,background=image_graph(job)

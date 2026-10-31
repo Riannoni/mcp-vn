@@ -66,7 +66,8 @@ def main():
             raise RuntimeError("ComfyUI became busy; aborted")
         req=urllib.request.Request(COMFY+"/prompt",
             data=json.dumps({"prompt":graph,"client_id":"qa-inpaint-smoke"}).encode(),
-            headers={"Content-Type":"application/json"})
+            headers={"Content-Type":"application/json",
+                     "Idempotency-Key":"mcp-vn-local-repair-smoke:"+jobid})
         output=json.load(urllib.request.urlopen(req,timeout=25))
         token=output["prompt_id"]
         print("SUBMITTED",token,flush=True)

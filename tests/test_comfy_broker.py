@@ -133,6 +133,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
                 "client_id": "test-client"}
 
     async def post(self, n, headers=None):
+        # Each test n denotes a stable logical action, not a graph-derived identity.
+        headers = {"Idempotency-Key": "test-action-" + str(n), **(headers or {})}
         response = await self.client.post("/prompt", json=self.body(n), headers=headers)
         return response.status, await response.json()
 
@@ -183,6 +185,51 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retry_status,200)
         self.assertEqual(retry["prompt_id"],pid_a)
         self.assertEqual(len(self.fake.posts),2)
+
+    async def test_unkeyed_action_is_rejected_before_backend_submit(self):
+        # Unkeyed Comfy, browser or custom clients cannot accidentally replay a
+        # completed other game's terminal image. Neither alias is exempt.
+        for path in ("/prompt", "/api/prompt"):
+            body = self.body(42)
+            body["client_id"] = "different-game"
+            body["prompt_id"] = str(uuid.uuid4())
+            async with self.client.post(path, json=body) as response:
+                self.assertEqual(response.status, 428)
+                self.assertEqual((await response.json())["error"], "logical_action_id_required")
+        self.assertEqual(self.fake.posts, [])
+        self.assertEqual(self.broker.db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
+
+    async def test_cross_game_identical_graph_distinct_action_and_same_key_reconnect(self):
+        first = self.body(29)
+        first["client_id"] = "GAME_A"
+        first["prompt_id"] = str(uuid.uuid4())
+        async with self.client.post("/api/prompt", json=first,
+                                    headers={"Idempotency-Key": "game:A:turn:1"}) as response:
+            self.assertEqual(response.status, 200)
+            pid_a = (await response.json())["prompt_id"]
+        await self.until(lambda: len(self.fake.posts) == 1)
+        self.fake.finish(pid_a)
+        await self.until(lambda: self.broker.owner() is None)
+
+        second = self.body(29)
+        second["client_id"] = "GAME_B"
+        second["prompt_id"] = str(uuid.uuid4())
+        async with self.client.post("/prompt", json=second,
+                                    headers={"Idempotency-Key": "game:B:turn:1"}) as response:
+            self.assertEqual(response.status, 200)
+            pid_b = (await response.json())["prompt_id"]
+        self.assertNotEqual(pid_a, pid_b)
+        await self.until(lambda: len(self.fake.posts) == 2)
+        self.fake.finish(pid_b)
+        await self.until(lambda: self.broker.owner() is None)
+
+        second["client_id"] = "GAME_B_reconnect"
+        second["prompt_id"] = str(uuid.uuid4())
+        async with self.client.post("/api/prompt", json=second,
+                                    headers={"Idempotency-Key": "game:B:turn:1"}) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual((await response.json())["prompt_id"], pid_b)
+        self.assertEqual(self.fake.posts, [pid_a, pid_b])
 
     async def test_crash_restart_active_recovers_no_resubmit(self):
         status, data = await self.post(1)
@@ -316,7 +363,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
     async def test_api_alias_cannot_bypass_and_queue_visible(self):
         first = await self.post(1)
         await self.until(lambda: len(self.fake.posts) == 1)
-        async with self.client.post("/api/prompt", json=self.body(3)) as response:
+        async with self.client.post("/api/prompt", json=self.body(3),
+                                    headers={"Idempotency-Key": "test-alias-3"}) as response:
             self.assertEqual(response.status, 200)
             queued = await response.json()
         self.assertEqual(len(self.fake.posts), 1)
@@ -476,12 +524,14 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
     async def test_retry_with_new_client_id_and_prompt_id_deduplicates(self):
         original = self.body(4)
         original["prompt_id"] = str(uuid.uuid4())
-        async with self.client.post("/prompt", json=original) as response:
+        async with self.client.post("/prompt", json=original,
+                                    headers={"Idempotency-Key": "test-reconnect-4"}) as response:
             first = await response.json()
         retry = self.body(4)
         retry["client_id"] = "reconnected-client"
         retry["prompt_id"] = str(uuid.uuid4())
-        async with self.client.post("/api/prompt", json=retry) as response:
+        async with self.client.post("/api/prompt", json=retry,
+                                    headers={"Idempotency-Key": "test-reconnect-4"}) as response:
             second = await response.json()
         self.assertEqual(first["prompt_id"], second["prompt_id"])
         await self.until(lambda: len(self.fake.posts) == 1)
@@ -493,7 +543,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
                                   "outputs": {}}
         body = self.body(5)
         body["prompt_id"] = pid
-        async with self.client.post("/prompt", json=body) as response:
+        async with self.client.post("/prompt", json=body,
+                                    headers={"Idempotency-Key": "test-pid-reservation"}) as response:
             self.assertEqual((await response.json())["prompt_id"], pid)
         await self.until(lambda: self.broker.db.execute(
             "SELECT state FROM jobs WHERE prompt_id=?", (pid,)).fetchone()[0] == "REJECTED")
@@ -505,7 +556,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         await self.post(1)
         await self.until(lambda: len(self.fake.posts) == 1)
         async with self.client.post("/prompt", json=self.body(2),
-                                    headers={"X-Broker-Queue-Wait-Seconds": "1"}) as response:
+                                    headers={"X-Broker-Queue-Wait-Seconds": "1",
+                                             "Idempotency-Key": "test-wait-2"}) as response:
             self.assertEqual(response.status, 200)
             pid = (await response.json())["prompt_id"]
         await self.until(lambda: self.broker.db.execute(
@@ -513,10 +565,12 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             timeout=1.8)
         self.assertEqual(len(self.fake.posts), 1)
         async with self.client.post("/prompt", json=self.body(3),
-                                    headers={"X-Broker-Queue-Wait-Seconds": "999"}) as response:
+                                    headers={"X-Broker-Queue-Wait-Seconds": "999",
+                                             "Idempotency-Key": "test-wait-3"}) as response:
             self.assertEqual(response.status, 400)
         async with self.client.post("/prompt", json=self.body(3),
-                                    headers={"X-Broker-Queue-Wait-Seconds": "NaN"}) as response:
+                                    headers={"X-Broker-Queue-Wait-Seconds": "NaN",
+                                             "Idempotency-Key": "test-wait-3"}) as response:
             self.assertEqual(response.status, 400)
 
     async def test_real_multipart_upload_passes_through_alias(self):
