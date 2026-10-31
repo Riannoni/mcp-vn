@@ -69,6 +69,16 @@ test("bad canonical face fails before mutation of game job queue",async()=>{
  const after=(await fs.readdir(path.join(root,"jobs"))).filter(x=>x.endsWith(".json")).length;
  assert.equal(after,before);
 });
+test("missing canonical face asset bytes reject neural CG before queue mutation",async()=>{
+ const {game,face}=await fixture();
+ // A canonical face URL and scene fingerprint do not establish source bytes.
+ await fs.unlink(path.join(root,"assets",face));
+ const jobDir=path.join(root,"jobs");
+ const before=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ await assert.rejects(()=>enqueue(game),/canonical.*face|face.*bytes|source.*asset|ENOENT/i);
+ const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ assert.equal(after,before,"missing canonical face bytes must not enqueue a job");
+});
 test("wrong actor contact cannot vanish from signed Scene Contract",async()=>{
  const {game}=await fixture();
  game.scene.contacts[0].actor="Unknown actor";
