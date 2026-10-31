@@ -72,8 +72,13 @@ digest file during startup; it must be present with correct ownership/mode
 before a cutover. No automatic secret creation or rotation happens in this PR.
 
 An unrelated local HTTP client knowing the Kobold name or even a lease ID must
-not acquire/release GPU ownership without the matching token. Integration
-preflight must exercise anonymous/wrong-token 401, an authorized acquire/release,
+not acquire/release GPU ownership without the matching token. GPU-mutating
+POST /free and POST /api/free require BOTH the same bearer capability and the
+current X-GPU-Lease-ID. Broker must not forward its bearer credential to ComfyUI
+or backend extensions. Integration preflight must reject known lease UUIDs with
+missing/wrong bearer, exercise both aliases, assert zero backend free calls,
+and verify the authorized gateway supplies its file-backed capability.
+The remaining preflight includes authorized acquire/release,
 restart persistence and fail-closed missing-config behavior on disposable
 fake-Comfy before any real GPU. The gateway and broker must receive the *same*
 credential version; rotation while a lease is outstanding must retain HOLD
