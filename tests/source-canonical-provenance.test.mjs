@@ -82,13 +82,12 @@ test("stale version and cross-scene typed contract are rejected",()=>{
  const other=clone(game);other.scene.location="Different courtyard";
  assert.throws(()=>verifyNarrativeSourceProvenance(other,spec),/scene|source|location/i);
 });
-test("forged narrator image prompt cannot claim canonical narrative provenance",()=>{
+test("forged narrator prompt fails provenance certification, without breaking preview queue",()=>{
  const game=fixture();
- assert.throws(()=>{
-  const spec=artSnapshot(game,{kind:"scene",style:"realistic",
-   prompt:"unrelated synthetic prompt",neural_scene:true,narrator_prompt:true});
-  deriveNarrativeSourceProvenance(game,spec);
- },/narrator|canonical.*prompt/i);
+ const spec=artSnapshot(game,{kind:"scene",style:"realistic",
+  prompt:"unrelated synthetic prompt",neural_scene:true,narrator_prompt:true});
+ const provenance=deriveNarrativeSourceProvenance(game,spec);
+ assert.equal(provenance.narrative_origin,"incomplete_not_narrative_verified");
 });
 test("prior-turn narrator without a linked player action is not certified",()=>{
  const game=fixture();game.turn_metrics.last.action_id="different-action";
