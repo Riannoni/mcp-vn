@@ -155,18 +155,26 @@ def _lab_rows(lab_dir, verify_png):
             reviewer_type = rev.get("reviewer_type")
             independent = (isinstance(reviewer_type, str)
                            and reviewer_type.startswith("independent_"))
+            positive_claim = (reviewed and independent
+                              and all(checks[k] == "verified" for k in mandatory))
+            # A reviewed metadata JSON is NOT a verified original pixel receipt
+            # when the optional synthetic-test-only --skip-png-hash flag was used.
+            # Never let this pathway manufacture a G2 PASS or human label.
             row["g2"] = (
-                "PASS" if reviewed and independent
-                and all(checks[k] == "verified" for k in mandatory)
-                else "FAIL"
+                ("PASS" if row["original_png_sha_verified"] is True
+                 else "NOT_REVIEWED") if positive_claim else "FAIL"
             )
-            row["human_label"] = (rev.get("human_label") is True
+            row["human_label"] = (row["g2"] == "PASS"
+                                  and rev.get("human_label") is True
                                   and isinstance(reviewer_type, str)
                                   and reviewer_type.startswith("independent_human"))
             row["mandatory_failed"] = [
                 k for k in mandatory if checks[k] != "verified"
             ]
-            row["evidence"].append("sha_bound_pixel_review")
+            row["evidence"].append(
+                "sha_bound_pixel_review" if row["original_png_sha_verified"] is True
+                else "unverified_review_metadata"
+            )
         rows.append(row)
         by_prompt[prompt] = row
     if not rows:
