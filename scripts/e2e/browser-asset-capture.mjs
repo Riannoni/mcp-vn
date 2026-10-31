@@ -29,13 +29,19 @@ export function decodeScreenshotPng(bytes){
  if(!Buffer.isBuffer(bytes)||bytes.length<57||bytes.length>PNG_LIMIT_BYTES||
     !bytes.subarray(0,PNG_MAGIC.length).equals(PNG_MAGIC))invalid("signature_or_size");
  let p=PNG_MAGIC.length,ihdr=false,idat=false,endedIdat=false,iend=false;
- let width=0,height=0,bpp=0;
+ let width=0,height=0,bpp=0,seenPalette=false;
+ const seenMetadata=new Set();
  const compressed=[];
  while(p<bytes.length){
   if(bytes.length-p<12)invalid("truncated_chunk");
   const len=bytes.readUInt32BE(p),start=p+8;
   if(len>bytes.length-start-4)invalid("chunk_bounds");
-  const end=start+len,kind=bytes.toString("ascii",p+4,p+8);
+  const end=start+len,type=bytes.subarray(p+4,p+8);
+  // PNG chunk types are exactly four ASCII letters; the third (reserved)
+  // letter must be uppercase. Never decode invalid bytes as harmless metadata.
+  if(type.length!==4||!Array.from(type).every(c=>(c>=65&&c<=90)||(c>=97&&c<=122))||
+     (type[2]&32)!==0)invalid("invalid_chunk_type");
+  const kind=type.toString("ascii");
   if(crc32(bytes.subarray(p+4,end))!==bytes.readUInt32BE(end))invalid("chunk_crc");
   if(!ihdr&&kind!=="IHDR")invalid("missing_first_ihdr");
   if(idat&&kind!=="IDAT")endedIdat=true;
@@ -55,9 +61,29 @@ export function decodeScreenshotPng(bytes){
    if(!idat||iend||len!==0||end+4!==bytes.length)invalid("invalid_iend");
    iend=true;
   }else if(kind==="PLTE"){
-   if(idat||len===0||len>768||len%3!==0)invalid("invalid_plte");
-  }else if((kind.charCodeAt(0)&32)===0){
-   invalid("unknown_critical_chunk");
+   // Optional suggested palette for truecolor/RGBA may occur only once.
+   if(idat||seenPalette||len===0||len>768||len%3!==0)invalid("invalid_plte");
+   seenPalette=true;
+  }else if(kind==="gAMA"||kind==="sRGB"||kind==="cHRM"||kind==="pHYs"){
+   // These known metadata chunks have fixed formats and ordering.
+   // Reject every other ancillary chunk rather than accepting unchecked
+   // metadata with arbitrary structure as screenshot evidence.
+   if(idat||seenMetadata.has(kind))invalid("invalid_metadata_order_or_duplicate");
+   if((kind==="gAMA"&&(len!==4||bytes.readUInt32BE(start)===0))||
+      (kind==="sRGB"&&(len!==1||bytes[start]>3))||
+      (kind==="cHRM"&&len!==32)||
+      (kind==="pHYs"&&(len!==9||bytes[start+8]>1||
+         bytes.readUInt32BE(start)===0||bytes.readUInt32BE(start+4)===0)))
+    invalid("invalid_metadata_shape");
+   if((kind==="gAMA"||kind==="sRGB"||kind==="cHRM")&&seenPalette)
+    invalid("invalid_metadata_after_palette");
+   seenMetadata.add(kind);
+  }else if(kind==="tRNS"){
+   // This decoder accepts only truecolor and RGBA. tRNS is invalid in RGBA,
+   // and transparency for RGB is deliberately unsupported here.
+   invalid("unsupported_transparency_chunk");
+  }else{
+   invalid("unsupported_chunk");
   }
   p=end+4;
   if(iend)break;
