@@ -98,18 +98,20 @@ class NativePoseOneFactorTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), b"other-owner-file")
 
     def test_missing_union_metadata_blocks_before_prompt_post(self):
-        self._guide()
-        self.assertTrue(m.queue(self.root, self.plan)["enqueued"])
+        _, digest = self._guide()
+        plan = {**self.plan, "new_value": digest}
         endpoints = []
         def api(endpoint, *args, **kwargs):
             endpoints.append(endpoint)
             return {}
-        with patch.object(m.Path, "home", return_value=self.home), \
+        with patch.object(pose, "POSE_GUIDE_SHA256", digest), \
+             patch.object(m.Path, "home", return_value=self.home), \
              patch.object(m.r, "queue_empty", return_value=True), \
              patch.object(m.r, "api", side_effect=api):
+            self.assertTrue(m.queue(self.root, plan)["enqueued"])
             result = m.tick(self.root)
         self.assertEqual(result["status"], "BLOCKED_INVALID_PLAN")
-        self.assertNotIn("/prompt", endpoints)
+        self.assertEqual(endpoints, ["/object_info"])
         self.assertFalse(list((self.root / "pending").glob("*.json")))
         self.assertEqual(len(list((self.root / "blocked").glob("*.json"))), 1)
 
