@@ -3,6 +3,7 @@ import concurrent.futures
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import sys
 import sqlite3
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"ops"))
@@ -39,6 +40,35 @@ class NativeWakeMeshTests(unittest.TestCase):
         for i,sha in enumerate((S1,S2,S3)):
             self.assertTrue(self.call(sha=sha,now=100+300*i)["reserved"])
         self.assertEqual(self.call(sha=S4,now=1100)["reason"],"per_target_hourly_budget")
+    def test_all_fifteen_roles_can_use_their_three_wakes_within_one_hour(self):
+        accepted=[]
+        for round_number in range(3):
+            instant=100+240*round_number
+            for index,target in enumerate(m.TARGETS):
+                sha=f"{round_number*len(m.TARGETS)+index+1:040x}"
+                result=self.call(sha=sha,now=instant,who="operator",target=target)
+                self.assertTrue(result["eligible"], (target,round_number,result))
+                self.assertTrue(result["reserved"])
+                accepted.append(result["reservation_id"])
+        self.assertEqual(len(set(accepted)),45)
+        denied=self.call(sha="f"*40,now=100+240*3,who="operator",target="chief")
+        self.assertFalse(denied["eligible"])
+        self.assertEqual(denied["reason"],"per_target_hourly_budget")
+        with sqlite3.connect(self.root/"state/scheduled-wake-history.sqlite3") as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM wake_attempt").fetchone()[0],45)
+        pending={event["evidence_sha"]:event for event in m.status(self.root)["pending"]}
+        self.assertIsNone(pending["f"*40]["delivery"])
+
+    def test_smaller_global_budget_still_blocks_under_target_limit(self):
+        with mock.patch.object(m,"MAX_GLOBAL_WAKES_PER_HOUR",2):
+            for target in ("broker","broker_reviewer"):
+                self.assertTrue(self.call(now=100,who="operator",target=target)["reserved"])
+            denied=self.call(sha=S2,now=100,who="operator",target="chief")
+            self.assertFalse(denied["eligible"])
+            self.assertEqual(denied["reason"],"global_hourly_budget")
+            pending={event["target"]:event for event in m.status(self.root)["pending"]}
+            self.assertIsNone(pending["chief"]["delivery"])
+            self.assertTrue(self.call(sha=S2,now=3701,who="operator",target="chief")["reserved"])
     def test_renew_after_window(self):
         self.assertTrue(self.call()["reserved"])
         self.assertTrue(self.call(sha=S2,now=4000)["reserved"])

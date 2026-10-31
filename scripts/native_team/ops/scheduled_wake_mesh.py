@@ -43,7 +43,8 @@ KINDS = {"source_pr_ready", "review_accepted", "visual_candidate_ready",
 SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MIN_SECONDS_BETWEEN_TARGET_WAKES = 240
 MAX_TARGET_WAKES_PER_HOUR = 3
-MAX_GLOBAL_WAKES_PER_HOUR = 18
+# Keep the aggregate guard without starving roles below their own allowance.
+MAX_GLOBAL_WAKES_PER_HOUR = MAX_TARGET_WAKES_PER_HOUR * len(TARGETS)
 OUTCOMES = {"requested", "started", "completed", "not_dispatched", "unknown", "blocked"}
 OBSERVERS = {"chief", "dispatcher", "decision"}
 
