@@ -1,120 +1,80 @@
-# web-vn Pro / ChatGPT-native autonomous development v16 — 2026-10-31
+# web-vn ordinary ChatGPT Scheduled team — 31 October 2026
 
-**State of the system, not a claim of game readiness.** Mandatory reading order: root `AGENTS.md` then `docs/DEVELOPMENT-AND-TESTING.md` in full. Also `docs/AUTONOMOUS-FIRST-SHOT-CYCLE-2026-10-31.md`, `docs/FIRST-SHOT-GPU-ASSAULT-2026-10-31.md`, `docs/RENDER-HANDOFF-2026-10-31.md` and [P0 issue #20](https://github.com/Riannoni/web-vn/issues/20). This file supersedes the **obsolete 5-active-task cap and old role allocation**, not G1/G2/G3, private assets, exact-source requirements, or GPU ownership.
+Read `AGENTS.md`, full `docs/DEVELOPMENT-AND-TESTING.md`, then the current [WORKER-OPERATING-CONTRACT-2026-10-31.md](WORKER-OPERATING-CONTRACT-2026-10-31.md). Reviewed role prompts live in `scripts/native_team/ops/worker-prompts.json`. This document records roles and handoffs; official `Automations.peek` establishes the actual enabled/running/name/schedule state. The [autonomous cycle](AUTONOMOUS-FIRST-SHOT-CYCLE-2026-10-31.md) describes rendering execution. No documentation count proves runtime admission, G2, deployment or game readiness.
 
-## What Pro actually enables
+## Goal and account boundary
 
-OpenAI's current Scheduled Tasks documentation states an **active task limit of 15 for ChatGPT Pro**, versus 5 for Plus: https://help.openai.com/en/articles/10291617-scheduled-tasks-in-chatgpt . This Pro account successfully created **seven additional ordinary ChatGPT Scheduled worker tasks**, confirming the former five-slot obstacle is gone. Tasks run at most hourly under their saved schedules. **The model and reasoning effort of Scheduled worker runtimes are not exposed by the current automation connector**; prompts cannot enforce Astra or Extra High and must log `MODEL_UNVERIFIED` absent actual runtime metadata.
+The owner's deadline is **23:59 on 31 October 2026, Asia/Novosibirsk (16:59 UTC)**: background, the required canonical transparent sprite set and **three different sequential story CGs**, each first attempt, all mandatory G2 verified, with **generation→ready-to-publish ≤20 seconds per asset including queue, preparation, GPU, postprocess and mandatory QA**. GPU submit→PNG and narrator/full-turn clocks are separate. Offline independent development review time is also reported separately; an actual runtime wait that blocks publication remains part of end-to-end latency. The goal has not been demonstrated; neither five fast synthetic images nor source PRs establish it.
 
-User preference and budget restriction: **NO Codex CLI, NO ChatGPT Work, NO paid API, NO CLIProxyAPI model requests**, even when agents could use them. The prior local four-subagent GPT-6 Astra High research audit was manually stopped after the Codex OAuth proxy reported 5h `100%`; it was expensive and never finished. Do not re-enable or silently switch to local Codex/Work. All substantive LLM work is via **native ChatGPT Scheduled Tasks** and available connected GitHub / SSH-MCP actions. The host-side minute timers, SQLite, Comfy queue and deterministic Python tests are not billed model tasks.
+The audited project has 15 Scheduled role records, **14 enabled**. Golden Evidence Engineer is paused after #76 delivery; independent Golden review remains enabled. Old standalone reporter and QA-only records are paused. Do not recreate a role merely because an old document lists fewer slots. Native task capacity does not imply GPU parallelism, unlimited model usage or a guaranteed start time.
 
-**Dots as an optional future Chief:** Official docs: https://help.openai.com/en/articles/20001530-getting-started-with-your-dot and https://openai.com/index/introducing-dots/ . A Dot runs on GPT-6 Astra, has its own cloud computer and can retain an always-on project goal. Its conversation usage is separate from ordinary ChatGPT limits, but deep Work/Codex tasks created by a dot consume those allowances, and the first dot includes a finite deeper-work allowance. Eligibility is gradually rolled out to adult Pro users **outside the EEA, UK and Switzerland**. A marketing card does NOT prove account entitlement. `https://chatgpt.com/dots` is the safe availability check. No Dot is provisioned/assumed, and the project must not depend on it. If a Dot becomes available, use it initially for **non-Work, non-Codex reporting/coordination** and preserve the existing real source/GPU acceptance gates.
+**Use ordinary ChatGPT Scheduled workers, GitHub and SSH-MCP for development reasoning. Replacement development inference via Codex CLI, ChatGPT Work, paid API and CLIProxyAPI model requests is forbidden.** The existing application's already-authorized Comfy/QA/narrator runtime may be tested boundedly after confirming its established owner-authorized route/config; no new model/account/billing route is authorized here. Do not restart the previous local Codex audit or night agents. Codex OAuth usage is a different provider meter and cannot be used to admit or reject native Scheduled runs. The official platform enforces Scheduled limits. Model/effort identity is `MODEL_UNVERIFIED` unless runtime metadata proves it; prompt wording does not create an entitlement. No Dot, new plugin or interactive user session is a prerequisite.
 
-## Live native ChatGPT team and isolated ownership
+## Role roster
 
-All of these are normal Scheduled chat automations, **not** Codex or Work. On 2026-10-31, **12 enabled** worker slots (out of documented Pro 15), with old hourly read-only reporter PAUSED. Chief gives hourly owner updates; never create duplicate reports.
-
-| Duty | Scheduled automation ID | Independently owned work / gate |
+| Duty | Scheduled record ID | Owned output / gate |
 |---|---|---|
-| **Chief** | `6ae57ba332a48191923e7f51ccfe7dd5` | P0 decision, repo/PC state, independent SHA review, task issuance, downstream wake, final stop/go, hourly progress |
-| **GPU Renderer** | `6ae57b3727688191ab20279ff8fba0af` | one-factor GPU candidate, exact prompt/PNG/workflow, G1, no self-G2 |
-| **Golden independent pixel review** | `6ae57b3d794c8191aff21eac865b780b` | authentic original pixels + canonical references, G2 negative/positive; no GPU submit |
-| **Reliability + current QA** | `6ae57b40434c8191857969a577627d2f` | live controller/host failures, CPU QA; avoid overlapping new dedicated workers |
-| **GPU Broker Engineer** | `6ae5d49054d48191ba1a0c2f2ba55816` | PR #78 single GPU admission broker, cutover safety and bypass prevention |
-| **Golden Evidence Engineer** | `6ae5dcacb7908191b72d98510a3db5b6` | [#76](https://github.com/Riannoni/web-vn/issues/76), native teamctl G-only visual-evidence submission with exact SHA and fence, NO fake Git code diff |
-| **Exact Pose Researcher** | `6ae5dcafbf7c8191aaf823beed911ff2` | [#77](https://github.com/Riannoni/web-vn/issues/77), independent real rear-oblique pose reference + experimental vs approved guide distinction |
-| **Identity and Wardrobe Engineer** | `6ae5dcb38de4819193cccf1a9c5954d2` | canonical face and outfit source conditioning, tested native ROCm path, no cross-model unsupported adapter |
-| **E2E and Latency Engineer** | `6ae5dcb6f8c88191b2cc46a83f64d8da` | real browser action→narrator→GPU→VLM QA→publish, true stage P50/P90, no synthetic E2E success |
-| **Broker Independent Reviewer** | `6ae5dcb9fb3c8191935b5ef13fab8f5b` | independent adversarial read-only review of [draft PR #78](https://github.com/Riannoni/web-vn/pull/78); cannot self-deploy or weaken testing |
-| **Release/Integration Reviewer** | `6ae5dcbce2c481919e6cd302c223c279` | cross-PR independent SHA/CI/deployed status and privacy/negative regression, not an extra queue planner |
-| **Source Contract/Provenance Engineer** | `6ae5dd11d4748191adb005926b42c083` | authentic creation-time scene/save/actor/outfit/workflow/prompt/PNG/contract binding; cross-scene and forged provenance negative tests |
+| Chief | `6ae57ba332a48191923e7f51ccfe7dd5` | evidence-based priorities, exact task ownership, independent acceptance, downstream handoff and hourly owner report |
+| Renderer | `6ae57b3727688191ab20279ff8fba0af` | executable source-bound one-factor graph/plan, fixed controls and causal hypothesis; coordinate the sole GPU Lab owner |
+| Golden independent pixel review | `6ae57b3d794c8191aff21eac865b780b` | authentic full-resolution original/final pixels with canonical references and complete mandatory G2 verdict; no GPU submit |
+| Reliability + QA | `6ae57b40434c8191857969a577627d2f` | controller/runtime failures, measured CPU QA and matte integration, distinct scopes and no acceptance bypass |
+| GPU Broker Engineer | `6ae5d49054d48191ba1a0c2f2ba55816` | production single-owner broker, cross-client idempotency, bypass prevention and reversible cutover |
+| Golden Evidence Engineer — **paused** | `6ae5dcacb7908191b72d98510a3db5b6` | #76 evidence-only control-plane delivery completed; retain role/history, do not duplicate implementation |
+| Exact Pose Researcher | `6ae5dcafbf7c8191aaf823beed911ff2` | exact original reference and guide/source SHA, correct camera; experimental versus production approval |
+| Identity and Wardrobe Engineer | `6ae5dcb38de4819193cccf1a9c5954d2` | authentic canonical face/current outfit plus actual graph conditioning; executable installed-reference experiment |
+| E2E and Latency Engineer | `6ae5dcb6f8c88191b2cc46a83f64d8da` | generation→ready and full browser stage receipts, trusted acceptance evidence, actual P50/P90; no synthetic E2E success |
+| Broker Independent Reviewer | `6ae5dcb9fb3c8191935b5ef13fab8f5b` | exact-head adversarial review of production broker and cutover blockers; no self-deployment |
+| Release/Integration Reviewer | `6ae5dcbce2c481919e6cd302c223c279` | independent combined-source/provenance/negative checks, explicit source versus installed versus E2E status |
+| Source Contract/Provenance Engineer | `6ae5dd11d4748191adb005926b42c083` | genuine scene/save/actor/outfit/face/workflow/prompt/original PNG binding, not caller-authored receipt shapes |
+| P0 Decision Authority | `6ae5e8a59f2c8191a29d40c1c12712f0` | accept/reject the exact reviewed result or return one concrete minimal fix; authorized merge/cutover decisions |
+| GPU Lab Worker | `6ae5e8a91cfc8191bb938957f214f8c3` | sole bounded disposable GPU owner, source-pinned candidate, actual original PNG and stage timings |
+| Autonomous Handoff Dispatcher — target name | `6ae5e8ac2e58819188b5f87aa17d0f97` | reconcile supported peer status, meaningful evidence-ready handoffs, durable wake receipts and failed-run recovery; no GPU or creative hypothesis substitution |
 
-**Conflict rule:** Each specialist owns an isolated repo branch and independently scoped worktree. Existing local SQLite source-only coordinator is a **four-lane implementation**, not a twelve-lane scheduler. Do not claim that new specialist roles automatically gain independent SQLite claim/fence. Their PR/issue provenance and Chief independent review are coordination authority until the controller supports typed tasks and disjoint owner scopes. Do not write a file another active worker is modifying; agree integration order through Chief. Parallel source/CPU/G2 work is encouraged; GPU writes are serialized.
+The dispatcher record's requested rename is **Autonomous Handoff Dispatcher** and its requested schedule is **hourly at :30 Asia/Novosibirsk**, replacing the former :42 slot. This is a proposed configuration until an official post-update `peek` confirms it; this documentation commit does not assert application. The old name “Autonomous 5-Minute Dispatcher” never meant that this particular task ran every five minutes. The rollout owner must record the actual name, timezone, recurrence and resulting enabled state.
 
-## Actual system diagram
+All roles execute no more frequently than the native recurrence allows. Different hourly phase offsets and supported extra `run_now` requests can reduce waiting; they do not guarantee five-minute or ten-minute startup for any worker. Chief provides hourly owner reports; there is no need for another reporter.
 
-```text
-Owner goals + frozen authentic Scene Contract / canonical source refs
-                  |
-       Chief: selects earliest G2 failure + falsifiable hypothesis
-                  |
-      Independent specialists work in parallel on disjoint source branches
-       |           |              |               |
-   Identity     Pose guide       QA / provenance    Broker / E2E
-       \           |               |               /
-        Independent code/security reviews + tested exact SHA
-                  |
-          One bounded disposable GPU job
-      (host-side 1-minute dispatcher and **central enforced broker**)
-                  |
-            Original PNG + prompt ID + SHA + stage times
-                  |
-           Golden reads original pixels + canonical refs
-                  |
-          Independent scene-mandatory G2 receipt
-               / FAIL          \ PASS
-       diagnose one factor      next frozen case
-               \                /
-                Chief updates cause + next experiment
-                   |
-           Repeat until 5/5 first-shot G2
-                   |
-           Disposable browser E2E, QA p50/p90
-                   |
-           >30 independent human-labeled cases, restart/rollback
-```
+## Ownership and useful autonomy
 
-## Why more roles alone are not sufficient
+Every worker first reconciles its official run, real local claim/fence, branch/worktree and pending evidence. Each specialist owns a disjoint source scope. The legacy R/Q/G/S SQLite controller is not automatically a fifteen-lane scheduler: do not invent a lane, claim a second task over an active same-lane lease, clear another owner's block or edit its working tree. A different Scheduled role may review a separate immutable source snapshot without becoming the producer. Use the installed controller's verified capabilities and the canonical operating contract.
 
-1. **PR #78 is real progress but NOT deployed:** it proposes Comfy broker at public-to-clients localhost 8188, guarded backend 8189, durable exclusive ownership, fixes bypassing worker.py + Model Lab + dispatcher, and tests 26/26 broker, 4/4 Kobold, 28/28 first-shot. Draft at latest reviewed SHA, independent reviewer and Chief must explicitly accept all negative cases then perform reversible deployment/real smoke. The old direct POST /prompt bypass is a genuine race; vacant queue is insufficient.
-2. **Read-only Golden was falsely BLOCKED:** G-10 independently viewed R-13 original, G2 FAIL, but legacy `teamctl` forced non-empty `changed_paths` / Git diff for any `submit`. #76 owns a separate evidence-only kind and tests; cannot reuse blocked G-10 or claim a source change exists.
-3. **Pose-guide gate had a cycle:** G-11 created only a synthetic 2D 41.9° projected lean guide but lacked genuinely independent HMAC approval and source 3D evidence. R-14 depended on G-11. #77 separates `experimental_unapproved` guide (safe one-factor lab A/B, only after broker) from `production_approved` guide. Original rear-oblique refs remain DRAFT; the side-view approved guide is a WRONG view for CG-03. An independent G2 review after GPU is the real test; 2D preflight alone cannot prove hand-to-wall contact.
-4. **Identity is unanchored:** the fast native Z-Image graph defaults to private text-only, no canonical identity conditioning. A beautiful 5–11s PNG is NOT a stable character. Must prove reliable identity, wardrobe, location and prop contact with measured ROCm-compatible references before claiming five consecutive real first-shot passes.
-5. **Full game remains slow/unproved:** standalone submit-to-PNG 5–11s is distinct from observed 100s browser path with slow QA. The E2E engineer must measure true narrator, GPU, postprocess, VLM QA, retry and publish stage timings. No optional stage may bypass mandatory QA to meet a target.
-6. **Cloud cadence still hourly:** separate 12 schedules reduce waiting and Chief bottleneck; native scheduled tasks currently do not have an official subhourly schedule, and broker's local minute timer cannot create creative hypotheses. Event-triggered tasks execute in **Work**, prohibited by owner's cost preference, so do not silently create Work webhook tasks. **The earlier ready-task idle ≤10 min goal is an SLO, not a guaranteed 24/7 contract.** Measure and report its actual breaches.
-7. **Total ChatGPT workload still finite:** even Pro's 15 task slots do NOT imply infinite model tokens or compute. No Codex/Work escape hatches. If many Scheduled sessions run without meaningful independent backlog, pause or narrow them. Multiple concurrent GPU jobs are not inherently faster on one AMD card; require measured VRAM/latency A/B before increasing concurrency.
+A worker should complete the next bounded useful transition when evidence and authorization are present. Source author hands off exact SHA; reviewer accepts/rejects that SHA; GPU Lab produces exact original; Golden gives terminal pixel evidence; Chief selects the next causal action and Decision Authority independently accepts or rejects its implementation. If a task cannot move, report the concrete missing artifact or unsafe state and advance genuinely independent authorized work. Reopening the user's chat is not a normal dependency.
 
-## Mandatory evidence and stop conditions
+## Supported handoff and quota rules
 
-For each real GPU candidate: exact case+source-state SHA, actor canonical refs SHA and outfit version, complete typed Scene Contract and negative evidence, seed/model/graph/pose, single changed factor, durable prompt ID, original PNG SHA, first GPU attempt index, stage times + VRAM, source/game save hash before/after, Golden direct-original pixel verdict for environment/cast/identity/outfit/props/landmarks/pose/contact/camera/sprite RGBA, honest `unobservable`, independently accepted exact source SHA and separate deployed status. Never substitute GPU G1 or false automated QA for G2. No fake human labels or retained production assets from a failed candidate. After 2–3 controlled failures of the same cause, STOP and challenge architecture rather than blind rerolls.
+1. Establish a real new event: exact source approval/PR SHA, original PNG SHA, contract/reference digest or corrected blocker. Repeated unchanged evidence and speculative readiness are not wake reasons.
+2. Check the target with official `Automations.peek`: enabled state, current run and relevant completion. A running specialist is not double-woken.
+3. Use the canonical operating contract and the installed, version-verified `scripts/native_team/ops/scheduled_wake_mesh.py` interface for an atomic reservation. Reconcile reservation, official request receipt and actual startup; a reserved event without a delivered request must not permanently suppress valid work. Never infer startup from local SQLite alone.
+4. Invoke only official `Automations.run_now` after a successful eligible reservation. Record its actual result. On timeout/unknown outcome, reconcile status before any retry; do not silently issue a duplicate.
+5. Distinguish `REQUESTED`, cloud `STARTED`, local `CLAIMED`, artifact submitted and independent review complete. A successful HTTP/API receipt is not completed work.
 
-No successful five-frame G2 score is claimed yet. Frozen v1: G1 5/5, G2 only synthetic background pass; original R-13 disposable attempt 2 G1 PASS in 6.029s but G2 FAIL (wrong view/lean/crop/contact/identity). G3 NO_GO. Broker and Golden evidence remediation remain gating items. Browser E2E still NOT VERIFIED.
+The native platform governs Scheduled quota. Missing/exhausted `vn-proxy-quota --provider codex` data must not block a native Scheduled handoff, and cannot authorize prohibited Codex/Work/API use. Preserve concurrency, cooldown, evidence deduplication, dependency and rate limits; use exact reviewed helper/runtime behavior rather than stale numeric thresholds copied into prose.
 
-## Practical next handoff
+Ready-task idle ≤10 minutes remains a measured objective, not a provider SLA. Report actual ready/requested/started/claimed/evidence/review timestamps and breaches. Idle is legitimate with no meaningful ready work, blocked dependency, unresolved ownership or a platform refusal. Invented backlog and repeated source-only tasks are not progress.
 
-1. Independent Broker Reviewer validates PR #78 head, protocol, OS backend guard and rollback; Chief approves and supervises deployed single-owner path. Broker Engineer owns source implementation; **only** this team touches GPU broker code.
-2. Golden Evidence Engineer implements #76 separately (not the Broker engineer), with adversarial tests and independent Chief review; migrate future visual-only tasks to correct schema, preserve blocked historical IDs.
-3. Exact Pose Researcher validates original rear-oblique reference, labels synthetic 2D only `experimental_unapproved`, and hands Renderer a frozen single-factor plan for one real controlled post-broker GPU candidate.
-4. Identity/Source Contract specialists verify authentic actor/outfit/scene reference attribution, then source-conditioned generator/correct outfit. E2E specialist profiles actual full game pipeline and independently verifies G2 and failed QA handling.
-5. Chief issues genuine next stage R-15 only after broker and source contracts, promptly wakes ready cloud workers when possible. Golden inspects every new original PNG before releasing next candidate. Chief reports to owner hourly.
+## GPU LAB and production are distinct authorization scopes
 
-No extra reporter automation, Dot dependency, silent local Codex run, or Work tasks are part of this operating plan.
+Production requires technical broker admission and tested denial of direct `/prompt` bypass. Broker Engineer and its independent reviewer own that project; an empty queue or lab lock is not production exclusivity.
 
-## V17 — correct provider-scoped wake quota
+The owner separately authorized a **single disposable LAB candidate** through [lab_exclusive.py](LAB-EXCLUSIVE-FAST-PATH-2026-10-31.md): immutable input, temporary quiescence of known dev submitters, attributed/empty queue checks, one dispatcher execution, restoration only after known completion, STOP on unknown job without resend. The wrapper does not exclude arbitrary unknown clients and is not presented as a universal broker. Production PR #78 is therefore not a blanket prerequisite for all independent laboratory work.
 
-The `vn-proxy-quota --provider codex` sample measures **Codex OAuth**, not ordinary ChatGPT Scheduled Task usage. Do not block a genuine Scheduled `run_now` on a missing/full Codex OAuth meter. The native platform is the authority for Scheduled quota and actual admission. `wake_guard.py` keeps atomic reservation, 120s cooldown, clean worktree/scope/dependency check and per-hour rate budgets. This is never permission to launch Codex, Work or paid API. Check `peek` for task enabled/not running before invoking official `run_now`; a request is not evidence of startup or a SQLite claim.
+Exact-view `experimental_unapproved` sources may be tested in that lab with pinned provenance. They remain unapproved for production. DWPose or a source photograph cannot prove contact in a later generated image; Golden reviews the actual original. No actor identity, mandatory scene fact, save protection or release requirement is weakened.
 
-## V17 — 5-minute phase-staggered native Scheduled wake mesh
+## Current critical path and historical evidence
 
-The 12 active Scheduled jobs still run **no more frequently than once an hour each**, per official ChatGPT paid Scheduled-task limits. They have now been *actually rescheduled* across a rolling hour (Europe/Helsinki time): Broker :00, Broker Independent Reviewer :05, Chief :10, Integration Reviewer :15, Renderer :20, Golden :25, Golden Evidence :30, Pose :35, Identity :40, Provenance :45, Reliability :50, E2E :55. This means **one different worker has a normal scheduled trigger every five minutes**, not that a specific worker is guaranteed to run within five minutes.
+The current fast Z-Image T2I/pose lab does not implement canonical identity, and the dispatcher cannot yet execute the proposed SDXL canonical sprite experiment. Identity, Source/Provenance and Renderer should therefore produce a real source/face/current-outfit-bound **installed SDXL Face-IPAdapter graph** and a narrow executable lab-dispatch route. GPU Lab then tests one candidate through the authorized wrapper. Include reviewed CPU matte, mandatory QA and full generation→ready timing. A standalone validator with no execution path is supporting work, not completion.
 
-Each worker also performs a bounded **useful handoff check** before finishing its scheduled run. When an actual new PR SHA, independent source approval SHA, new original PNG SHA, fixed critical blocker, or exact contract/ref SHA makes a *different* worker actionable, call the existing native Scheduled API `Automations.peek` for that worker and, if enabled/not already running, reserve one cross-wake via `scripts/native_team/ops/scheduled_wake_mesh.py` on the PC. Only after a successful reservation use **official `Automations.run_now`**. This is an optional request, not a guarantee of cloud startup or a model entitlement. Never wake tasks for repeated unchanged evidence, no meaningful ready task, missing SHA or unreviewed GPU candidate. The mesh does not invoke a model and is not a substitute for a legitimate review.
+The frozen v1 pack remains G1 5/5 and G2 1/5, synthetic background only. Its 5.050–11.040s timings end at PNG and omit later QA. R-13 attempt 2 failed original-pixel G2. R-15 attempt 3 produced a new native-pose original at about 14:10 UTC in 8.019s; the [original receipt](https://github.com/Riannoni/web-vn/issues/20#issuecomment-6544519370) was followed by Golden's terminal **G2 FAIL at 14:26:19 UTC**, with review recorded and candidate moved to reviewed. Palms improved, but legs/full boots and required 40° lean were not proved; canonical identity remained UNOBSERVABLE. Read newer evidence before planning; never replay these IDs or relabel an A/B as a first shot.
 
-Example (with verified source commit and Cloud role):
-```bash
-python3 control/scheduled_wake_mesh.py --root "$HOME/.local/share/web-vn-native-team/run-20261031-full" --target chief --event-kind source_pr_ready --evidence-sha "EXACT_40_HEX_SHA" --requestor broker --reserve
-```
-In the currently installed layout `control/scheduled_wake_mesh.py` is the deployed copy of `scripts/native_team/ops/scheduled_wake_mesh.py`. Exact event kinds: `source_pr_ready`, `review_accepted`, `visual_candidate_ready`, `blocker_cleared`, `contract_verified`, `integration_ready`. Only grounded 40/64-character lower-hex evidence hashes are permitted. Cross-wake SQLite reservations are unique per target/kind/SHA, atomic across simultaneous workers, minimum 240s between target wakes, maximum 3 extra wakes/target/hour and 18 across the team/hour. Local SQLite permissions restricted to 0600.
+Earlier blockers have distinct dispositions:
 
-**Provider separation:** `vn-proxy-quota --provider codex` measures local **Codex OAuth only**, and no longer blocks normal ChatGPT Scheduled wake requests. Codex/Work/pay-per-token remain forbidden. The ChatGPT Scheduled platform alone grants or refuses real runs; account plan and usage limits are still enforced by the platform. This avoids false pauses when Codex's five-hour/weekly meter is missing or depleted. Existing wake_guard gates still enforce task scope, dependencies, clean worktree, 120-second cooldown, per-lane hourly budget. Cross-wake complements them for the seven specialist roles not in the four-lane SQLite source controller; it never creates model quota.
+- **#76 delivered:** [merged and control-plane installed at 13:23 UTC](https://github.com/Riannoni/web-vn/issues/76#issuecomment-6543925935). Golden Evidence Engineer is paused; historical G-10 remains blocked while its genuine negative review remains valid. Do not rebuild that fix.
+- **#77 laboratory circularity removed:** [accepted source and lab decision](https://github.com/Riannoni/web-vn/issues/77#issuecomment-6543834539). Native pose was subsequently executed in R-15; do not ask for a new R-15 simply because an old handoff does.
+- **Identity/latency unresolved:** no accepted canonical five-frame pack or ≤20-second generation→ready route is demonstrated. Independent QA/pixel evidence is mandatory; source tests, SHA equality and self-authored JSON are not visual acceptance.
+- **Old five-/twelve-role allocations and Codex audit:** historical setup/incident evidence only. They do not authorize local agents or determine current Scheduled limits.
 
-**Honest SLO:** ready worker idle ≤10 minutes is an objective. Five-minute stagger helps notification latency but Scheduled tasks may be delayed, run long, return no_update, hit model usage limits or require approval. No unsupported subhourly native recurrence or backdoor API calls. Report actual timestamps for requested, cloud started, SQLite claimed, evidence submitted, independent review complete, and final GPU original G2. A request is never a claim or success. If no meaningful backlog or missing verified event, idle is legitimate, and no synthetic task is created.
+## Evidence and stop conditions
 
+For each candidate preserve source/contract/face/outfit/graph/seed hashes, exact prompt/original/final PNG mapping, first-attempt index, one-factor hypothesis, truthful stage and generation→ready/full-turn clocks, VRAM, before/after save and accepted-asset integrity, independent mandatory G2 observations and separate source/merged/installed/E2E status. Keep private imagery, story text and secrets out of GitHub.
 
-## V19 owner mandate — autonomous 15-slot system, no user-triggered recovery
-
-All 15 Pro Scheduled Task slots now have explicit roles. Three newly created native ChatGPT Scheduled workers: **P0 Decision Authority** `6ae5e8a59f2c8191a29d40c1c12712f0` (PR merge/reject/cutover decision), **GPU Lab Breakthrough Worker** `6ae5e8a91cfc8191bb938957f214f8c3` (real isolated GPU owner and one-factor causal candidate), **Autonomous 5-Minute Dispatcher** `6ae5e8ac2e58819188b5f87aa17d0f97` (event readiness, issueNew native worker runs through supported Automations only). Each runs **hourly** and is phase-staggered at **:02, :22, :42 Europe/Helsinki** relative to the original 12 roles at :00/:05/.../:55. That is a regular aggregate scheduled trigger at most every five minutes, **NOT a guaranteed trigger for each specific role**. They are authorized to independently make meaningful decisions; do not ask the owner to reopen an interactive chat to merge a tested PR, revise failed plan or run disposable lab canary.
-
-The automatic local one-minute GPU handler was updated to `scripts/first_shot/lab_exclusive.py` (current PR #87) with validated 40/40 local tests and deployed reversible systemd user drop-in. With no pending candidate it returns `NO_APPROVED_WORK`, 0 GPU submits, no service interruptions (verified live). When a valid ONE-factor plan exists it snapshots active dev submitter services, quiesces current dev game worker, Model Lab, Kobold gateway, re-checks Comfy queue and calls exactly one existing native GPU dispatcher tick. Restores previously active services only after attributed completed job; on unknown job it fails closed and an ensuing minute may recover only when no `running/` file and queue is empty. **This is LAB ONLY, not an OS-wide GPU broker**. Existing source-only PR #78 can be repaired as a production safety project without blocking lab experiments; an experimental exact-view guide from PR80 may be tried in a disposable source-frozen A/B and independently Golden-reviewed after actual rendering. No reuse of old R13 or production fake G2.
-
-The P0 Decision Authority must reach a decision or send a concrete minimal fix to author in each meaningful turn, not merely report blocked PR. Chief owns long-horizon planning and hourly owner status; autonomous dispatcher monitors peer wakes and failed runs. The user will be away and cannot be a required operation step. Codex/Work/API/Dots remain forbidden or unavailable; platform Scheduled task quota/rate limits still apply. The accepted KPI is new **actual original PNG+G2 evidence** and measured stage timing, not the count of accepted source PRs.
+Stop on unknown GPU submission, foreign/overlapping owners, ROCm fault/OOM, source/save corruption, untrusted provenance or repeated causally identical failures. Do not weaken QA to pass 20 seconds, fabricate human labels or publish rejected assets. G3 still requires at least 30 independently human-labeled scenes plus measured E2E/retry/restart/rollback. More workers or more passing source tests do not satisfy that release gate.

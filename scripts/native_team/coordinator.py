@@ -113,10 +113,12 @@ def claim(db, owner, ttl=120, now=None, lane=None, allowed_actions=None):
                 continue
             if allowed_actions is not None and row["action"] not in allowed_actions:
                 continue
-            # Visual tasks have no source paths: preserve at most one Golden
-            # active lease even though ordinary path-conflict checks see [].
-            if row["id"].startswith("G-") and any(
-                active_item["id"].startswith("G-") for active_item in active
+            # Each native lane shares one worktree and Git history. Disjoint
+            # file scopes cannot make simultaneous lane baselines independent.
+            # This also fences Golden visual tasks, whose source paths are [].
+            lane_prefix = row["id"][:2]
+            if lane_prefix in ("R-", "Q-", "G-", "S-") and any(
+                active_item["id"].startswith(lane_prefix) for active_item in active
             ):
                 continue
             if not set(json.loads(row["deps"])).issubset(succeeded):

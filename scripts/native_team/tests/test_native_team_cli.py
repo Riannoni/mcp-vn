@@ -54,6 +54,41 @@ class FourLaneControlTests(unittest.TestCase):
         self.assertEqual(len({x["fence"] for x in claims.values()}), 4)
         self.assertFalse(m.claim(self.db, "R", "duplicate")["claimed"])
 
+    def test_serial_lane_claims_keep_shared_worktree_submissions_in_scope(self):
+        first=m.claim(self.db,"R","first-author")
+        self.assertEqual(first["id"],"R-01")
+        # Both scopes are disjoint and the worktree is still clean. A second
+        # claim here would bind both tasks to the same pre-change Git baseline.
+        self.assertFalse(m.claim(self.db,"R","second-author")["claimed"])
+        work=self.root/"lane-renderer"
+        evidence_dir=self.root/"evidence/renderer"
+        evidence_dir.mkdir(parents=True)
+
+        def commit_and_submit(task,owner,relative_path):
+            source=work/relative_path
+            source.parent.mkdir(parents=True,exist_ok=True)
+            source.write_text("VERSION = 1\n")
+            git(work,"add",relative_path)
+            git(work,"commit","-qm",task["id"])
+            evidence=evidence_dir/(task["id"]+".json")
+            evidence.write_text(json.dumps({
+                "source_status":"tested_isolated","g2":"UNVERIFIED",
+                "g3":"NO_GO","tests":["isolated source fixture"],
+                "changed_paths":[relative_path]}))
+            return m.submit(self.db,"R",owner,task["fence"],task["id"],evidence)
+
+        first_result=commit_and_submit(first,"first-author","worker/bimanual_scene_planner.py")
+        self.assertTrue(first_result["accepted"])
+        second=m.claim(self.db,"R","second-author")
+        self.assertEqual(second["id"],"R-02")
+        baseline=self.db.execute(
+            "SELECT head FROM claim_baselines WHERE task_id='R-02'"
+        ).fetchone()[0]
+        self.assertEqual(baseline,first_result["commit_sha"])
+        self.assertTrue(commit_and_submit(
+            second,"second-author","worker/prop_layer_compositor.py"
+        )["accepted"])
+
     def test_submission_requires_review_before_done(self):
         task = m.claim(self.db, "R", "old")
         self.assertTrue(task["claimed"])

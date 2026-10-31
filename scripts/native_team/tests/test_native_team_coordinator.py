@@ -25,6 +25,34 @@ class PilotTests(unittest.TestCase):
         y=m.claim(self.db,"w2",now=100)
         self.assertEqual({x["id"],y["id"]},{"a","b"})
         self.assertIsNone(m.claim(self.db,"w3",now=100))
+    def test_each_native_lane_serializes_disjoint_source_scopes(self):
+        for lane in ("R", "Q", "G", "S"):
+            with self.subTest(lane=lane):
+                self.db.execute("DELETE FROM task")
+                self.add(lane+"-01",[lane+"/first.py"])
+                self.add(lane+"-02",[lane+"/second.py"])
+                first=m.claim(self.db,"first",now=100,lane=lane)
+                self.assertEqual(first["id"],lane+"-01")
+                # Omitting the lane filter must not bypass worktree ownership.
+                self.assertIsNone(m.claim(self.db,"duplicate",now=100))
+                self.assertEqual(self.db.execute(
+                    "SELECT COUNT(*) FROM task WHERE state='leased'"
+                ).fetchone()[0],1)
+
+    def test_concurrent_same_lane_claims_have_one_winner(self):
+        import concurrent.futures
+        self.add("R-01",["worker/first.py"])
+        self.add("R-02",["worker/second.py"])
+        def attempt(owner):
+            db=m.database(pathlib.Path(self.temp.name)/"tasks.db")
+            try:
+                return m.claim(db,owner,now=100,lane="R")
+            finally:
+                db.close()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            claims=list(pool.map(attempt,("worker-one","worker-two")))
+        self.assertEqual(sum(claim is not None for claim in claims),1)
+
     def test_overlapping_paths_dont_claim(self):
         self.add("a",["docs"])
         self.add("b",["docs/AGENTS.md"])
