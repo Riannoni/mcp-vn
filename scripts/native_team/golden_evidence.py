@@ -320,10 +320,15 @@ def submit(db, task_id, owner, fence, evidence):
     except ValueError as exc:
         raise ValueError("invalid Golden receipt JSON") from exc
     label = _validated_receipt(receipt, spec, owner, fence, mandatory)
+    # The worker-supplied file is not immutable. Take an exclusive, fenced,
+    # 0600 content-addressed private snapshot before completing the lease.
+    immutable_dir = ROOT / "evidence/golden/immutable"
+    immutable_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    immutable = c.persist_evidence(immutable_dir, task_id, fence, raw)
     record = {
         "status": "visual-evidence-only", "lane": "G", "task_id": task_id,
         "spec_sha256": row["spec_sha256"], "sha256": digest(raw),
-        "path": str(path.relative_to(ROOT.resolve())),
+        "path": str(immutable.relative_to(ROOT.resolve())),
         "submitted_by": owner, "generator_owner": spec["generator_owner"],
         "prompt_id": spec["prompt_id"],
         "png_sha256": spec["artifacts"]["original_png"]["sha256"],
