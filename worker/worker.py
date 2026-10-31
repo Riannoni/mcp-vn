@@ -1115,8 +1115,13 @@ def run_comfy(job,graph):
         pid=saved["prompt_id"]
         print("RESUMING_COMFY",job["id"],pid,flush=True)
     else:
+        # A stable logical-job key prevents a lost HTTP receipt from creating a
+        # second Comfy GPU job. The attempt number separates deliberate retries;
+        # changed graph under the SAME key is rejected by the broker (HTTP 409).
+        key="mcp-vn:"+str(job["id"])+":attempt:"+str(attempt)
         result=request(COMFY,"/prompt","POST",{"prompt":graph,
-            "client_id":"mcp-vn-"+job["id"]})
+            "client_id":"mcp-vn-"+job["id"]},
+            headers={"Idempotency-Key":key})
         pid=result["prompt_id"]
         persist_manifest(job,pid,workflow_digest(graph))
         print("SUBMITTED",job["id"],pid,job["kind"],job.get("style"),flush=True)
