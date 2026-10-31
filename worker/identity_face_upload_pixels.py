@@ -94,11 +94,21 @@ def verify_sprite_face_upload(
     canonical = _pixels(canonical_bytes, source=True)
     uploaded = _pixels(uploaded_bytes, source=False)
 
+    # A byte-authentic but empty reference has no visible face to condition.
+    # This is only a necessary CPU sanity check: it cannot establish actual
+    # facial content, origin authentication, wardrobe or visual G2.
+    if ("A" in canonical.getbands() or "transparency" in canonical.info):
+        if canonical.convert("RGBA").getchannel("A").getextrema()[1] == 0:
+            raise FaceUploadBlocked("canonical_face_reference_invisible")
+    canonical_rgb = canonical.convert("RGB")
+    if all(low == high for low, high in canonical_rgb.getextrema()):
+        raise FaceUploadBlocked("canonical_face_reference_blank")
+
     # Mirrors installed worker.py SHA a865c4a9...: fetch_asset(...).convert("RGB"),
     # ImageOps.fit(..., (512,512), LANCZOS), pil_png(..., optimize=True).
     # Compare decoded pixels, not PNG compression bytes.
     expected = ImageOps.fit(
-        canonical.convert("RGB"), (512, 512),
+        canonical_rgb, (512, 512),
         method=Image.Resampling.LANCZOS,
     )
     if uploaded.mode != "RGB" or uploaded.size != (512, 512):
