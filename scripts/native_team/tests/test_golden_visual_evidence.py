@@ -69,11 +69,13 @@ class GoldenEvidenceTests(unittest.TestCase):
         self.artifacts = {}
         self.write_artifact("original_png", "case/original.png", PNG)
         self.write_artifact("canonical_ref", "case/canonical.png", PNG + b"reference")
-        self.write_artifact("scene_contract", "case/contract.json",
-                            json.dumps({"schema": "typed_scene_v1",
-                                        "mandatory_checks": ["environment", "identity", "contact"]}).encode())
         self.write_artifact("source_save", "case/save.json",
                             b'{"save_version":13,"scene_fingerprint":"stable"}')
+        self.write_artifact("scene_contract", "case/contract.json",
+                            json.dumps({"schema": "typed_scene_v1", "case_id": "CG-03",
+                                        "canonical_sha256": self.artifacts["canonical_ref"]["sha256"],
+                                        "source_save_sha256": self.artifacts["source_save"]["sha256"],
+                                        "mandatory_checks": ["environment", "identity", "contact"]}).encode())
         original = self.artifacts["original_png"]
         self.write_artifact("gpu_receipt", "case/gpu-result.json", json.dumps({
             "status": "GPU_FINISHED_REVIEW_REQUIRED",
@@ -296,6 +298,20 @@ class GoldenEvidenceTests(unittest.TestCase):
         s["artifacts"]["original_png"]["path"]=str(link)
         with self.assertRaises(ValueError):
             self.enqueue(s)
+
+    def test_contract_source_reference_mixture_is_rejected(self):
+        contract=json.loads(Path(self.artifacts["scene_contract"]["path"]).read_text())
+        for key,value in (("canonical_sha256","a"*64),
+                          ("source_save_sha256","b"*64),
+                          ("case_id","CG-OTHER")):
+            with self.subTest(key=key):
+                wrong=dict(contract)
+                wrong[key]=value
+                self.write_artifact("scene_contract","case/contract.json",json.dumps(wrong).encode())
+                spec=json.loads(json.dumps(self.spec))
+                spec["artifacts"]=dict(self.artifacts)
+                with self.assertRaises(ValueError):
+                    self.enqueue(spec)
 
     def test_only_golden_visual_task_and_no_code_paths(self):
         s=json.loads(json.dumps(self.spec))
