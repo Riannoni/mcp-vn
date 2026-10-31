@@ -55,3 +55,17 @@ For manual ChatGPT sessions on web, the same concept needs no installation: open
 **Quota observation:** while these two ChatGPT Scheduled tasks were running/completing, the local read-only Codex OAuth snapshot showed **5h 87% used / 7d 36% used**, and **the same integer percentages** were still reported after both completed. This indicates there was no visible whole-percent increase in the local Codex quota gauge during this controlled window, but does **not prove** the tasks incur zero Codex usage: percent rounding, accounting delays, other user activity, or a shared allowance can prevent exact attribution. Official docs state completed Scheduled tasks in Chat use plan usage allowance or workspace credits. Check the account's Chat usage screen before treating this as a separate free pool.
 
 Both test schedules were **paused after immediate runs** to prevent next-day reruns. The old `vn-night` and both watchdog/quota timers remain stopped; no browser proxy authenticated to ChatGPT. The result is a successful **two-parallel-native-ChatGPT research/coding pilot**, not an always-on hosted night-agent. For ongoing work, explicitly agree on schedule, model, permitted GitHub write branches and resource budget.
+
+
+## Native ChatGPT Scheduled Task — real SSH-MCP infrastructure canary (verified)
+
+A dedicated **read-only one-time Scheduled Task** was run to test whether cloud-hosted ChatGPT tasks can operate the user's real PC via connected SSH-MCP. This is separate from the earlier GitHub-only tasks A and B.
+
+- Task ID: `6ae57539f2508191bea889ae906231a5`; run ID `5e6f3b9a-3eac-8326-9329-00cc674775c5`.
+- Started **2026-10-31 04:58:24Z**, completed **04:58:58Z**, task status `completed` without approval or failure.
+- The cloud Scheduled Task reported successful SSH-MCP `infra_exec(host="home")` → SSH to `Xavok@192.168.50.27` → real `xavok-pc`, executing as `Xavok`, Linux.
+- Read-only command returned the PC isolated checkout short SHA **`ca10be4`**; `mcp-vn-worker.service` was **active**; old `vn-night-quota-resume.timer` and `vn-night-watchdog.timer` both **inactive** (deliberately stopped by owner).
+- Exit 0; command execution reported ~1.6 s. No source changes, deployments, GPU jobs, restarts, private files or credentials accessed.
+- This automation was **disabled after completion**, so it will not rerun unexpectedly.
+
+**Result:** cloud ChatGPT tasks **CAN run real read-only checks on the user's infrastructure through the existing SSH-MCP connector**. The model remains in the cloud; actual tests and shell commands run on the PC. This confirms availability of the access path, **not** that two scheduled tasks have simultaneously executed SSH workloads or that arbitrary visual QA / GPU / deployments are safe unattended. For production-quality automation: two isolated Git worktrees, task leases, one owner of GPU, sanitized logs, independent tests and visual evidence; no automatic merge into main.
