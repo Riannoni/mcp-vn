@@ -82,7 +82,8 @@ def _new_row(case=None, prompt_id=None, job_id=None, png_sha256=None):
     return {
         "case": case, "prompt_id": prompt_id, "job_id": job_id,
         "png_sha256": png_sha256, "g1": None, "g2": "NOT_REVIEWED",
-        "human_label": False, "original_png_sha_verified": None,
+        "human_label": False, "human_label_claim_unverified": False,
+        "original_png_sha_verified": None,
         "stages_s": {s: None for s in STAGES},
         "evidence": [],
     }
@@ -164,10 +165,10 @@ def _lab_rows(lab_dir, verify_png):
                 ("PASS" if row["original_png_sha_verified"] is True
                  else "NOT_REVIEWED") if positive_claim else "FAIL"
             )
-            row["human_label"] = (row["g2"] == "PASS"
-                                  and rev.get("human_label") is True
-                                  and isinstance(reviewer_type, str)
-                                  and reviewer_type.startswith("independent_human"))
+            # PNG SHA authenticates image bytes, not the human reviewer.
+            # Editable JSON alone is never an authenticated human attestation.
+            row["human_label_claim_unverified"] = rev.get("human_label") is True
+            row["human_label"] = False
             row["mandatory_failed"] = [
                 k for k in mandatory if checks[k] != "verified"
             ]
@@ -279,6 +280,7 @@ def build_report(lab_dir, events, verify_png=True):
             "Empty Comfy queue does not prove exclusive admission.",
             "No GPU two-way concurrency approval without monitored A/B.",
             "AI pixel reviews are not human labels; G3 remains NO_GO.",
+            "Editable JSON human-reviewer claims are unauthenticated and never count as human labels.",
             "External stage receipts require independent source authentication; this parser cannot certify their origin.",
         ],
         "g3": "NO_GO",
