@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import {constants as fsConstants} from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import {PNG} from "pngjs";
@@ -32,6 +33,22 @@ const styles={anime:"waiIllustriousSDXL_v170.safetensors",
  realistic:"CyberRealisticPony_V18.0_F16.safetensors",
  poster:"CyberRealisticPony_V18.0_F16.safetensors",
  animation:"BASNSFWBetterAnimeStyleForNSFWHentai_baseV10.safetensors"};
+// Creation preflight only: R-10 still owns the immutable SHA256/HMAC receipt.
+// Do not mistake URL/filename presence for accessible canonical source bytes.
+async function requireCanonicalSourceBytes(name,role){
+ if(!/^[a-f0-9-]{36}\\.(png|jpg|webp)$/i.test(name))
+  throw Error("Canonical "+role+" source asset name invalid");
+ const handle=await fs.open(path.join(dataRoot,"assets",name),
+  fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW);
+ try{
+  const stat=await handle.stat();
+  if(!stat.isFile()||stat.size<1||stat.size>64*1024*1024)
+   throw Error("Canonical "+role+" source asset bytes invalid");
+  const bytes=await handle.readFile();
+  if(bytes.length!==stat.size)
+   throw Error("Canonical "+role+" source asset bytes changed during preflight");
+ }finally{await handle.close()}
+}
 export function styleList(){return Object.keys(styles)}
 export async function enqueue({game_id,prompt,kind="background",style,character="",
  quality="standard",force=false,outfit,pose,emotion,priority,preview_only=false,library_only=false,
@@ -86,10 +103,13 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
  // R-11 separately binds the Comfy graph/prompt/original PNG.
   if(kind==="scene"&&spec.composition==="neural_story"){
    spec.source_provenance_v1=deriveNarrativeSourceProvenance(game,spec);
-   // A URL/fingerprint is not proof that canonical source bytes exist.
-   // The separate R-10 receipt will bind their SHA256 after integration.
-   const plateBytes=await fs.readFile(path.join(dataRoot,"assets",spec.background_asset));
-   if(!plateBytes.length)throw Error("Canonical source plate bytes missing");
+   // Existence is mandatory before queue mutation, but the R-10 receipt
+   // must later sign the full saved spec and byte digests under the queue lock.
+   await requireCanonicalSourceBytes(spec.background_asset,"background plate");
+   for(const actor of spec.source_provenance_v1.canonical_actors){
+    await requireCanonicalSourceBytes(actor.face_asset,"face");
+    if(actor.body_asset)await requireCanonicalSourceBytes(actor.body_asset,"body");
+   }
   }
  const defaultPriority={background:90,sprite:80,scene:50,video:20,local_cg:65};
  const prio=priority===undefined?defaultPriority[kind]:Number(priority);
