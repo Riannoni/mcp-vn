@@ -10,7 +10,13 @@ const binding={game_id:id,action_id:id,job_id:id,prompt_id:id,
  original_png_sha256:"a".repeat(64),contract_sha256:"b".repeat(64),
  kind:"scene",asset_url:"/assets/"+png+".png?sig="+"c".repeat(64)};
 const base="http://localhost:8190";
-const screenshot=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(32)]);
+// 2x2 license-free synthetic RGBA image, with IHDR/IDAT/IEND, CRC and pixels.
+const screenshot=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGklEQVR4nGP4JSfyX2SLxn8mFa59DJfkGBgAQFoF+XpJfe8AAAAASUVORK5CYII=","base64");
+const magicOnly=Buffer.concat([screenshot.subarray(0,8),Buffer.alloc(32)]);
+// All chunk CRCs are recomputed: these bytes test inflate/filter, not only CRC.
+const corruptZlib=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGklEQVR5nGP4JSfyX2SLxn8mFa59DJfkGBgAQFoF+Z1U23gAAAAASUVORK5CYII=","base64");
+const corruptFilter=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGklEQVR4nGP9JSfyX2SLxn8mFa59DJfkGBgAQLQF/tx+XqEAAAAASUVORK5CYII=","base64");
+const shortRaster=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGElEQVR4nGP4JSfyX2SLxn8mFa59DJfkADRoBfmlorDSAAAAAElFTkSuQmCC","base64");
 const page=(obs={ok:true,epoch_ms:10,performance_ms:5,browser_time_origin_ms:1000},bytes=screenshot)=>({
  url:async()=>base+"/vn/",
  evaluate:async (_fn,args)=>{assert.equal(args.gameId,id);assert.equal(args.expected,base+binding.asset_url);return obs},
@@ -35,7 +41,13 @@ test("screenshot requires real PNG bytes and cannot overwrite",async()=>{
  const d=await fs.mkdtemp(path.join(os.tmpdir(),"e2e-capture-"));
  const f=path.join(d,"private.png");
  try{
-  await assert.rejects(captureDisposableBrowserAsset(page(undefined,Buffer.from("notpng")),binding,{capture_path:f}),/not a PNG/);
+  for(const bytes of [Buffer.from("notpng"),magicOnly,corruptZlib,corruptFilter,shortRaster]){
+   await assert.rejects(captureDisposableBrowserAsset(page(undefined,bytes),binding,{capture_path:f}),/not a fully decoded PNG/);
+   await assert.rejects(fs.stat(f),{code:"ENOENT"});
+  }
+  const damagedCrc=Buffer.from(screenshot);damagedCrc[50]^=1;
+  await assert.rejects(captureDisposableBrowserAsset(page(undefined,damagedCrc),binding,{capture_path:f}),/chunk_crc/);
+  await assert.rejects(fs.stat(f),{code:"ENOENT"});
   const result=await captureDisposableBrowserAsset(page(),binding,{capture_path:f});
   assert.equal(result.status,"SCREENSHOT_CAPTURED_UNVERIFIED");
   assert.equal(result.full_turn,"NOT_MEASURED");
@@ -43,6 +55,9 @@ test("screenshot requires real PNG bytes and cannot overwrite",async()=>{
   assert.equal(result.original_pixels_reviewed,false);
   assert.equal(result.browser_visible_verified,false);
   assert.match(result.screenshot_sha256,/^[a-f0-9]{64}$/);
+  assert.equal(result.screenshot_width,2);
+  assert.equal(result.screenshot_height,2);
+  assert.match(result.screenshot_decoded_pixels_sha256,/^[a-f0-9]{64}$/);
   assert.equal((await fs.stat(f)).mode&0o777,0o600);
   await assert.rejects(captureDisposableBrowserAsset(page(),binding,{capture_path:f}),{code:"EEXIST"});
  }finally{await fs.rm(d,{recursive:true,force:true})}
