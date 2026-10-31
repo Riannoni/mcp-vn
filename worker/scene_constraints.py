@@ -38,6 +38,21 @@ def scene_constraints(spec, prompt):
                 "instead of the garments from the old character reference: "+
                 outfit[:160]+"."
             )
+    elif len(people)>1:
+        # A mixed cast needs actor-bound positive wardrobe constraints.
+        # Global garment negatives would incorrectly forbid another actor's
+        # required clothes; face references must not supply old outfits.
+        for actor in people:
+            name=str(actor.get("name") or "").strip()[:80]
+            outfit=str(actor.get("outfit") or "").strip()[:160]
+            if not name or not outfit or outfit.lower()=="default":
+                continue
+            positive.append(
+                "Actor "+name+" CURRENT outfit: "+outfit+". "
+                "Keep this outfit on this actor only; canonical face "
+                "references do not supply garments. Never transfer "
+                "another actor's wardrobe."
+            )
     # A per-actor declarative pose is advisory text unless it has its own
     # validated control reference. Never impose one actor's pose on the cast.
     for actor in people:
