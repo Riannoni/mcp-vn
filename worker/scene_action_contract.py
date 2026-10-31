@@ -69,6 +69,16 @@ WALL_TOUCH=re.compile(
     r"|\b(?:wall|masonry|stonework|brickwork)\b.{0,55}"
     r"\b(?:touch(?:ing)?|press(?:ed|ing)?|brac(?:ed|ing)?|against)\b"
     r".{0,35}\b(?:hands?|palms?)\b",re.I)
+# Negated contact is a contradiction, not evidence of a successful wall brace.
+# A lexical "hands ... touch ... wall" hit alone must never verify G2.
+WALL_CONTACT_NEGATED=re.compile(
+    r"\b(?:hands?|palms?)\b.{0,65}?\b(?:do(?:es)?\s+not|did\s+not|"
+    r"are\s+not|is\s+not|were\s+not|never|not|without)\b"
+    r"(?:\s+\w+){0,3}\s+"
+    r"(?:touch(?:ing)?|press(?:ed|ing)?|brac(?:ed|ing)?|"
+    r"rest(?:ing)?|plant(?:ed|ing)?|plac(?:ed|ing)?|on|against)\b"
+    r".{0,65}?\b(?:wall|masonry|stonework|brickwork)\b",re.I)
+
 BOTH=re.compile(r"\b(?:both|two)\b.{0,38}\b(?:hands?|palms?)\b"
                 r"|\b(?:hands?|palms?)\b.{0,32}\b(?:both|two)\b",re.I)
 SUPPORT=re.compile(r"\b(?:stands?|standing|feet|foot|legs?\s+straight|"
@@ -167,12 +177,15 @@ def check_wall_action(caption,spec):
     evidence={
         "required":True,
         "wall_touch":bool(WALL_TOUCH.search(desc)),
+        "wall_contact_negated":bool(WALL_CONTACT_NEGATED.search(desc)),
         "both_hands":bool(BOTH.search(desc)),
         "weight_on_feet":bool(SUPPORT.search(desc)),
         "forward_lean":bool(FORWARD.search(desc)),
         "ground_pose":bool(BAD_POSE.search(desc) or GROUND_CONTACT.search(desc)),
         "uncertain":bool(UNCERTAIN.search(desc)),
     }
+    if evidence["wall_contact_negated"]:
+        return False,["CG wall contact contradicted: hands explicitly not on wall"],evidence
     if evidence["ground_pose"]:
         return False,["CG action mismatch: ground-supported or kneeling pose"],evidence
     missing=[k for k in ("wall_touch","both_hands","weight_on_feet","forward_lean")

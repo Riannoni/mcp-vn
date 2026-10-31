@@ -49,6 +49,27 @@ class WallActionContractTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(ev["uncertain"])
 
+    def test_negated_wall_contact_is_rejected_even_when_other_cues_match(self):
+        captions=[
+            "An adult leans forward, standing on both feet. Both hands do not touch the stone wall.",
+            "An adult leans forward, standing on both feet. Both palms are not pressed against the stone wall.",
+            "An adult leans forward, standing on both feet. Both hands never touch the stone wall.",
+            "An adult leans forward, standing on both feet. Both hands are not on the stone wall.",
+        ]
+        for caption in captions:
+            with self.subTest(caption=caption):
+                ok,reasons,ev=check_wall_action(caption,self.SPEC)
+                self.assertFalse(ok,(caption,reasons,ev))
+                self.assertTrue(reasons)
+                self.assertTrue(ev["wall_contact_negated"])
+
+    def test_affirmative_wall_contact_remains_accepted(self):
+        caption=("An adult leans forward, standing on both feet, "
+                 "with both hands touching the stone wall.")
+        ok,reasons,ev=check_wall_action(caption,self.SPEC)
+        self.assertTrue(ok,(reasons,ev))
+        self.assertFalse(ev["wall_contact_negated"])
+
     def test_unrelated_scenes_unaffected(self):
         spec={"composition":"neural_story","characters":[{"name":"Mira"}],
               "prompt":"Mira stands in a market square and waves."}
