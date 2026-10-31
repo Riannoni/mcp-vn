@@ -12,6 +12,7 @@ SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 SAFE_IMAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,239}\.(?:png|webp|jpe?g)$", re.I)
 FACE_IPADAPTER = "ip-adapter-plus-face_sdxl_vit-h.safetensors"
 CLIP_VISION = "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+PINNED_PONY_CHECKPOINT = "CyberRealisticPony_V18.0_F16.safetensors"
 
 
 class IdentityGraphBlocked(ValueError):
@@ -111,6 +112,12 @@ def validate_sdxl_identity_graph(job, graph, intent, *, checkpoint, face_uploads
             raise IdentityGraphBlocked("Stale source-intent face/outfit/actor binding")
     if not isinstance(checkpoint, str) or not checkpoint.endswith(".safetensors") or "/" in checkpoint:
         raise IdentityGraphBlocked("Expected pinned SDXL checkpoint missing")
+    # The expected checkpoint filename must not be freely selected by the
+    # caller: matching two arbitrary names cannot establish SDXL compatibility.
+    # This is still only a filename fence. The trusted upstream producer must
+    # independently attest the actual installed model/adapter/CLIP bytes.
+    if checkpoint != PINNED_PONY_CHECKPOINT:
+        raise IdentityGraphBlocked("Only pinned Pony SDXL checkpoint family supported")
     if _node(graph, "1", "CheckpointLoaderSimple").get("ckpt_name") != checkpoint:
         raise IdentityGraphBlocked("Checkpoint/model family changed")
     sampler = _node(graph, "5", "KSampler")
