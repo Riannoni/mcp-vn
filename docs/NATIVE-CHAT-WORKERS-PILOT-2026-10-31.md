@@ -69,3 +69,27 @@ A dedicated **read-only one-time Scheduled Task** was run to test whether cloud-
 - This automation was **disabled after completion**, so it will not rerun unexpectedly.
 
 **Result:** cloud ChatGPT tasks **CAN run real read-only checks on the user's infrastructure through the existing SSH-MCP connector**. The model remains in the cloud; actual tests and shell commands run on the PC. This confirms availability of the access path, **not** that two scheduled tasks have simultaneously executed SSH workloads or that arbitrary visual QA / GPU / deployments are safe unattended. For production-quality automation: two isolated Git worktrees, task leases, one owner of GPU, sanitized logs, independent tests and visual evidence; no automatic merge into main.
+
+
+## Native ChatGPT A/B — two concurrent SOURCE CODING workers on PC (2026-10-31)
+
+**Run root on PC:** `~/.local/share/web-vn-chat-workers/runs/pilot-20261031-1203/`. Deliberately isolated from live game, old Codex worktree, accepted image assets and production services. Both Scheduled ChatGPT tasks ran separately through connected SSH-MCP → home → Xavok-PC and independently read full source rules before modifying source. **No Codex CLI, paid model API, Work, browser shim, production deployments, GitHub pushes or GPU jobs.**
+
+| Lane | Scheduled Task ID | Cloud runtime (UTC) | Local base/branch | Delivered result |
+| --- | --- | --- | --- | --- |
+| A | `6ae5765f0c408191a87c8e12e2a4fd15` | 05:03:02.971–05:06:29.251 | PR #49 SHA `da1e6f1` → `pilot/native-chat-a-20261031-1203` | Fixed false-accept risk combining actor pose/object/atomic contact from different source frames; 6 initially red regressions, 16 atomic + 8 prop-scale tests green; **uncommitted local diff SHA256 `785585a16f33407842eee40895148c500dcea79a6437a9289368af1452edb025`** |
+| B | `6ae5766127d881919c328086756610db` | 05:02:59.712–05:06:19.586 | main SHA `5e4e0bf` → `pilot/native-chat-b-20261031-1203` | Built source-only JSON golden-set manifest validator and negative tests, human labels/provenance/duplicate source claims; **local commit `5a3ccd97ec11c6b8f9418db8d3ca6e3efc7f23a2`**; 24 unittest passed; synthetically validated 30-case CLI input |
+
+**Proven concurrency:** Both native ChatGPT executions overlapped from **05:03:02Z to 05:06:19Z (3 min 16 sec)** and actually wrote and tested independent files on the same PC. This is more than concurrent conversations: real PC operations and separate worktrees confirmed. No overlapping write scopes: A `worker/atomic_prop_gate.py` + `tests/atomic-prop-gate.test.py`; B `scripts/render_golden_set_audit.py` + `scripts/tests/test_render_golden_set_audit.py`.
+
+**Independent verification in a separate ChatGPT turn using real Xavok-PC SSH:** `python3 tests/atomic-prop-gate.test.py` **16/16 PASS** and `python3 tests/prop-scale-evidence.test.py` **8/8 PASS** in A; `python3 scripts/tests/test_render_golden_set_audit.py` **24/24 PASS** in B; Python AST source parsing for all 4 changed files **PASS**, Git diff/check (A) and Git commit/check (B) **PASS**. **48 total independently re-run source tests**. A remains uncommitted, B is committed **locally only**; results are not published source PRs and have not passed code-owner review or visual acceptance. The agent's source metadata provenance checks cannot prove upstream actually bound a claim to original PNG bytes; golden-set synthetic case validation cannot verify G2 or generalize to 30 real cases.
+
+### Codex quota measurement during two native ChatGPT runs
+
+Baseline `~/.local/bin/vn-proxy-quota --provider codex --json` at **2026-10-31 05:01:51 UTC**: short 5h **87% used**, weekly **36% used**. Host-side non-inference user-systemd sampling at 20-second intervals captured **10 successful readings** from **05:03:51 through 05:06:59 UTC**, all **87% / 36%**. The final independent reading **05:07:38 UTC** was still **87% / 36%**. Each native ChatGPT worker also independently captured two matching pre/post private quota JSON snapshots under `evidence/{a,b}/`. Local sampling unit `vn-native-chat-quota-watch-20261031.service` finished and is inactive.
+
+**Evidence-based conclusion:** **two simultaneous, real source-coding native ChatGPT runs consumed no *observable whole-percent* additional Codex OAuth usage** in this 6-minute observation. They demonstrably bypassed the need to run Codex CLI, but this is NOT proof of unlimited ChatGPT allowance or zero billing: the Codex gauge rounds whole percentages and does not expose ChatGPT scheduled-task usage. Recheck remaining plan limits before any 24/7 design.
+
+**Safety/recovery:** Both Scheduled Tasks were disabled after one successful immediate run; old `vn-night-quota-resume.timer` and `vn-night-watchdog.timer` remain inactive; `mcp-vn-worker.service` and original CLIProxyAPI are still active. No code was sent to main/production. Human G2 is UNVERIFIED, G3 remains NO-GO.
+
+**Next controlled increment:** independently inspect A's local diff and B's local commit, compare against latest PR #49/main and full test rules, then create separate draft PRs with no merge; verify source version safety and, separately, a sustained 2-worker cost/usage cycle and GPU mutex before enabling 4–5 workers.
