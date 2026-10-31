@@ -123,11 +123,11 @@ export function deriveNarrativeSourceProvenance(game,spec){
  const sameCommittedTurn=hasNarrator&&typeof action?.id==="string"&&
   action.id===actionId&&pIndex>=0&&nIndex>pIndex&&
   game.awaiting_narrator!==true;
- // A producer marking a fallback/mismatched prompt as narrator-authored is
- // not a valid narration provenance claim, even when its image is beautiful.
- if(spec.narrator_prompt===true)
-  requireTrue(storedPrompt&&norm(spec.prompt)===norm(storedPrompt),
-   "narrator image prompt differs from canonical scene prompt");
+ // Never certify a fallback or mismatched prompt as narrator-authored.
+ // Legacy image preview requests remain enqueueable, but their source origin
+ // is explicitly UNVERIFIED and R-10/R-11 provenance approval rejects it.
+ const authoredPrompt=spec.narrator_prompt===true&&storedPrompt&&
+  norm(spec.prompt)===norm(storedPrompt);
  return {
   schema:"web_vn_canonical_source_v1",
   source_phase:"game_store_art_snapshot_before_enqueue",
@@ -142,7 +142,7 @@ export function deriveNarrativeSourceProvenance(game,spec){
   narrative_message_sha256:hasNarrator?digest(JSON.stringify({
    id:last.id,at:last.at??null,speaker:last.speaker??null,text:last.text})):null,
   narrator_cg_prompt_sha256:storedPrompt?digest(storedPrompt):null,
-  narrative_origin:sameCommittedTurn&&spec.narrator_prompt===true&&storedPrompt?
+  narrative_origin:sameCommittedTurn&&authoredPrompt?
    "canonical_narration_and_scene_cg_prompt":"incomplete_not_narrative_verified",
   canonical_actors:canonicalActors,source_contacts_count:contacts.length,
   explicit_contacts_sha256:digest(JSON.stringify(contacts)),
