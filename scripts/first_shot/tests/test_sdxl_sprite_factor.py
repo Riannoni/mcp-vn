@@ -64,7 +64,11 @@ class SDXLCanonicalSpriteFactorTests(unittest.TestCase):
         self.asset = "00000000-0000-0000-0000-000000000001.png"
         img = self.root / "scratch.png"
         img.parent.mkdir(parents=True)
-        Image.new("RGB", (512, 512), (60, 70, 80)).save(img)
+        # Opaque nonuniform face: an entirely flat image is correctly rejected
+        # by the independently reviewed canonical-blank guard in PR #119.
+        face_fixture = Image.new("RGB", (512, 512), (60, 70, 80))
+        face_fixture.putpixel((0, 0), (240, 20, 20))
+        face_fixture.save(img)
         face_bytes = img.read_bytes()
         self.face_sha = hashlib.sha256(face_bytes).hexdigest()
         face_source = self.root / "private_assets" / (self.face_sha + ".png")
