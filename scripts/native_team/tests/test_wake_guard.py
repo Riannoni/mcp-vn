@@ -30,7 +30,7 @@ class WakeGuardTests(unittest.TestCase):
         db=sqlite3.connect(self.root/"state/team.sqlite3")
         db.execute("CREATE TABLE team_meta(k TEXT PRIMARY KEY,v TEXT)")
         db.execute("INSERT INTO team_meta VALUES('state','active')")
-        db.execute("CREATE TABLE task(id TEXT PRIMARY KEY,state TEXT, deps TEXT,paths TEXT,priority INTEGER)")
+        db.execute("CREATE TABLE task(id TEXT PRIMARY KEY,state TEXT, deps TEXT,paths TEXT,priority INTEGER,completed_at REAL)")
         db.execute("INSERT INTO task VALUES('R-03','pending','[]','[\"worker/x.py\"]',10)")
         db.commit()
         db.close()
@@ -96,6 +96,46 @@ class WakeGuardTests(unittest.TestCase):
         db.execute("INSERT INTO task VALUES('Q-01','leased','[]','[\"worker/x.py\"]',3)")
         db.commit();db.close()
         self.assertEqual(m.check(self.root,"R",now=100)["reason"],"no_ready_task")
+
+    def test_chief_review_ready_and_reservation(self):
+        db=self.db()
+        db.execute("UPDATE task SET state='review_pending',completed_at=100 WHERE id='R-03'")
+        db.commit();db.close()
+        r=m.check_review(self.root,now=200)
+        self.assertTrue(r["eligible"])
+        self.assertEqual(r["review_count"],1)
+        first=m.check_review(self.root,reserve=True,now=200,requestor="R-worker")
+        self.assertTrue(first.get("reserved"))
+        next_=m.check_review(self.root,reserve=True,now=201,requestor="Q-worker")
+        self.assertEqual(next_["reason"],"chief_wake_cooldown")
+        self.assertTrue(m.check_review(self.root,now=801)["eligible"])
+
+    def test_chief_review_waits_briefly_on_live_workers(self):
+        db=self.db()
+        db.execute("UPDATE task SET state='review_pending',completed_at=100 WHERE id='R-03'")
+        db.execute("INSERT INTO task(id,state,deps,paths,priority,completed_at) VALUES('Q-01','leased','[]','[]',1,NULL)")
+        db.commit();db.close()
+        r=m.check_review(self.root,now=150)
+        self.assertEqual(r["reason"],"other_workers_finishing")
+        self.assertTrue(m.check_review(self.root,now=250)["eligible"])
+
+    def test_chief_review_requires_pending_and_active_team(self):
+        self.assertEqual(m.check_review(self.root,now=100)["reason"],"nothing_to_review")
+        db=self.db()
+        db.execute("UPDATE task SET state='review_pending',completed_at=50")
+        db.execute("UPDATE team_meta SET v='stopped'")
+        db.commit();db.close()
+        self.assertEqual(m.check_review(self.root,now=100)["reason"],"team_inactive")
+
+    def test_chief_review_concurrent_one_reservation(self):
+        from concurrent.futures import ThreadPoolExecutor
+        db=self.db()
+        db.execute("UPDATE task SET state='review_pending',completed_at=100")
+        db.commit();db.close()
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results=list(pool.map(lambda _:m.check_review(
+                self.root,reserve=True,now=300,requestor="worker"),range(4)))
+        self.assertEqual(sum(bool(x.get("reserved")) for x in results),1)
 
     def test_unrelated_lane_lease_allows_wake(self):
         db=self.db()
