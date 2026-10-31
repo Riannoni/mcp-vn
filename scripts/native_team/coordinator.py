@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two-lane source-only coordinator prototype for web-vn.
+"""Four-lane source-only coordinator prototype for web-vn.
 
 No ChatGPT/browser transport, inference, GPU, production access or deploy actions.
 All workers have detached git worktrees and write only evidence in pilot directory.
@@ -295,7 +295,7 @@ def demo(root, base):
     print(json.dumps(data, ensure_ascii=False))
     db.close()
     return 0 if codes == [0, 0] and all(
-        t["state"] == "done" for t in data["tasks"]) else 1
+        t["state"] == "review_pending" for t in data["tasks"]) else 1
 
 
 def main():
