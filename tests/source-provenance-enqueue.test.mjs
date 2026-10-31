@@ -40,7 +40,7 @@ async function fixture(){
  game.awaiting_narrator=false;
  game.version=7;
  await fs.writeFile(path.join(root,"games",game.id+".json"),JSON.stringify(game));
- return {game,face};
+ return {game,face,background};
 }
 async function enqueue(game){
  return jobs.enqueue({game_id:game.id,kind:"scene",style:"realistic",neural_scene:true,
@@ -74,5 +74,15 @@ test("wrong actor contact cannot vanish from signed Scene Contract",async()=>{
  game.scene.contacts[0].actor="Unknown actor";
  await fs.writeFile(path.join(root,"games",game.id+".json"),JSON.stringify(game));
  await assert.rejects(()=>enqueue(game),/source contact|action actor|source provenance/i);
+});
+test("missing canonical source plate bytes reject neural CG before a job is queued",async()=>{
+ const {game,background}=await fixture();
+ // A valid-looking URL/fingerprint is not proof that canonical plate bytes exist.
+ await fs.unlink(path.join(root,"assets",background));
+ const jobDir=path.join(root,"jobs");
+ const before=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ await assert.rejects(()=>enqueue(game),/source|plate|background|asset|ENOENT|bytes/i);
+ const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ assert.equal(after,before,"missing source bytes must not mutate the job queue");
 });
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));
