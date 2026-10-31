@@ -38,6 +38,49 @@ def git(lane,*args):
 def paths_valid(xs):
     return isinstance(xs,list) and bool(xs) and len(xs)<12 and all(isinstance(x,str) and x and not x.startswith(('/','.git')) and '\\' not in x and all(y not in ('','.','..') for y in x.split('/')) for x in xs)
 
+def _checked_scope(lane, paths):
+    """Reject paths escaping an isolated Git worktree through symlinks."""
+    if not paths_valid(paths):
+        raise ValueError('invalid task scope')
+    root = (ROOT / ('lane-' + LANES[lane])).resolve()
+    for path in paths:
+        actual = (root / path).resolve()
+        if not actual.is_relative_to(root):
+            raise ValueError('scope escapes lane worktree')
+    return paths
+
+
+def _safe_source_diff(lane, baseline, head, allowed):
+    """Prove exact lineage and changed paths, independent of moving lane HEAD."""
+    if not baseline or not head or len(baseline) != 40 or len(head) != 40:
+        raise ValueError('invalid Git SHA')
+    if subprocess.run(
+        ['git', '-C', str(ROOT / ('lane-' + LANES[lane])),
+         'merge-base', '--is-ancestor', baseline, head],
+        capture_output=True, timeout=15
+    ).returncode != 0:
+        raise ValueError('submitted commit not descended from claim baseline')
+    changed = git(lane, 'diff', '--name-only', baseline, head).splitlines()
+    if not changed or not set(changed).issubset(set(allowed)):
+        raise ValueError('submitted commit has empty or out-of-scope diff')
+    _checked_scope(lane, changed)
+    # No symlinks or gitlinks in files provided by an untrusted worker.
+    for file in changed:
+        entry = git(lane, 'ls-tree', head, '--', file)
+        for line in entry.splitlines():
+            mode = line.split()[0] if line.split() else ''
+            if mode in ('120000', '160000'):
+                raise ValueError('symlink or submodule in worker output')
+    errors = subprocess.run(
+        ['git', '-C', str(ROOT / ('lane-' + LANES[lane])),
+         'diff', '--check', baseline, head],
+        capture_output=True, text=True, timeout=15
+    )
+    if errors.returncode:
+        raise ValueError('Git diff whitespace checks failed')
+    return changed
+
+
 def open_db():
     if not DB.is_file():raise FileNotFoundError('not initialized')
     db=c.database(DB)
@@ -71,6 +114,9 @@ def claim(db,lane,owner):
     if db.execute("SELECT v FROM team_meta WHERE k='state'").fetchone()[0]!='active':return {'claimed':False,'reason':'paused'}
     if git(lane,'status','--porcelain','--untracked-files=all'):
         return {'claimed':False,'reason':'dirty_worktree_needs_review'}
+    # Check every queued scope before a worker gets write access.
+    for pending in db.execute("SELECT paths FROM task WHERE id LIKE ? AND state='pending'", (lane+'-%',)):
+        _checked_scope(lane, json.loads(pending['paths']))
     # Co.claim is serialized by BEGIN IMMEDIATE, with a narrow lane prefix.
     item=c.claim(db,owner,ttl=2700,lane=lane)
     if item is None:return {'claimed':False,'reason':'no_unclaimed_ready_task'}
@@ -79,39 +125,81 @@ def claim(db,lane,owner):
     return {'claimed':True,**item,'lane':lane,'worktree':str(ROOT/('lane-'+LANES[lane])), 'paths':json.loads(task[0])}
 
 def submit(db,lane,owner,fence,tid,file):
-    f=Path(file).resolve()
-    base=(ROOT/'evidence'/LANES[lane]).resolve()
-    if not f.is_file() or f.is_symlink() or base not in f.parents or f.stat().st_size>16000:
+    if not tid.startswith(lane+'-'):
+        raise ValueError('wrong worker lane for task')
+    original = Path(file)
+    if original.is_symlink():
+        raise ValueError('symlink evidence is forbidden')
+    f = original.resolve()
+    base = (ROOT/'evidence'/LANES[lane]).resolve()
+    if not f.is_file() or base not in f.parents or f.stat().st_size>16000:
         raise ValueError('evidence must be a small private file in lane evidence dir')
-    result=json.loads(f.read_text())
+    raw = f.read_bytes()
+    result = json.loads(raw)
     if result.get('source_status')!='tested_isolated' or result.get('g2')!='UNVERIFIED' or result.get('g3')!='NO_GO':
         raise ValueError('source-only result cannot assert visual quality')
-    if not result.get('tests') or not isinstance(result['tests'],list):raise ValueError('tests required')
-    allowed=json.loads(db.execute('SELECT paths FROM task WHERE id=?',(tid,)).fetchone()[0])
+    tests=result.get('tests')
+    if not isinstance(tests,list) or not tests or not all(isinstance(t,str) and t.strip() for t in tests):
+        raise ValueError('nonempty test descriptions required')
     changed=result.get('changed_paths')
-    if not paths_valid(changed) or any(x not in allowed for x in changed):raise ValueError('unapproved paths')
+    if not paths_valid(changed):
+        raise ValueError('invalid changed paths')
+    row=db.execute('SELECT paths,state,owner,fence FROM task WHERE id=?',(tid,)).fetchone()
+    if row is None or row['state']!='leased' or row['owner']!=owner or row['fence']!=fence:
+        raise ValueError('submit without current fenced lease')
+    allowed=_checked_scope(lane,json.loads(row['paths']))
     baseline=db.execute('SELECT head FROM claim_baselines WHERE task_id=?',(tid,)).fetchone()
-    if not baseline:raise ValueError('missing source SHA')
-    pending=git(lane,'status','--porcelain','--untracked-files=all').splitlines()
-    committed=git(lane,'diff','--name-only',baseline[0],'HEAD').splitlines()
-    existing={x[3:] for x in pending}|set(committed)
-    if not set(changed).issubset(existing) or any(x not in allowed for x in existing):
-        raise ValueError('changed paths differ from scope')
-    raw=f.read_bytes()
-    return {'accepted':c.complete(db,tid,owner,fence,{'sha256':hashlib.sha256(raw).hexdigest(),
-            'path':str(f.relative_to(ROOT)),'tests':result['tests'],'status':'source-only'},passed=True)}
+    if not baseline:
+        raise ValueError('missing source SHA')
+    if git(lane,'status','--porcelain','--untracked-files=all'):
+        raise ValueError('uncommitted files cannot be submitted')
+    head=git(lane,'rev-parse','HEAD')
+    committed=_safe_source_diff(lane,baseline[0],head,allowed)
+    if set(committed)!=set(changed) or len(committed)!=len(changed):
+        raise ValueError('evidence changed paths differ from exact commit')
+    record={'sha256':hashlib.sha256(raw).hexdigest(),
+            'path':str(f.relative_to(ROOT)),
+            'tests':tests,
+            'status':'source-only',
+            'lane':lane,
+            'baseline_sha':baseline[0],
+            'commit_sha':head,
+            'changed_paths':committed}
+    return {'accepted':c.complete(db,tid,owner,fence,record,passed=True),
+            'commit_sha':head}
+
 
 def review(db,task_id,approve,note):
-    if not note.strip():raise ValueError('independent review note required')
-    x=db.execute('SELECT state,result FROM task WHERE id=?',(task_id,)).fetchone()
-    if not x or x['state']!='review_pending':return {'approved':False,'reason':'not pending'}
+    if not isinstance(note,str) or len(note.strip())<12:
+        raise ValueError('independent review note required')
+    x=db.execute('SELECT state,result,paths FROM task WHERE id=?',(task_id,)).fetchone()
+    if not x or x['state']!='review_pending':
+        return {'approved':False,'reason':'not pending'}
     doc=json.loads(x['result'])
-    f=(ROOT/doc['path']).resolve()
+    lane=doc.get('lane')
+    if lane not in LANES or not task_id.startswith(lane+'-'):
+        raise ValueError('task evidence lane mismatch')
+    original=ROOT/doc['path']
+    f=original.resolve()
+    if original.is_symlink() or (ROOT/'evidence'/LANES[lane]).resolve() not in f.parents:
+        raise ValueError('evidence path outside private lane')
     if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest()!=doc['sha256']:
         raise ValueError('evidence tampered')
+    declared=json.loads(f.read_text())
+    if declared.get('g2')!='UNVERIFIED' or declared.get('g3')!='NO_GO':
+        raise ValueError('visual release claim unsupported')
+    paths=_safe_source_diff(
+        lane,doc.get('baseline_sha'),doc.get('commit_sha'),
+        _checked_scope(lane,json.loads(x['paths'])))
+    if sorted(paths)!=sorted(doc.get('changed_paths',[])) or sorted(paths)!=sorted(declared.get('changed_paths',[])):
+        raise ValueError('submitted Git commit does not match evidence')
+    # Review the exact immutable commit SHA, never the moving branch HEAD.
     db.execute('UPDATE task SET state=? WHERE id=?',('done' if approve else 'blocked',task_id))
-    c.emit(db,task_id,'review_pass' if approve else 'review_block',note[:400])
-    return {'approved':approve,'task':task_id}
+    c.emit(db,task_id,'review_pass' if approve else 'review_block',
+           (note+'; verified_commit='+doc['commit_sha'][:12])[:400])
+    return {'approved':approve,'task':task_id,'verified_commit':doc['commit_sha']}
+
+
 
 def watchdog(db):
     now=time.time()
@@ -160,8 +248,16 @@ def main():
         elif args.cmd=='review':result=review(db,args.task,args.approve,args.note)
         elif args.cmd=='enqueue':
             d=json.loads(Path(args.spec).read_text())
-            if d['lane'] not in LANES or not d['id'].startswith(d['lane']+'-') or not paths_valid(d['paths']):raise ValueError('invalid lane/task scope')
-            c.add(db,d['id'],'source_inventory',d['paths'],d.get('dependencies',[]),goal=d['goal'],priority=d.get('priority',50))
+            if d['lane'] not in LANES or not d['id'].startswith(d['lane']+'-'):
+                raise ValueError('invalid lane/task ID')
+            _checked_scope(d['lane'],d['paths'])
+            deps=d.get('dependencies',[])
+            if not isinstance(deps,list) or len(deps)>12 or d['id'] in deps or len(set(deps))!=len(deps):
+                raise ValueError('invalid dependencies')
+            for dep in deps:
+                if not isinstance(dep,str) or db.execute('SELECT 1 FROM task WHERE id=?',(dep,)).fetchone() is None:
+                    raise ValueError('missing prerequisite')
+            c.add(db,d['id'],'source_inventory',d['paths'],deps,goal=d['goal'],priority=d.get('priority',50))
             db.execute('UPDATE task SET action=? WHERE id=?',(d['instructions'],d['id']))
             result={'enqueued':d['id']}
         elif args.cmd=='stop':
