@@ -84,3 +84,29 @@ All workers must use the `claim`, `heartbeat`, `submit` path in `teamctl.py`; ne
 The **local watchdog is continuous**, but native ChatGPT Scheduled Tasks are **hourly** and finite individual executions, not perpetual streams. Multiple open ChatGPT tasks do not establish separate quotas. A task can pause for service/platform limits, app authorization, quota or network; report PAUSED/BLOCKED and why. A stalled task with unsaved changes cannot be automatically recovered safely by declaring it complete. The chief can do reversible known safe repairs, but resource-intensive GPU/no-publish render validation needs exclusive GPU permission and actual pixel review; current implementation does **not** yet contain a GPU governor.
 
 The full-time engineering loop is therefore **persistent, self-monitoring and hourly model-driven**, not guaranteed uninterrupted model inference until the product is good. Progress is tracked by independently reviewable artifacts, accepted G2/G3 evidence and working browser E2E, not tokens, number of commits or an unbounded count of tasks.
+
+## First full four-lane cloud cycle — verified 2026-10-31 12:35 Asia/Novosibirsk
+
+**Execution:** Four separate native ChatGPT Scheduled Tasks completed concurrent runs, working on **four independent local PC Git worktrees** via SSH-MCP. Local user-systemd minute watchdog remained active, old Codex night agent inactive. Four lanes developed two source-only tasks each (R-01/02, Q-01/02, G-01/02, S-01/02). Each created a local commit and private evidence (no GitHub pushes).
+
+**Independent chief review:** a fifth scheduled native ChatGPT task was run immediately and independently reviewed all **8/8** source-only outputs, re-ran an aggregate **165 targeted Python tests** on the PC, checked commit SHA/path scope and accepted each as source task DONE in SQLite; original red regressions verified for at least R-01/Q-01/G-01. The reviewer then enqueued **R-03, Q-03, G-03, S-03** based on actual heldout blockers. Thus the first complete workflow **claim → actual source changes → local testing → review_pending → independent review → DONE → next meaningful task** is evidence-backed. Final check 12:35 showed **4 pending, 0 leased, 0 blocked**. The next model work starts on the next hourly ChatGPT schedule, while watchdog remains one-minute. Beware the wider historical reliability test suite still has **1 unrelated failing test** (`test_bounded_retry_moves_on`), not considered fixed by the targeted 31/31.
+
+| Lane | Latest local SHA | Independent source tests | Next milestone |
+| --- | --- | --- | --- |
+| Renderer | `46977a1` | 50/50 targeted | R-03 bind proposed hand plan to immutable source PNG |
+| QA | `8f38189` | 49/49 targeted | Q-03 exact PNG SHA shadow evidence |
+| Golden | `064b999` | 35/35 targeted | G-03 P50/P90 complete turn and stages |
+| Reliability | `f8d9ab7` | 31/31 targeted | S-03 exclusive GPU preflight, source-only |
+
+**Runtime:** GitHub `main` `5e4e0bf`; production game worker/vision/Comfy and existing proxy remain active, LAN game HTTP 200 at last chief check, Comfy queue idle. No accepted live image replaced, no GPU commands issued, no deployment or merge. The previously documented held-out wooden box had independently measured width/shoulder ratio **1.0668 > 1.0**, so **G2 remains UNVERIFIED and G3 NO-GO**. Source-only approval is never release acceptance.
+
+**Quota:** During four parallel native ChatGPT sessions the whole-percent Codex OAuth gauge after its natural 5-hour reset remained **0% / 36%** (5h used / 7d used). This gauge cannot track actual ChatGPT plan usage, and no unlimited capacity claim is justified.
+
+**Five cloud schedules** currently active (all recurring hourly):
+- Renderer `6ae57b3727688191ab20279ff8fba0af`
+- QA `6ae57b3a03a48191889e3b0073c8e359`
+- Golden `6ae57b3d794c8191aff21eac865b780b`
+- Reliability `6ae57b40434c8191857969a577627d2f`
+- Chief `6ae57ba332a48191923e7f51ccfe7dd5`
+
+These use five of the available scheduled-task slots. Cloud execution depends on plan quota, connected SSH/GitHub app availability and platform delivery. If any task fails, the chief must state the exact failure; local minute watchdog cannot summon another model turn. All source code remains local PC worktrees and this coordination draft PR; production release still requires separately verified real first-shot G2 and multi-scene G3.
