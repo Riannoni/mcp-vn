@@ -106,4 +106,25 @@ test("symlinked canonical face bytes reject neural CG before queue mutation",asy
  const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
  assert.equal(after,before,"symlinked face must not mutate queue");
 });
+test("source save version changed during byte preflight must reject before queue mutation",async()=>{
+ const {game,background}=await fixture();
+ const gamePath=path.join(root,"games",game.id+".json");
+ const jobDir=path.join(root,"jobs");
+ const before=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ const originalOpen=fs.open;
+ let mutated=false;
+ fs.open=async (...args)=>{
+  if(!mutated&&String(args[0]).endsWith(background)){
+   mutated=true;
+   await fs.writeFile(gamePath,JSON.stringify({...game,version:game.version+1}));
+  }
+  return originalOpen(...args);
+ };
+ try{
+  await assert.rejects(()=>enqueue(game),/stale|version|source|scene|changed/i);
+ }finally{fs.open=originalOpen}
+ assert.equal(mutated,true,"source file preflight must have been reached");
+ const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ assert.equal(after,before,"stale save must not create a queued job");
+});
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));
