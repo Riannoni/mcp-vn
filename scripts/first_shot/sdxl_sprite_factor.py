@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
@@ -55,9 +56,24 @@ def _image_at(path, sha):
     raw = _read_pinned(path, sha, max_bytes=MAX_PRIVATE_IMAGE)
     if not raw.startswith(bytes.fromhex("89504e470d0a1a0a")):
         raise ValueError("not_original_png")
-    from PIL import Image
-    with Image.open(path) as image:
-        image.verify()
+    from PIL import Image, ImageFile
+    # Validate the *same pinned bytes* used by the hash fence, avoiding a
+    # filesystem re-open race. PNG CRC verification alone does not decompress
+    # IDAT and may pass an image that Comfy cannot decode.
+    try:
+        if ImageFile.LOAD_TRUNCATED_IMAGES:
+            raise ValueError("unsafe_truncated_png_decoder_policy")
+        with Image.open(io.BytesIO(raw)) as image:
+            width, height = image.size
+            if (image.format != "PNG" or width < 1 or height < 1
+                    or width > 4096 or height > 4096
+                    or width * height > 16_777_216):
+                raise ValueError("invalid_png_dimensions_or_format")
+            image.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            image.load()
+    except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as exc:
+        raise ValueError("invalid_png_pixels") from exc
     return sha
 
 
