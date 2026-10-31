@@ -686,6 +686,28 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
                                              "Idempotency-Key": "test-wait-3"}) as response:
             self.assertEqual(response.status, 400)
 
+    async def test_expired_idempotent_reconnect_is_explicitly_terminal(self):
+        # RED: a durable EXPIRED action must not be reported as a fresh 200
+        # receipt, because no GPU job can ever run for that action key.
+        body = self.body(71)
+        key = "explicit:expired-action"
+        digest = hashlib.sha256(m.canonical({"prompt": body["prompt"]}).encode()).hexdigest()
+        async with self.broker.guard:
+            row, error = self.broker.enqueue(key, digest, body)
+            self.assertIsNone(error)
+            self.broker.expire(row["prompt_id"])
+        for route in ("/prompt", "/api/prompt"):
+            async with self.client.post(route, json=body,
+                                        headers={"Idempotency-Key": "expired-action"}) as response:
+                self.assertEqual(response.status, 410)
+                answer = await response.json()
+                self.assertEqual(answer["error"], "queue_wait_expired")
+                self.assertEqual(answer["prompt_id"], row["prompt_id"])
+                self.assertIs(answer["retry_safe"], False)
+        self.assertEqual(self.fake.posts, [])
+        self.assertEqual(self.broker.db.execute(
+            "SELECT COUNT(*) FROM jobs WHERE key=?", (key,)).fetchone()[0], 1)
+
     async def test_real_multipart_upload_passes_through_alias(self):
         from aiohttp import FormData
         form = FormData()
