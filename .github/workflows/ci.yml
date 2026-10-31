@@ -14,11 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          # Repository has no committed npm lockfile; do not request a lockfile cache.
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
       - run: npm run build
@@ -31,6 +31,8 @@ jobs:
           python -m unittest discover -s standalone-web -p 'test_*.py'
         env:
           VN_WORKER_TOKEN: test-only-not-production
+      - name: Native team controller and 10-minute SLA regressions (stdlib only)
+        run: python -m unittest discover -q -s scripts/native_team/tests -p "test_*.py"
       - name: Ensure no runtime files or secrets are tracked
         run: |
           if git ls-files | grep -E '(^data/|^\.env$|\.pem$|\.key$|\.safetensors$|\.gguf$)'; then
