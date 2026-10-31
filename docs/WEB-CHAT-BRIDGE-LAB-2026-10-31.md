@@ -1,0 +1,209 @@
+# Browser-backed ChatGPT agent bridges: isolated evaluation (2026-10-31)
+
+> **DRAFT / source-only research.** Before any deployment read root [AGENTS.md](../AGENTS.md), [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md), [NIGHT-AGENT.md](NIGHT-AGENT.md). This experiment does **not** authorize a live browser bridge, account-sign-in automation, rate-limit bypass, new GPU work, game modifications or a merge into `main`. Render-v1 #20 remains G2 UNVERIFIED / G3 NO-GO.
+
+## 1. Question and scope
+
+The current GPT-6 Astra CLI night runner used 88% of its 5-hour Codex quota within its first ~23 minutes, with about 2.95M cumulative input tokens for four complete source-only turns. The owner wants to evaluate whether an alternative ChatGPT browser adapter could provide useful local agent assistance, then—**only if proven workable**—develop a coordinated four/five-worker architecture.
+
+An MIT-licensed adapter can be installed and audited, but that license is not a grant of access or an exemption from upstream ChatGPT terms/quotas. Current personal [OpenAI Terms of Use](https://openai.com/policies/row-terms-of-use/) restrict automated/programmatic extraction of Output and circumvention of rate limits. A browser shim cannot be represented as an officially supported unlimited ChatGPT API. Distinguish (a) tests of open-source code using synthetic fixtures from (b) calls to the signed-in ChatGPT service. This lab performs **only (a)**.
+
+## 2. Exact source revisions and isolated test location
+
+Cloned read-only-from-upstream into an independent private PC lab:
+- `leeguooooo/chatgpt-use` at `ecb204d4f4a4aef127851240af17dcf1a321afbc`; Rust, current `Cargo.toml` package version `0.0.11` (README version statements can lag).
+- `Octo-Lex/ChatGPT-Web2API` at `497527dceabfa3f95961e23c291e618c5570f1ac`; Python, `pyproject.toml` version `0.2.0`.
+
+Lab files: `~/.local/share/web-vn-bridge-eval/20261031/` on `Xavok-PC`. Only the two GitHub source clones, private test reports and separate container images/caches were added. Nothing is installed into game venv, worker, ComfyUI, home server, global browser profile or existing CLIProxyAPI. No tokens/cookies/management passwords were read, copied or mounted in tests.
+
+**Safety properties:** rootless Podman; disposable filesystem/process; `--network=none` during actual tests, `--cap-drop=all`, `--security-opt=no-new-privileges`, memory/CPU limits, and mounts restricted to lab source and disposable build cache. Package download/build and Rust crate fetching occurred in isolated bootstrap containers *before* offline tests, without home profiles. `W2A_E2E_RUN` never enabled. Upstream's 31 real-account E2E cases are excluded.
+
+**Rust verification** (Fedora 44 toolbox image + cargo fetched dependencies; offline testing, and binary `--help` confirmed `ask/run/review/serve/mcp/work` commands):
+```bash
+cargo fetch --locked                         # earlier dependency bootstrap
+cargo test --offline --locked -- --test-threads=2
+```
+Result observed: **218 passed, 0 failed, 2 ignored** (213+2+3 passed, 2 ignored). This establishes unit/tool-protocol behavior, not browser/Codex interoperability.
+
+**Python verification** (initial Fedora 44 / Python 3.14 image, network disabled):
+```bash
+python -m pytest -m 'not e2e' -q --disable-warnings
+```
+The large suite reached **83%** but stopped making progress; a lab-only timeout/stop ended the container. This is **NOT** a full passing suite; may be a test deadlock, environment limitation or genuine regression. A focused concurrency subset likewise stalled during an owned-tab isolation test. Reproduction under **Python 3.12** with `pytest-timeout` completed as a bounded, targeted 11-file concurrency/locking suite: **46 passed, 5 failed due to 12-second timeouts** (not a full pass). The five failures were:
+- `test_tab_isolation.py::test_connect_creates_owned_tab`
+- `test_tab_isolation.py::test_connect_waits_for_chatgpt_ready`
+- `test_tab_isolation.py::test_connect_adopts_existing_chatgpt_tab_in_adopt_mode`
+- `test_tab_isolation.py::test_default_owned_mode_creates_tab_even_when_chatgpt_tab_exists`
+- `test_tab_isolation.py::test_two_owned_drivers_get_distinct_target_ids`
+
+The initial warning was `identity_listener_attach_failed: CDP timeout: Network.enable`: the minimal fake WebSocket in these fixtures does not acknowledge the added CDP Network domain. A **lab-only, one-factor fixture experiment** stubbed `_attach_identity_listener` in `_make_driver()` (not the app runtime). That removed the warning but **did not remove the five timeouts**: repeat was still **46 passed / 5 failed**, this time ~77 seconds instead of ~97 seconds. Therefore the identity-listener mock alone is NOT the complete root cause. Following the project's STOP rule, no additional blind patching was attempted. The test file was restored exactly from backup; `git status --porcelain` on both lab source checkouts is clean.
+
+**Interpretation:** standalone MCP pool/capacity/lease tests leading up to that tab-isolation block passed; the per-tab ownership/integration behavior is **not independently established**, and the sandbox/no-network fake CDP environment could be a contributing factor. These failures do **not** prove the live browser is broken, but they DO prohibit calling Gate A passed for the complete parallel stack. No real account E2E was attempted.
+
+## 3. Architecture and functional suitability
+
+| Feature | chatgpt-use | ChatGPT-Web2API |
+| --- | --- | --- |
+| Primary API | Rust CLI/MCP `ask`/`run`, experimental Anthropic-style `serve` | OpenAI-compatible REST + MCP server |
+| Implementation | `chrome-use`, signed-in Chrome; macOS-first | Python + Chrome CDP, requires browser and account login |
+| Tool calls | Emulated JSON/text protocol, no native web function calling | Emulated/protocol transport; tool interface tested with mocks |
+| Worktree isolation | Local project commands, approvals configurable | Chat interface only, external agent owns file writes |
+| Multiple requests | **One active browser request/channel; process-global advisory lock** | Single tab default, experimental owned-tab pool and optional MCP session pool |
+| 4–5 independent account quotas? | **No.** Browser serialization and server-side accounting | **No.** Multiple tabs do not create distinct account quotas |
+| Images for CG visual QA | Not validated | README: image input not implemented |
+| Stability | Experimental; open [#18](https://github.com/leeguooooo/chatgpt-use/issues/18) reports October 2026 UI redesign breaking model/composer interaction | Mock coverage sizeable; real-account E2E opt-in, UI drift/429 and session races documented |
+| Tested here | Rust test suite passed, browser path NOT tested | Offline pytest partial; browser path NOT tested |
+| Production ready? | **NO** | **NO** |
+
+Important: the `chatgpt-use/AGENTS.md` upstream explicitly warns maintainers **never to run live ChatGPT tests**: around 23 fresh full-page loads triggered “Too many requests” on its author's account. `ChatGPT-Web2API` README defaults to serial requests; its B1 tab pool is marked experimental, recommends pool size 2 first and account-level burst/rate-limit checks before raising capacity.
+
+The mere availability of `/v1/chat/completions` or a compatible SDK schema does not establish full agent correctness. The test matrix must cover: exactly-once prompts, tool-call structure, multi-turn continuity, retry/no duplicate submissions, process crash and recovery, tab isolation, malformed/partial responses, observed cost per accepted source change, non-default model choice, client disconnects and permissions. Image-in support is additionally needed before a model can independently inspect private CG pixels. **No fake G2 visual approval.**
+
+## 4. Other open-source candidates discovered
+
+- [Jisiyong-A/chatgpt-web-provider](https://github.com/Jisiyong-A/chatgpt-web-provider): fail-closed semantic UI locator, exactly-once and crash-resume architecture; Node.js; very small user base, not locally tested.
+- [cromat/chatgpt-web-session-proxy](https://github.com/cromat/chatgpt-web-session-proxy): local Pi/OpenAI chat-completions proxy with session affinity, Xvfb Chrome on Linux; not locally tested.
+- [tang-vu/tab2api](https://github.com/tang-vu/tab2api): recent TypeScript browser bridge including text and image claims; not locally tested, still experimental.
+- [int04/ChatCmd](https://github.com/int04/ChatCmd): Rust/SQLite/MCP permission-scoped local worker and management UI; an interesting orchestration alternative with browser integration, not a proven replacement for model subscription limits.
+- [stufently/gpt-web-gateway](https://github.com/stufently/gpt-web-gateway): Chrome/patchright bridge; README warns of account/ToS risk; not tested.
+- [halochamp/MCP-LinkGPT](https://github.com/halochamp/MCP-LinkGPT): bounded ChatGPT Web reviewer over MCP; source-only second opinion rather than multi-worker model backend.
+- [damianofalcioni/browser-llm-bridge](https://github.com/damianofalcioni/browser-llm-bridge): browser REST PoC, not tested.
+
+Do not infer compatibility or security from GitHub star counts. Re-evaluate active version/commit and issue trackers before using any candidate.
+
+## 5. Next phase architecture — design only, NOT deployed
+
+A serious five-worker system for `web-vn` should **not** use five Chrome tabs as five independent accounts. Separate *parallel source work* from *shared rate-limited inference*:
+
+```text
+                       master goal #20 / newest RENDER-HANDOFF
+                                        |
+                          SQLite WAL job coordinator
+                      task DAG / priority / leases / events
+                                        |
+       +---------------+----------------+--------------+----------------+
+       |               |                |              |                |
+    worker 1         worker 2         worker 3       worker 4        reviewer
+    Source A         Source B         Tests          Docs       independent QA
+       |               |                |              |                |
+       +---------------+------- model request broker ----+----------------+
+                                       |
+                        single permitted upstream capacity
+                      (initial concurrency=1, measured/fenced)
+                                       |
+                           local source-only evidence
+                                       |
+                            draft PR(s), NOT main
+```
+
+**Contracts to implement only after backend smoke success:**
+1. **Single authoritative task ledger**, e.g. SQLite WAL: `task_id`, `goal_id`, `parent_sha`, `deps[]`, `owner`, `state`, `lease_until`, `attempt`, `idempotency_key`, `branch`, `changed_paths`, `evidence_path`, `test_outcome`, `reviewer`, `gpu_lease`, `created_at`, `updated_at`.
+2. Atomic task claims/heartbeats; crash-safe leases and exactly-once *commit/publish* fence. Retry is not permission to duplicate ChatGPT sends or GPU jobs. Limit attempts to 2–3, classify failures and record BLOCKED.
+3. Four **independent git worktrees/branches** pinned to a known base SHA, separate caches/logs. No two writers to the same source paths without explicit integration; a coordinator resolves overlapping diffs and stale handoffs.
+4. One serialized **GPU lease** across all workers, preserving the canonical game save and existing accepted assets. One source validator or CG reviewer cannot silently consume the only GPU while others use it.
+5. A model request broker: per-provider / per-account quota, rate-limit backoff, bounded token/context budget, explicit upstream error, no model fallback without user approval. Start at inference concurrency=1 for one ChatGPT account; increase only if both service rules and measured correctness permit.
+6. Completion requires independent source tests, negative regression, diff review and an evidence checksum. Source stage DONE is not G2/G3 accepted. A reviewer must inspect exact original PNG for any genuine CG claim.
+7. Local reporting every 30–60 seconds from a read-only aggregator; **ChatGPT Automation** checks summarized state hourly, compares PRs/handoff and can execute bounded safe repairs only. Its published status must show stale heartbeats and blocked tasks honestly.
+8. Draft PR from an independent reviewable branch, never auto merge to `main`; no credentials, CG or private story in GitHub.
+
+## 6. Explicit decision gates
+
+**Gate A — Offline:** unit tests for transport, parser, queues, locks, session pooling and failure modes pass on supported Python/Rust; otherwise fix or exclude the candidate. This lab evaluates Gate A only.
+
+**Gate B — Live functional canary:** would require a separately authorized, logged-in, dedicated Chrome profile and lawful service access. Validate one task end-to-end with isolated non-private input, no automated mass submission, and explicit measurement of UI limits. The current task does **not** perform this step and does not claim that the browser surface has a supported automated API.
+
+**Gate C — Source task quality:** accepted patch + negative test + independent review on an isolated copy of web-vn, no production changes.
+
+**Gate D — Coordination:** concurrency 4–5 for *independent source/CPU* workers, request broker honors actual account restrictions and a single GPU lock, with measured no-duplicate/crash-recovery results.
+
+**Gate E — Render quality:** separately verified G1/G2/G3 from [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md); mock API tests alone do not satisfy any visual gate.
+
+### Current disposition
+
+**Gate A outcome:** `chatgpt-use` offline Rust suite PASS; `ChatGPT-Web2API` full mocked integration suite NOT PASSED (five reproducible tab-isolation timeouts, 46 selected cases pass). **Gate B/live NOT STARTED** for both. 
+
+**No browser bridge has been connected to the actual account or enabled as a nightly model provider.** Existing Codex, quota monitor, timers and ChatGPT hourly reporting are unchanged. This is a deliberately separate **draft research PR** to keep the experiment reviewable and avoid accidental production deployment.
+
+## 7. Расширенная офлайн-проверка и двухворкерный пилот (2026-10-31)
+
+Тестовая инфраструктура: независимые Git-clone в `~/.local/share/web-vn-bridge-eval/20261031/src/`. Зависимости получали в ограниченных контейнерах; `npm ci --ignore-scripts` (не исполнять install hooks). **Сами тесты запускались с network=none**, cap-drop=all, no-new-privileges, CPU/RAM/pids bounds, без Chrome-профилей, OAuth, production данных и игрового GPU. Никаких реальных запросов в ChatGPT не отправляли.
+
+| Кандидат | Upstream SHA (начало) | Фактический офлайн-результат |
+| --- | --- | --- |
+| chatgpt-use | `ecb204d4f4a4` | **218 PASS, 2 ignored**; браузер не подключён |
+| ChatGPT-Web2API | `497527dceabf` | **46 PASS, 5 TIMEOUT** в tab-isolation (Python 3.12); исправление одной фикстуры не помогло; оригинал восстановлен |
+| chatgpt-web-provider | `eac9c993d2fd` | **99 PASS / 12 suites**, npm build PASS |
+| tab2api | `decba9acb419` | **292 PASS, 1 skipped / 32 suites**, npm build PASS |
+| chatgpt-web-session-proxy | `753d7d8c5f0f` | **32 PASS**, npm build PASS |
+| gpt-web-gateway | `fbf0141035af` | `npm test` exit 0, 11 TAP sub-suites без ошибок; build script не определён |
+| browser-llm-bridge | `e12ee318c363` | npm ci PASS, test/build scripts отсутствуют — **UNTESTED** |
+| MCP-LinkGPT | `30dbc618115a` | первые коллекции тестов BLOCKED: dependency browser-use и конфликт mount/profile path; полную повторную проверку пока нельзя назвать успешной |
+| ChatCmd | `e604ac8cb533` | Cargo fetch успешно завершён; тяжёлый workspace test был запущен, финальный код выхода пока не подтверждён — **NOT VERIFIED** |
+
+**Ни один кандидат не прошёл live Gate B**: ручной вход через dedicated browser profile, нормальный ответ, полноценные tool calls и подтверждённая тарификация обычного ChatGPT не проверены. Следовательно, ни один не установлен в CLIProxyAPI в качестве рабочего backend. Более подробные данные стенда сохранены локально.
+
+### Реально выполненный двухворкерный тест
+
+Прототип [`scripts/parallel_task_coordinator.py`](../scripts/parallel_task_coordinator.py), [9 regression tests](../scripts/tests/test_parallel_task_coordinator.py). SQLite WAL, атомарный claim задачи, два независимых detached Git-worktree, ограничение пересекающихся write scopes, зависимости, deadline leases, fencing tokens для запрета stale completion, 2 attempts максимум и отдельные SHA256 evidence. Нет сетевых/модельных запросов, GPU, изменения игры или GitHub main.
+
+- **9/9** собственных unit tests прошли.
+- Первый live source-only demo на ПК: 1 PASS / 1 BLOCKED из-за ожидания конкретных Python-файлов, отсутствующих в закреплённом старом SHA `ca10be4`. Ошибка не была скрыта.
+- Исправлена одна причина: синтаксический аудит ищет существующие `scripts/**/*.py`, а не будущие файлы.
+- Повторное выполнение **двумя независимыми процессами**: оба завершились `exit=0`, SQLite `done=2/2`, 6 audit events, длительность **0.815 с**. Состояние/evidence в приватном `pilot-2-workers-v2/`.
+- Это **два параллельных локальных исполнителя source/CPU задач**, а не два одновременно генерирующих ChatGPT диалога. Квоты и браузерная устойчивость пока НЕ проверены.
+
+Пример для отдельного одноразового теста:
+
+~~~bash
+python3 scripts/parallel_task_coordinator.py demo --root /tmp/new-web-vn-pilot --base /path/to/isolation-only-web-vn-checkout
+python3 scripts/parallel_task_coordinator.py status --db /tmp/new-web-vn-pilot/tasks.sqlite3
+~~~
+
+Вторая команда read-only по смыслу, но открывает существующую SQLite БД. Для сохранности запуска выбирайте НОВУЮ директорию; demo намеренно отказывает, если папка уже существует. Нельзя делать `demo` на каталоге с чужими worktrees.
+
+### Решение по внедрению
+
+Из протестированных browser shims `tab2api` и `chatgpt-web-provider` наиболее перспективны по офлайн покрытию. Однако 292 и 99 зелёных mock-тестов **не доказывают доступность и допустимость автоматизированного ChatGPT Web backend**. Проект `ChatGPT-Web2API` имеет пять неисправленных/необъяснённых таймаутов. Не объявлять какой-либо вариант «работающим без Codex API» без Gate B и проверки правил сервиса. Уже внедрён лишь изолированный **двухпроцессный координационный пилот**; ни одна модель не получила доступ к пользовательской сессии. 4–5 таких независимых worktrees — задача следующего архитектурного этапа, а не оправдание запуска пяти запросов к одному аккаунту.
+
+
+## 8. Заключительные проверки среды и стоп-факторы
+
+**MCP-LinkGPT (`30dbc618115a`):** после установки declared Python-зависимостей и устранения неверного расположения mount получено **39 passed, 4 failed**. Четыре проверки безопасности/владения browser-profile и symbolic links в rootless-контейнере не прошли. После нескольких ограниченных изменений окружения тесты намеренно остановлены: **Gate A FAIL/INCONCLUSIVE**. Настоящего ChatGPT-аккаунта не использовали.
+
+**ChatCmd (`e604ac8cb533`):** сначала 291 passed / 1 failed, так как Node.js не был в PATH. После установки локального Node.js 24.22.2 и npm dependencies (`web/node_modules/jsdom`) **основной бинарный набор дал 292 passed, 1 ignored**, дополнительный набор — **79 passed, 2 ignored**; затем отдельный интеграционный `coding_behavior_harness` завершился **6 passed, 1 failed** из-за `fixture baseline drifted`: ожидаемый SHA256 фикстуры не совпал с фактическим. Upstream checkout `git status --porcelain` чистый. Не исправлять baseline hash наугад и не считать workspace suite успешным: **Gate A неполный/FAIL**.
+
+**browser-llm-bridge (`e12ee318c363`):** в Node.js 24 без сети проверен синтаксис **23 JavaScript-файлов, 23/23 PASS**. Отсутствие `npm test` и `npm run build` остаётся пробелом тестового покрытия. Это статическая проверка, а не functional PASS.
+
+**Решение:** для дальнейшей оценки единственного разрешённого модельного backend первыми кандидатами остаются `tab2api` и `chatgpt-web-provider`, поскольку их тестовые наборы и сборки полностью прошли в офлайн-стенде. Однако **ни один** из них не прошёл фактическую авторизованную сессию, реальный tool-calling или измерение квот и поэтому **не интегрирован с night-agent**. Подготовленный двухворкерный SQLite-пилот успешно исполняет CPU/source-only операции независимо от этих проектов, без изменения production.
+
+
+## 9. Controlled localhost live preflight (31 Oct 2026, 11:34–11:40 Novosibirsk)
+
+**Owner explicitly requested stopping the current night-agent before browser-backed tests.** Existing local night run `20261031-021227` was already `paused_quota` and its selected systemd unit was inactive. Both `vn-night-quota-resume.timer` and `vn-night-watchdog.timer` were disabled and stopped. The installed CLI `vn-night stop` returned 5 because the transient systemd unit had already disappeared; after confirming every named unit inactive, we atomically marked `status.json` state `stopped` with a private backup. Existing hourly ChatGPT Automation `6ae4ec33db048191af03a0f0c102e8f4` was disabled. Game `mcp-vn-worker.service` and original CLIProxyAPI stayed active. This explicitly stopped ONLY the autonomous night agent, not the visual-novel game worker.
+
+Two isolated adapter binaries (existing Node dependencies / previously built dist, fixed upstream SHAs) were then started briefly as **loopback-only systemd transient test processes**. No signed-in Chrome or secret profiles mounted, no production changes:
+
+| Test | tab2api | chatgpt-web-provider |
+| --- | --- | --- |
+| Server startup | PASS after moving profile path under `TAB2API_DATA_DIR` (required by upstream safety check) | PASS with Chrome autolaunch disabled |
+| GET health | `/healthz` HTTP 200, service=tab2api | `/health` HTTP 200, status=degraded |
+| GET models | `/v1/models` HTTP 200 (local API key; value never printed; file 0600) | `/v1/models` HTTP 200 |
+| Authenticated readyness / browser | `/readyz` HTTP 503, session=browser_disconnected | Browser disconnected, auth_state=not_checked |
+| One harmless POST to local chat route | HTTP **503 browser_disconnected** | HTTP **503 BROWSER_UNAVAILABLE** |
+| Authenticated ChatGPT model output / tool calls | **NOT TESTED** | **NOT TESTED** |
+
+These were **live local process/network checks**, not ChatGPT online inference. Errors indicate correct fail-closed behavior and **do not consume the account's ChatGPT or Codex quota**. Both transient adapter units were subsequently **stopped**, no persistent background browser adapters installed.
+
+PC has Flatpak Chrome, but no running GUI browser and the systemd user environment is gamescope (no available DISPLAY/WAYLAND_DISPLAY for the remote SSH process). Connected Browser tool in ChatGPT returned `Browser access requires the originating browser context`; it cannot provide the missing signed-in session.
+
+For a future *manual desktop-login* preflight, installed the exact Playwright-matched Chrome for Testing `156.0.8078.4` under the isolated lab `runtime/playwright-browsers/` (not into production or system Chrome). It passed a real headless Chromium process `about:blank` check (`exit=0`, HTML rendered). A 0700 interactive helper exists:
+
+~~~bash
+~/.local/share/web-vn-bridge-eval/20261031/build/interactive-login-tab2api.sh
+~~~
+
+**Requires the owner to open a Terminal in Bazzite Desktop Mode** and personally authenticate through the dedicated Chromium window; the script refuses to start without graphical DISPLAY/WAYLAND_DISPLAY. It uses only `runtime/tab2api/data/profile` and will not copy the owner's existing browser cookies/token. The assistant did **not** execute login or inspect an account. Keep all future tests bounded, never automatically retry a submitted web prompt and never claim quota independence without separate actual usage evidence.
+
+**Compliance constraint:** OpenAI's published [personal terms](https://openai.com/policies/row-terms-of-use/) restrict automated/programmatic extraction of Output and rate-limit circumvention. OSS MIT license of a browser bridge does not authorize upstream account automation. Thus no browser bridge is approved here for autonomous quota-bypass deployment. The permitted technical preflight and source tests above remain valuable; further live use must be consistent with the provider's terms.
+
+**Current disposition:** terminated night AI agent; *neither adapter selected for production*; tab2api is the provisional stronger local test candidate (292 passing offline mock tests, first live loopback healthy, isolated Playwright runnable), but browser login, live model answers, multi-turn continuity, two simultaneous ChatGPT sessions and exact billing/quota effects all remain **UNVERIFIED**.
