@@ -7,12 +7,15 @@ enabled and not in_progress, and only then reserve + issue ONE official run_now.
 The platform decides actual availability and rate limits. No Codex quota read.
 """
 import argparse
+from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
 import time
+import uuid
 
 TARGETS = {
     "broker": "6ae5d49054d48191ba1a0c2f2ba55816",
@@ -31,49 +34,117 @@ TARGETS = {
     "decision": "6ae5e8a59f2c8191a29d40c1c12712f0",
     "gpu_lab": "6ae5e8a91cfc8191bb938957f214f8c3",
 }
+# Owner-authorized setup/review can emit a handoff without impersonating a
+# Scheduled worker. It is never a wake target or a recipient acknowledgement.
+REQUESTORS = set(TARGETS) | {"operator"}
 KINDS = {"source_pr_ready", "review_accepted", "visual_candidate_ready",
-         "blocker_cleared", "contract_verified", "integration_ready"}
+         "blocker_cleared", "contract_verified", "integration_ready",
+         "visual_review_completed", "operation_blocked"}
 SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MIN_SECONDS_BETWEEN_TARGET_WAKES = 240
 MAX_TARGET_WAKES_PER_HOUR = 3
 MAX_GLOBAL_WAKES_PER_HOUR = 18
+OUTCOMES = {"requested", "started", "completed", "not_dispatched", "unknown", "blocked"}
+OBSERVERS = {"chief", "dispatcher", "decision"}
 
 
-def check(root, target, kind, evidence_sha, requestor, reserve=False, now=None):
-    if target not in TARGETS or requestor not in TARGETS:
+def _validate(target, kind, evidence_sha, requestor):
+    if target not in TARGETS or requestor not in REQUESTORS:
         raise ValueError("unknown cloud role")
-    if requestor == target:
-        return {"eligible": False, "reason": "self_wake_not_needed", "target": target}
     if kind not in KINDS or not isinstance(evidence_sha, str) or not SHA.fullmatch(evidence_sha):
         raise ValueError("unverified event type or source hash")
+
+
+@contextmanager
+def _database(root):
+    """Migrate old reservations conservatively; no timeout authorizes a retry."""
     root = Path(root).expanduser().resolve()
     state = root / "state"
     if not state.is_dir():
         raise FileNotFoundError("native team state missing")
     path = state / "scheduled-wake-history.sqlite3"
-    instant = time.time() if now is None else now
     db = sqlite3.connect(path, timeout=10, isolation_level=None)
+    db.row_factory = sqlite3.Row
     try:
         if path.is_file():
             os.chmod(path, 0o600)
         db.execute("PRAGMA busy_timeout=10000")
+        db.execute("BEGIN IMMEDIATE")
         db.execute("CREATE TABLE IF NOT EXISTS wake_signal ("
                    "target TEXT NOT NULL,event_kind TEXT NOT NULL,"
                    "evidence_sha TEXT NOT NULL,requestor TEXT NOT NULL,"
                    "requested_at REAL NOT NULL,"
                    "PRIMARY KEY(target,event_kind,evidence_sha))")
+        db.execute("CREATE TABLE IF NOT EXISTS wake_attempt ("
+                   "reservation_id TEXT PRIMARY KEY,target TEXT NOT NULL,event_kind TEXT NOT NULL,"
+                   "evidence_sha TEXT NOT NULL,requestor TEXT NOT NULL,reserved_at REAL NOT NULL,"
+                   "status TEXT NOT NULL,updated_at REAL NOT NULL,receipt_sha TEXT,run_id TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS pending_signal ("
+                   "target TEXT NOT NULL,event_kind TEXT NOT NULL,evidence_sha TEXT NOT NULL,"
+                   "requestor TEXT NOT NULL,created_at REAL NOT NULL,reason TEXT NOT NULL,"
+                   "consumed_at REAL,receipt_sha TEXT,run_id TEXT,"
+                   "PRIMARY KEY(target,event_kind,evidence_sha))")
+        db.execute("CREATE TABLE IF NOT EXISTS wake_outcome ("
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT,reservation_id TEXT NOT NULL,"
+                   "status TEXT NOT NULL,observed_by TEXT NOT NULL,observed_at REAL NOT NULL,"
+                   "receipt_sha TEXT NOT NULL,run_id TEXT)")
+        # Legacy rows prove only a reservation, not whether run_now was called.
+        legacy = db.execute("SELECT s.* FROM wake_signal s WHERE NOT EXISTS ("
+                            "SELECT 1 FROM wake_attempt a WHERE a.target=s.target AND "
+                            "a.event_kind=s.event_kind AND a.evidence_sha=s.evidence_sha)").fetchall()
+        for row in legacy:
+            key = (row["target"], row["event_kind"], row["evidence_sha"])
+            token = "legacy-" + hashlib.sha256("|".join(key).encode()).hexdigest()
+            db.execute("INSERT INTO wake_attempt VALUES (?,?,?,?,?,?,?,?,?,?)",
+                       (token, *key, row["requestor"], row["requested_at"], "unknown",
+                        row["requested_at"], None, None))
+            _pending(db, key, row["requestor"], row["requested_at"], "legacy_request_unknown")
+        db.execute("COMMIT")
+        yield db
+    finally:
+        if db.in_transaction:
+            db.execute("ROLLBACK")
+        db.close()
+
+
+def _pending(db, key, requestor, instant, reason):
+    db.execute("INSERT OR IGNORE INTO pending_signal "
+               "(target,event_kind,evidence_sha,requestor,created_at,reason) VALUES (?,?,?,?,?,?)",
+               (*key, requestor, instant, reason))
+
+
+def _latest(db, key):
+    return db.execute("SELECT * FROM wake_attempt WHERE target=? AND event_kind=? AND evidence_sha=? "
+                      "ORDER BY reserved_at DESC,rowid DESC LIMIT 1", key).fetchone()
+
+
+def check(root, target, kind, evidence_sha, requestor, reserve=False, now=None):
+    _validate(target, kind, evidence_sha, requestor)
+    if requestor == target:
+        return {"eligible": False, "reason": "self_wake_not_needed", "target": target}
+    instant = time.time() if now is None else now
+    key = (target, kind, evidence_sha)
+    with _database(root) as db:
         if reserve:
             db.execute("BEGIN IMMEDIATE")
-        if db.execute("SELECT 1 FROM wake_signal WHERE target=? AND event_kind=? AND evidence_sha=?",
-                      (target, kind, evidence_sha)).fetchone():
-            result = {"eligible":False, "reason":"already_requested_for_exact_evidence"}
+            # A rate/cooldown refusal postpones dispatch, not the real event.
+            _pending(db, key, requestor, instant, "awaiting_event_consumption")
+        pending = db.execute("SELECT consumed_at FROM pending_signal WHERE "
+                             "target=? AND event_kind=? AND evidence_sha=?", key).fetchone()
+        previous = _latest(db, key)
+        if pending is not None and pending["consumed_at"] is not None:
+            result = {"eligible": False, "reason": "already_consumed_exact_evidence"}
+        elif previous is not None and previous["status"] != "not_dispatched":
+            result = {"eligible": False, "reason": "already_requested_for_exact_evidence",
+                      "delivery_status": previous["status"],
+                      "reservation_id": previous["reservation_id"]}
         else:
-            latest = db.execute("SELECT MAX(requested_at) FROM wake_signal WHERE target=?", (target,)).fetchone()[0]
+            latest = db.execute("SELECT MAX(reserved_at) FROM wake_attempt WHERE target=?", (target,)).fetchone()[0]
             lane_count = db.execute(
-                "SELECT COUNT(*) FROM wake_signal WHERE target=? AND requested_at>?",
+                "SELECT COUNT(*) FROM wake_attempt WHERE target=? AND reserved_at>?",
                 (target, instant-3600)).fetchone()[0]
             global_count = db.execute(
-                "SELECT COUNT(*) FROM wake_signal WHERE requested_at>?",
+                "SELECT COUNT(*) FROM wake_attempt WHERE reserved_at>?",
                 (instant-3600,)).fetchone()[0]
             if lane_count >= MAX_TARGET_WAKES_PER_HOUR:
                 result = {"eligible":False, "reason":"per_target_hourly_budget"}
@@ -87,33 +158,162 @@ def check(root, target, kind, evidence_sha, requestor, reserve=False, now=None):
         result.update({"target":target,"automation_id":TARGETS[target],
                        "event_kind":kind,"evidence_sha":evidence_sha})
         if reserve and result["eligible"]:
-            db.execute("INSERT INTO wake_signal VALUES (?,?,?,?,?)",
+            token = uuid.uuid4().hex
+            db.execute("INSERT INTO wake_signal VALUES (?,?,?,?,?) ON CONFLICT(target,event_kind,evidence_sha) "
+                       "DO UPDATE SET requestor=excluded.requestor,requested_at=excluded.requested_at",
                        (target,kind,evidence_sha,requestor,instant))
+            db.execute("INSERT INTO wake_attempt VALUES (?,?,?,?,?,?,?,?,?,?)",
+                       (token, *key, requestor, instant, "reserved", instant, None, None))
+            _pending(db, key, requestor, instant, "awaiting_event_consumption")
             result["reserved"] = True
+            result["reservation_id"] = token
+            result["delivery_status"] = "reserved"
             result["note"] = "Use official Automations.run_now. Reservation is not a launch."
         if reserve:
             db.execute("COMMIT")
         return result
-    except BaseException:
-        if db.in_transaction:
-            db.execute("ROLLBACK")
-        raise
-    finally:
-        db.close()
+
+
+def defer(root, target, kind, evidence_sha, requestor, reason="target_busy", now=None):
+    """Keep a real event while its target is busy; never reserve a cloud call."""
+    _validate(target, kind, evidence_sha, requestor)
+    if requestor == target or not isinstance(reason, str) or not 3 <= len(reason) <= 200:
+        raise ValueError("invalid deferred handoff")
+    with _database(root) as db:
+        _pending(db, (target, kind, evidence_sha), requestor,
+                 time.time() if now is None else now, reason)
+    return {"deferred": True, "target": target, "evidence_sha": evidence_sha,
+            "note": "Pending consumption is not a request, start or visual approval."}
+
+
+def _receipt(receipt_sha, run_id=None, require_run=False):
+    if not isinstance(receipt_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_sha):
+        raise ValueError("exact receipt SHA256 required")
+    if require_run and not run_id:
+        raise ValueError("observed official run ID required")
+    if run_id is not None:
+        try:
+            uuid.UUID(run_id)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("invalid official run ID") from exc
+
+
+def record_outcome(root, target, kind, evidence_sha, requestor, reservation_id,
+                   outcome, receipt_sha, run_id=None, now=None):
+    """Record tool evidence, not a model call. Denial/unknown NEVER unlock retries.
+
+    Only the reserving role can attest it never invoked run_now. A timed-out,
+    refused or accepted invocation cannot be reclassified as not_dispatched.
+    Trusted control roles may reconcile positively observed platform run IDs.
+    """
+    _validate(target, kind, evidence_sha, requestor)
+    if outcome not in OUTCOMES:
+        raise ValueError("invalid delivery outcome")
+    _receipt(receipt_sha, run_id, require_run=outcome in {"started", "completed"})
+    transitions = {
+        # A caller may have died after run_now but before recording requested.
+        # Official positive evidence can reconcile that gap; elapsed time cannot.
+        "reserved": {"requested", "started", "completed", "not_dispatched", "unknown", "blocked"},
+        "requested": {"started", "completed", "unknown", "blocked"},
+        "unknown": {"started", "completed", "blocked"},
+        "started": {"completed", "unknown", "blocked"},
+    }
+    instant = time.time() if now is None else now
+    with _database(root) as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = _latest(db, (target, kind, evidence_sha))
+        if row is None or row["reservation_id"] != reservation_id:
+            raise ValueError("stale or missing reservation token")
+        if requestor != row["requestor"] and requestor not in OBSERVERS:
+            raise ValueError("unrelated role cannot record delivery")
+        if outcome == "not_dispatched" and requestor != row["requestor"]:
+            raise ValueError("only the reserver can attest no call was made")
+        if row["status"] == outcome and row["receipt_sha"] == receipt_sha and row["run_id"] == run_id:
+            db.execute("COMMIT")
+            return {"recorded": True, "status": outcome, "replayed": True}
+        if outcome not in transitions.get(row["status"], set()):
+            raise ValueError("unsafe delivery transition")
+        if row["run_id"] and run_id != row["run_id"]:
+            raise ValueError("official run ID cannot change")
+        db.execute("UPDATE wake_attempt SET status=?,updated_at=?,receipt_sha=?,run_id=? "
+                   "WHERE reservation_id=?", (outcome, instant, receipt_sha, run_id, reservation_id))
+        db.execute("INSERT INTO wake_outcome(reservation_id,status,observed_by,observed_at,receipt_sha,run_id) "
+                   "VALUES(?,?,?,?,?,?)", (reservation_id, outcome, requestor, instant, receipt_sha, run_id))
+        db.execute("COMMIT")
+    return {"recorded": True, "status": outcome, "reservation_id": reservation_id,
+            "note": "Delivery state is separate from consuming evidence and passing G2."}
+
+
+def acknowledge(root, target, kind, evidence_sha, requestor, receipt_sha, run_id, now=None):
+    """The recipient records consuming exact evidence, including a negative result."""
+    _validate(target, kind, evidence_sha, requestor)
+    _receipt(receipt_sha, run_id, require_run=True)
+    if requestor != target:
+        raise ValueError("only the recipient can acknowledge consumption")
+    key = (target, kind, evidence_sha)
+    with _database(root) as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT * FROM pending_signal WHERE target=? AND event_kind=? AND evidence_sha=?", key).fetchone()
+        if row is None:
+            raise ValueError("missing pending event")
+        if row["consumed_at"] is not None:
+            if (row["receipt_sha"], row["run_id"]) != (receipt_sha, run_id):
+                raise ValueError("consumption receipt is immutable")
+        else:
+            db.execute("UPDATE pending_signal SET consumed_at=?,receipt_sha=?,run_id=? "
+                       "WHERE target=? AND event_kind=? AND evidence_sha=?",
+                       (time.time() if now is None else now, receipt_sha, run_id, *key))
+        db.execute("COMMIT")
+    return {"acknowledged": True, "target": target, "evidence_sha": evidence_sha}
+
+
+def status(root):
+    """Bounded recovery inventory; a completed cloud run can still owe consumption."""
+    with _database(root) as db:
+        total = db.execute("SELECT COUNT(*) FROM pending_signal WHERE consumed_at IS NULL").fetchone()[0]
+        pending = [dict(r) for r in db.execute(
+            "SELECT * FROM pending_signal WHERE consumed_at IS NULL ORDER BY created_at LIMIT 200")]
+        for event in pending:
+            attempt = _latest(db, (event["target"], event["event_kind"], event["evidence_sha"]))
+            event["delivery"] = dict(attempt) if attempt else None
+    return {"pending": pending, "pending_total": total, "truncated": total > len(pending),
+            "automations_invoked": False}
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", required=True)
-    p.add_argument("--target", choices=sorted(TARGETS), required=True)
-    p.add_argument("--event-kind", choices=sorted(KINDS), required=True)
-    p.add_argument("--evidence-sha", required=True)
-    p.add_argument("--requestor", choices=sorted(TARGETS), required=True)
-    p.add_argument("--reserve", action="store_true")
+    p.add_argument("--target", choices=sorted(TARGETS))
+    p.add_argument("--event-kind", choices=sorted(KINDS))
+    p.add_argument("--evidence-sha")
+    p.add_argument("--requestor", choices=sorted(REQUESTORS))
+    actions = p.add_mutually_exclusive_group()
+    actions.add_argument("--reserve", action="store_true")
+    actions.add_argument("--defer", action="store_true")
+    actions.add_argument("--status", action="store_true")
+    actions.add_argument("--acknowledge", action="store_true")
+    actions.add_argument("--record-outcome", choices=sorted(OUTCOMES))
+    p.add_argument("--reason", default="target_busy")
+    p.add_argument("--reservation-id")
+    p.add_argument("--receipt-sha")
+    p.add_argument("--run-id")
     args = p.parse_args()
-    print(json.dumps(check(args.root,args.target,args.event_kind,
-                           args.evidence_sha,args.requestor,args.reserve),
-                     sort_keys=True))
+    if args.status:
+        result = status(args.root)
+    else:
+        if not all((args.target,args.event_kind,args.evidence_sha,args.requestor)):
+            p.error("target, event-kind, evidence-sha and requestor are required")
+        common = (args.root,args.target,args.event_kind,args.evidence_sha,args.requestor)
+        if args.defer:
+            result = defer(*common,reason=args.reason)
+        elif args.acknowledge:
+            result = acknowledge(*common,args.receipt_sha,args.run_id)
+        elif args.record_outcome:
+            result = record_outcome(*common,args.reservation_id,args.record_outcome,
+                                    args.receipt_sha,run_id=args.run_id)
+        else:
+            result = check(*common,reserve=args.reserve)
+    print(json.dumps(result,sort_keys=True))
 
 
 if __name__ == "__main__":

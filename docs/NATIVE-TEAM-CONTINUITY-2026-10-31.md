@@ -1,39 +1,58 @@
-# Native Team continuity V8 — 31 October 2026
+# Native Team continuity — 31 October 2026
 
-## Goal and honest operating contract
+## Current goal and operating authority
 
-User target: useful web-vn P0 source development while allowance is available, with **actionable ready-to-claim idle <=600 s**, aspirational <=300 s, and no fabricated work or reduced quality. This is a **measured SLO, not a platform-guaranteed SLA**: ChatGPT scheduled tasks can be hourly and an extra `run_now` has no guaranteed start time. Work and Codex share included agentic usage allowance; the local Codex OAuth meter is **not** an authoritative Work usage meter. No paid API, OAuth bypass or silent model switch is permitted.
+Read `AGENTS.md`, full `docs/DEVELOPMENT-AND-TESTING.md`, then [WORKER-OPERATING-CONTRACT-2026-10-31.md](WORKER-OPERATING-CONTRACT-2026-10-31.md). The reviewed prompt source is `scripts/native_team/ops/worker-prompts.json`; [the roster](PRO-NATIVE-AUTONOMOUS-TEAM-2026-10-31.md) describes the 15 project role records, 14 enabled, with Golden Evidence Engineer paused after #76 delivery. Official `peek` and actual controller/claim state establish current liveness. A document or a Scheduled request is not a running worker.
 
-The automation may be idle legitimately when there is no meaningful approved independent P0 source task, no permitted quota, missing GPU/human G2 evidence, an unresolved dependency, or an unsafe state.
+Today's objective is **background + canonical RGBA sprite + three different story CGs**, first attempt, independent mandatory G2, by **23:59 31 October Asia/Novosibirsk (16:59 UTC)**. Generation→ready-to-publish must be **≤20 seconds per asset including queue, preparation, GPU, postprocess and mandatory QA**. Measure GPU submit→PNG, narrator/full-turn and offline independent development-review duration separately. Any actual runtime publication-blocking wait still belongs to end-to-end latency. The target is not yet demonstrated. Source-only throughput and a five-second unanchored image do not complete it.
 
-## Installed architecture (Bazzite Xavok PC)
+Actionable ready-to-claim idle ≤600 seconds, aspirational ≤300 seconds, is a **measured SLO, not a platform SLA**. Hourly schedules and official extra `run_now` have no guaranteed startup. Idle can be legitimate for no meaningful ready work, unresolved dependency/ownership, missing original-pixel evidence or a platform refusal. Do not fabricate backlog or repeatedly create helpers to avoid reporting idle.
 
-- Immutable source-only control-root: `~/.local/share/web-vn-native-team/run-20261031-full`.
-- One-minute `systemd --user` watchdog and user linger. Only local SQLite WAL and deterministic Python code; **no LLM/model/network/GPU calls**.
-- `control/task_catalog.py` reads `control/task-catalog.json`: curated exact source-only P0 specs, path whitelists, idempotent task IDs, validated deps, at most two pending jobs per lane. `BEGIN IMMEDIATE` serializes concurrent enqueue with Cloud Chief. New specs must be separately grounded in observed P0 issues and reviewed handoffs; never invent tasks for uptime.
-- `teamctl.py enqueue` is transactional, so a worker cannot claim a half-populated record. `coordinator.py` and `wake_guard.py` fence overlapping blocked and review-pending paths but allow **independent non-overlapping work** to proceed. An unapproved dependency is never considered done.
-- `control/lease_recovery.py`: the owning worker may explicitly quarantine a definitively failed leased task using its exact owner/fence and specific diagnostic reason. It never retries automatically. Reboot and expired leases remain fail-closed.
-- `control/idle_metrics.py`: actionable idle starts after the task is enqueued **and** all its dependencies have an actual independent `review_pass`; blocked/conflicting scopes are excluded. Separately exposes `review_wait_seconds` and a `planning_deficit_seconds` when a lane has no backlog. Planning deficit is **not** misreported as a ready-task SLA failure.
-- `control/quota_gate.py` permits extra wake requests only with a fresh (<180 s) local sample and under 75% of either 5h or 7d Codex OAuth windows; official Work usage and plan limitations can additionally refuse. The old per-lane 1/h guard was replaced with bounded 120 s cooldown, 6/lane/hour, 20 worker/hour combined and 12 Chief/hour.
-- Cloud Chief retains the **independent reviewer** role, running 2–3 safe, bounded read-only test worktrees in parallel and acknowledging exact SHA + evidence. It plans *new meaningful* P0 work only when the curated or recently completed handoff leaves a genuine gap. Other cloud workers use the official `Automations.run_now` path when eligible and recover their own failed leases.
+**Replacement development-agent inference via Codex CLI, ChatGPT Work, paid API and CLIProxyAPI model calls is forbidden.** The existing application's already-authorized Comfy/QA/narrator runtime can be tested boundedly after checking the established owner-authorized route/config; do not add a new model/account/billing route. Do not restart prior local agents. Codex OAuth is not Scheduled Tasks quota and must not block or authorize a Scheduled wake. Native Scheduled admission is determined by its official platform; deterministic local watchdogs and SQLite are not model workers.
 
-Do not mistake a submitted `run_now` for a real start; confirm the cloud recorded run and the SQLite `claimed` event.
+## Control-plane architecture and ownership
 
-## Verified rollout and tests
+- Existing control root: `~/.local/share/web-vn-native-team/run-20261031-full`. Read actual installed file hashes and current DB schema before assuming source changes are deployed.
+- The one-minute `systemd --user` watchdog uses SQLite WAL and deterministic Python; it does not create model hypotheses or invoke LLMs/GPU itself. The separate authorized lab timer may execute an already approved immutable candidate through the V19 wrapper; it is not cloud orchestration.
+- `control/task_catalog.py` and its reviewed catalog carry scoped specs, path allowlists, explicit dependencies and idempotent task IDs. Transactional enqueue prevents half-populated tasks. New specs must follow a real issue/evidence gap, not a desire to fill uptime.
+- The source controller's R/Q/G/S lanes are distinct from Scheduled role records. Before claiming, reconcile current owner/fence, lane lease, pending review and worktree. Do not take a second same-lane lease, overwrite another active tree or mark an unapproved dependency done. Use the exact verified controller semantics; a merged fix is not an installed one.
+- Owner-fenced `lease_recovery.py` can quarantine a definitively ended failed task after its official run and external effects are reconciled. Unknown jobs, reboot/expired leases and an idle cloud status are not permission to replay. Historical blocked IDs remain historical.
+- Idle metrics distinguish actionable ready time, review wait and planning deficit. A blocked/conflicting scope is not a runnable task. An empty backlog is not automatically an SLO breach.
+- Chief and independent reviewers inspect exact SHA and negative evidence in disjoint read-only worktrees. Approval writes remain serialized/fenced. Golden independently reviews original pixels through the deployed evidence-only path; source author cannot self-approve G2.
 
-- Installed only the **local controller** on Xavok PC; no product deployment, direct Comfy submit, game saves or accepted assets were changed.
-- `R-07` (no authentic creation-time receipt) was manually quarantined **after** independent confirmation that its cloud session ended, the relevant handoff said BLOCKED, and its git worktree was clean. No replay.
-- Chief independently approved Q-06, S-07, S-08 and S-09 during observed continuation; R-08 and Q-07 reached `review_pending`, G-06 took a real lease, and S-09 progressed. R/Q/G extra runs were confirmed as requested, then actual claim rows appeared.
-- One earlier observed S-08 enqueue→claim was 347 s. This **does not** establish a 24/7 600 s upper bound.
-- Isolated source checkout of this PR branch: `python3 -m unittest discover -q -s scripts/native_team/tests -p 'test_*.py'` — **70 tests passed** on 2026-10-31. Some Python ResourceWarnings from fixture DB cleanup, not failed assertions.
-- Do not confuse source-only approval with render quality. **G2=UNVERIFIED, G3=NO_GO** until independent original-pixel and 30+ human-labeled E2E gates are passed.
+## Supported wake and crash reconciliation
 
-## Incident diagnosis / rollback
+Use the canonical operating contract and version-verified `scheduled_wake_mesh.py` with official `Automations.peek`/`run_now`. A meaningful new source/approval/PNG/contract SHA must make the target actionable; check enabled/current-run state first. Keep atomic reservation, scope, dependency, concurrency, cooldown and rate limits. Reconcile an interrupted reservation with its actual official request/result before retrying or treating it as delivered. No raw task database edits or unsupported platform endpoints.
 
-1. On PC, inspect `control/teamctl.py status`, `state/wake-ready.json`, `state/catalog-latest.json`, `state/quota-latest.json`, `state/team.sqlite3` PRAGMA quick_check, and `systemctl --user status vn-native-team-watchdog.timer`.
-2. When a worker is leased after its cloud session ended, do **not** blindly reclaim or repeat it. Check exact `owner`, `fence`, original evidence and whether any external GPU job might exist. The owner-fenced recovery command can quarantine it. If unknown, leave blocked for investigation.
-3. When `review_pending` accumulates, have Chief independently verify exact submitted SHA, provenance, negative regression and evidence. It can run *independent read-only* checks concurrently; approvals themselves remain serialized SQLite CAS.
-4. If no curated task is runnable, distinguish blocked dependency, no meaningful backlog and exhausted quota; do not report all as SLA breach.
-5. Backup-first live controller files are available alongside each touched file with `.before-*20261031` suffix. Roll back **only this controller** with stopped timer and verified DB state. Never revert product/runtime assets to debug a source-only dispatch issue.
+Record separate ready, reserved, requested, cloud started, local claimed, artifact and independent-review timestamps. A local reservation is not delivery; a successful `run_now` is not startup; a cloud run is not a local lease. Already-running peers are not double-woken. Missing/full Codex OAuth samples are irrelevant to Scheduled provider quota. Platform refusals and unknown request outcomes remain explicit.
 
-This PR is a source checkpoint; merging is not a production deployment. The official scheduled-task platform does not provide a hard external 5–10-minute start SLA; an always-on paid/API or local inference executor would have a separate quota and quality tradeoff. No such executor was silently enabled.
+The requested dispatcher name is **Autonomous Handoff Dispatcher**, with a planned hourly **:30 Asia/Novosibirsk** schedule replacing :42. Until the rollout owner confirms a post-update official `peek`, treat name/time as proposed, not applied. Neither the former “5-Minute Dispatcher” name nor phase-staggered hourly jobs guarantees a five-minute run.
+
+## Rendering handoff and safety boundary
+
+Production Comfy traffic requires technical broker admission and bypass prevention. The separately owner-authorized [V19 disposable lab wrapper](LAB-EXCLUSIVE-FAST-PATH-2026-10-31.md) permits one immutable lab experiment while known development submitters are quiesced, actual GPU ownership is known, and services are restored only after terminal completion/empty queue. Unknown/foreign job means STOP without resend. Do not use the unfinished universal broker to halt every independent LAB task, and do not claim the LAB wrapper provides production security.
+
+An unreviewed original goes to Golden before another candidate. The next architectural work is an executable canonical SDXL face-reference sprite route with authentic current-outfit/source inputs; the current fast Z-Image graph has no canonical identity path. Keep quality/latency evidence separate and reject missing/violated/unobservable mandatory facts. New held-out pack cases are frozen before their first attempt; old retries cannot improve the frozen v1 score.
+
+## Historical rollout evidence — not current task commands
+
+The earlier V8 controller rollout installed only native control-plane files, not the game renderer. It preserved these observations:
+
+- R-07 was quarantined after its cloud session had ended, its handoff said BLOCKED and its worktree was clean; it was not replayed.
+- Chief independently approved Q-06, S-07, S-08 and S-09 during that continuation; R-08/Q-07 reached review-pending and G-06 took a real lease. These are historical transitions, not tasks to recreate.
+- One S-08 enqueue→claim took 347 seconds; it does not establish a 24/7 600-second upper bound.
+- The original branch's native-team suite passed 70 tests on 31 October, with fixture ResourceWarnings. That result does not verify later source or installed runtime.
+- #76 was subsequently [merged and control-plane deployed at 13:23 UTC](https://github.com/Riannoni/web-vn/issues/76#issuecomment-6543925935), with additive visual evidence tables, 102/102 source tests and watchdog smoke. Preserve historical G-10 blocked status and its real negative visual review; the implementation is not outstanding work.
+- R-15 produced a genuine new native-pose original about 14:10 UTC; the [original receipt](https://github.com/Riannoni/web-vn/issues/20#issuecomment-6544519370) was followed by Golden's **14:26:19 UTC terminal G2 FAIL**, review recorded and candidate moved to reviewed: palm contact improved, but full boots/legs and required lean were not proved; canonical identity UNOBSERVABLE. It was research attempt 3, not v1 first-shot success. Read newer terminal evidence before acting.
+
+The old 75% Codex OAuth gate and Codex/Work execution options belong to superseded planning. They do not apply to ordinary Scheduled task admission. No such model-agent executor is authorized now.
+
+## Incident diagnosis and rollback
+
+1. Read official peer status, current `teamctl.py status`, wake request/reservation receipts, catalog/idle state, SQLite `quick_check`, installed source hashes and watchdog/lab service state. Do not use a quota file from another provider as a Scheduled readiness gate.
+2. For a lease whose cloud run ended, reconcile exact owner/fence, original evidence and any external Comfy prompt before owner-fenced quarantine. Unknown state stays under investigation; never blindly reclaim or resubmit.
+3. For accumulated review-pending work, have the independent reviewer evaluate the exact submitted SHA/provenance/negative tests or original PNG. The producer's source claim is not a visual receipt. Existing approval CAS and one-owner safety remain enforced.
+4. Distinguish blocked dependency, no meaningful backlog, platform refusal, reservation not delivered and actually running work. Assign the smallest concrete recovery within current authorization; do not make the user's interactive return a normal dependency.
+5. Before control-plane rollback, snapshot current files and DB and confirm active ownership. Stop only the relevant controller timer, restore the verified compatible control revision, preserve newer task/evidence records, then smoke before resuming. Never revert accepted product assets, game saves or unknown GPU work to debug dispatch.
+
+G3 remains separate: at least 30 independently human-labeled scenes, calibrated positive/negative QA, actual E2E and restart/retry/rollback. Merged source, active timers, requested wakes and fast PNGs do not prove completion.
