@@ -686,6 +686,30 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
                                              "Idempotency-Key": "test-wait-3"}) as response:
             self.assertEqual(response.status, 400)
 
+    async def test_rejected_idempotent_reconnect_is_explicitly_terminal(self):
+        # RED: a backend-rejected graph cannot be admitted again through a
+        # success-shaped 200 response on either prompt alias.
+        self.fake.submit_mode = "reject"
+        status, first = await self.post(72)
+        self.assertEqual(status, 200)  # immediate durable queued receipt
+        pid = first["prompt_id"]
+        await self.until(lambda: self.broker.db.execute(
+            "SELECT state FROM jobs WHERE prompt_id=?", (pid,)).fetchone()[0] == "REJECTED")
+        self.assertIsNone(self.broker.owner())
+        self.fake.submit_mode = None
+        for route in ("/prompt", "/api/prompt"):
+            async with self.client.post(route, json=self.body(72),
+                                        headers={"Idempotency-Key": "test-action-72"}) as response:
+                self.assertEqual(response.status, 409)
+                answer = await response.json()
+                self.assertEqual(answer["error"], "broker_job_rejected")
+                self.assertEqual(answer["reason"], "comfy_validation_rejected")
+                self.assertEqual(answer["prompt_id"], pid)
+                self.assertIs(answer["retry_safe"], False)
+        self.assertEqual(self.fake.posts, [])
+        self.assertEqual(self.broker.db.execute(
+            "SELECT COUNT(*) FROM jobs WHERE key=?", ("explicit:test-action-72",)).fetchone()[0], 1)
+
     async def test_expired_idempotent_reconnect_is_explicitly_terminal(self):
         # RED: a durable EXPIRED action must not be reported as a fresh 200
         # receipt, because no GPU job can ever run for that action key.
