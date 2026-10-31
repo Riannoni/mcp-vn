@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS event(
   task_id TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL
 );
 """
-ALLOWED_ACTIONS = {"source_inventory", "source_compile"}
+ALLOWED_ACTIONS = {"source_inventory", "source_compile", "visual_evidence"}
 MAX_CONCURRENT = 4
 
 
@@ -55,7 +55,12 @@ def emit(db, task_id, kind, detail=""):
 def add(db, task_id, action, paths, deps=(), goal="render-v1 #20", priority=0):
     if action not in ALLOWED_ACTIONS:
         raise ValueError("Unapproved action")
-    if not isinstance(paths, (list, tuple)) or not paths:
+    if not isinstance(paths, (list, tuple)):
+        raise ValueError("Invalid scope type")
+    if action == "visual_evidence":
+        if list(paths):
+            raise ValueError("Visual evidence task cannot declare source write scope")
+    elif not paths:
         raise ValueError("Must declare read/write scope")
     if any(not isinstance(p, str) or p.startswith("/") or ".." in p.split("/")
            for p in paths):
@@ -103,6 +108,12 @@ def claim(db, owner, ttl=120, now=None, lane=None):
         parked = [x for x in db.execute("SELECT id,paths,state FROM task WHERE state IN ('blocked','review_pending')")]
         for row in candidates:
             if lane is not None and not row["id"].startswith(lane+"-"):
+                continue
+            # Visual tasks have no source paths: preserve at most one Golden
+            # active lease even though ordinary path-conflict checks see [].
+            if row["id"].startswith("G-") and any(
+                active_item["id"].startswith("G-") for active_item in active
+            ):
                 continue
             if not set(json.loads(row["deps"])).issubset(succeeded):
                 continue
