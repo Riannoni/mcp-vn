@@ -197,6 +197,19 @@ test("signed PNG chain must reject missing, substituted and misattributed canoni
  assert.equal(valid.g2,"NOT_REVIEWED");
  assert.equal(valid.source_assets_count,3);
 });
+test("signed extra cross-scene actor source must not verify as canonical",()=>{
+ const job=sourceJob(),png=Buffer.from("disposable original fixture");
+ const {signature:oldSignature,...payload}=job.creation_receipt_v1;
+ payload.source_assets=[...payload.source_assets,{
+  role:"actor_face",actor:"Other scene actor",asset:id(77)+".png",
+  sha256:sha("canonical face bytes")}];
+ job.creation_receipt_v1={...payload,signature:hmac(payload,producerKey)};
+ // This is a correctly signed but noncanonical producer payload. Signature
+ // integrity does NOT imply attribution to the actual game's named cast.
+ const signed=resultChain(job,png);
+ assert.throws(()=>audit(job,signed,png),
+  /unexpected|extra|source.*set|source.*count|cross-scene|attribution/i);
+});
 test("unsigned producer/result and placeholder keys cannot authenticate pixels",()=>{
  const job=sourceJob(),png=Buffer.from("bytes"),chain=resultChain(job,png);
  assert.throws(()=>verifyOriginalImageChain({job,binding:chain,originalBytes:png,
