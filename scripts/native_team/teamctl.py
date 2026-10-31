@@ -195,10 +195,23 @@ def review(db,task_id,approve,note,verified_commit_sha=None):
         _checked_scope(lane,json.loads(x['paths'])))
     if sorted(paths)!=sorted(doc.get('changed_paths',[])) or sorted(paths)!=sorted(declared.get('changed_paths',[])):
         raise ValueError('submitted Git commit does not match evidence')
-    # Review the exact immutable commit SHA, never the moving branch HEAD.
-    db.execute('UPDATE task SET state=? WHERE id=?',('done' if approve else 'blocked',task_id))
-    c.emit(db,task_id,'review_pass' if approve else 'review_block',
-           (note+'; verified_commit='+doc['commit_sha'][:12])[:400])
+    # CAS review decision and audit event in ONE SQLite transaction.
+    db.execute('BEGIN IMMEDIATE')
+    try:
+        current=db.execute('SELECT state,result FROM task WHERE id=?',(task_id,)).fetchone()
+        if current is None or current['state']!='review_pending' or current['result']!=x['result']:
+            db.execute('ROLLBACK')
+            return {'approved':False,'reason':'review state changed'}
+        updated=db.execute("UPDATE task SET state=? WHERE id=? AND state='review_pending'",
+                           ('done' if approve else 'blocked',task_id))
+        if updated.rowcount != 1:
+            raise RuntimeError('lost review state CAS')
+        c.emit(db,task_id,'review_pass' if approve else 'review_block',
+               (note+'; verified_commit='+doc['commit_sha'][:12])[:400])
+        db.execute('COMMIT')
+    except BaseException:
+        if db.in_transaction: db.execute('ROLLBACK')
+        raise
     return {'approved':approve,'task':task_id,'verified_commit':doc['commit_sha']}
 
 
@@ -215,7 +228,12 @@ def watchdog(db):
             if any(v['state']=='blocked' for v in vals):warnings.append(f'{name}:BLOCKED')
             if not any(v['state']=='leased' for v in vals):
                 warnings.append(f'{name}:idle_or_waiting_for_next_scheduled_chat')
-        c.emit(db,'TEAM','watchdog_tick','; '.join(warnings))
+        current='; '.join(warnings)
+        previous=db.execute("SELECT v FROM team_meta WHERE k='watchdog_warnings'").fetchone()
+        if previous is None or previous['v'] != current:
+            db.execute("INSERT OR REPLACE INTO team_meta(k,v) VALUES('watchdog_warnings',?)",(current,))
+            c.emit(db,'TEAM','watchdog_state',current)
+        # No repetitive event per minute: timestamp is in watchdog-latest.json.
         db.execute('COMMIT')
     except BaseException:db.execute('ROLLBACK');raise
     return {'watchdog_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'warnings':warnings}
@@ -259,6 +277,11 @@ def main():
             for dep in deps:
                 if not isinstance(dep,str) or db.execute('SELECT 1 FROM task WHERE id=?',(dep,)).fetchone() is None:
                     raise ValueError('missing prerequisite')
+            # Keep WIP bounded; a lane can queue at most two items at once.
+            waiting=db.execute("SELECT COUNT(*) AS n FROM task WHERE id LIKE ? AND state='pending'",
+                               (d['lane']+'-%',)).fetchone()['n']
+            if waiting >= 2:
+                raise ValueError('lane pending WIP limit reached (2)')
             c.add(db,d['id'],'source_inventory',d['paths'],deps,goal=d['goal'],priority=d.get('priority',50))
             db.execute('UPDATE task SET action=? WHERE id=?',(d['instructions'],d['id']))
             result={'enqueued':d['id']}
