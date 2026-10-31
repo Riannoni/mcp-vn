@@ -125,6 +125,33 @@ class FaceUploadPixelsTests(unittest.TestCase):
                 with self.assertRaisesRegex(FaceUploadBlocked, "invisible|blank"):
                     verify_sprite_face_upload(**opts(original, upload))
 
+    def test_alpha_reference_with_hidden_rgb_is_not_admitted(self):
+        # With the installed worker's .convert("RGB"), hidden RGB can
+        # dominate the Comfy upload even when a single pixel is opaque.
+        im = Image.new("RGBA", (640, 800), (12, 15, 30, 0))
+        im.putpixel((10, 10), (230, 220, 170, 0))
+        im.putpixel((25, 25), (80, 100, 120, 255))
+        original = png(im)
+        transformed = ImageOps.fit(im.convert("RGB"), (512, 512),
+                                   method=Image.Resampling.LANCZOS)
+        upload = png(transformed)
+        with self.assertRaisesRegex(FaceUploadBlocked, "transparency"):
+            verify_sprite_face_upload(**opts(original, upload))
+
+    def test_single_transparent_pixel_in_otherwise_valid_reference_blocks(self):
+        # The installed transform does not composit alpha at all. Until
+        # provenance approves an opaque source, partial alpha fails closed.
+        im = Image.new("RGBA", (640, 800), (200, 100, 50, 255))
+        for x in range(100, 350):
+            for y in range(30, 160):
+                im.putpixel((x, y), (20, 80, 140, 255))
+        im.putpixel((1, 1), (90, 80, 70, 0))
+        original = png(im)
+        upload = png(ImageOps.fit(im.convert("RGB"), (512, 512),
+                                  method=Image.Resampling.LANCZOS))
+        with self.assertRaisesRegex(FaceUploadBlocked, "transparency"):
+            verify_sprite_face_upload(**opts(original, upload))
+
     def test_symlink_or_file_path_not_accepted_as_image_bytes(self):
         source, upload, _ = fixture()
         args = opts(source, upload)
