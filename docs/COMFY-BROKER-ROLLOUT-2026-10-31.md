@@ -45,7 +45,7 @@ Commands in isolated checkout:
 - python3 -m py_compile scripts/comfy_broker/broker.py deploy/kobold-gateway.py
 - git diff --check
 
-The actual PC uses Python 3.14.7 and currently lacks system aiohttp; a dedicated venv with pinned aiohttp 3.13.5 must be prepared and tested before any live cutover. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
+The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 36df3ad531cc114329f0cbbea92e5e14ea07fbc4 was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 26/26 broker, 4/4 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
 
 ## Explicit deployment gates — DO NOT EXECUTE UNTIL INDEPENDENT REVIEW
 
@@ -61,6 +61,6 @@ The actual PC uses Python 3.14.7 and currently lacks system aiohttp; a dedicated
 
 ## STOP / open risks
 
-No real PC protocol/venv/firewall connectivity test or GPU E2E has been performed. No live service restarted. Any unknown direct submitter, Comfy alias, Podman admin bypass or external GPU process must be investigated before deployment. This source PR is not production readiness.
+No real production-client protocol/cutover, UID/firewall enforcement or GPU E2E has been performed; only isolated PC fake-backend tests passed. No live service restarted. Any unknown direct submitter, Comfy alias, Podman admin bypass or external GPU process must be investigated before deployment. This source PR is not production readiness.
 
 **Model: MODEL_UNVERIFIED.** Actual execution model/effort metadata was not exposed; a request for GPT-6 Astra High is not proof of execution.
