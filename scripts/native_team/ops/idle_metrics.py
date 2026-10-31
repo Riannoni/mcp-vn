@@ -67,7 +67,12 @@ def calculate(db, now=None, threshold=600):
                     starts.append(max(start,latest_done if latest_done is not None else start))
             if starts:
                 ready=max(0,round(now-min(starts)))
+        planning_idle=(max(0,round(now-latest_done))
+                       if state=="no_backlog" and latest_done is not None else None)
         out[lane]={"state":state,
+                   "planning_deficit_seconds":planning_idle,
+                   "planning_deficit_over_5_minutes":planning_idle is not None and planning_idle>300,
+                   "planning_deficit_over_10_minutes":planning_idle is not None and planning_idle>600,
                    "pending_count":len(pending),
                    "review_count":sum(t["state"]=="review_pending" for t in tasks),
                    "worker_idle_seconds":age,
