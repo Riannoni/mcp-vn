@@ -13,7 +13,10 @@ import time
 from pathlib import Path
 
 LANES={"R":"renderer","Q":"qa","G":"golden","S":"reliability"}
-COOLDOWN_S=3600
+COOLDOWN_S=600
+MAX_LANE_WAKES_PER_HOUR=2
+MAX_GLOBAL_WORKER_WAKES_PER_HOUR=8
+MAX_CHIEF_WAKES_PER_HOUR=2
 
 
 def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
@@ -53,6 +56,14 @@ def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
         ready.append(row[0])
     if not ready:
         return {"eligible":False,"reason":"no_ready_task","lane":lane}
+    history_exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wake_history'").fetchone()
+    if history_exists:
+        lane_recent=db.execute("SELECT COUNT(*) FROM wake_history WHERE lane=? AND requested_at>?",(lane,now-3600)).fetchone()[0]
+        all_recent=db.execute("SELECT COUNT(*) FROM wake_history WHERE lane<>'C' AND requested_at>?",(now-3600,)).fetchone()[0]
+        if lane_recent>=MAX_LANE_WAKES_PER_HOUR:
+            return {"eligible":False,"reason":"lane_hourly_wake_budget","lane":lane}
+        if all_recent>=MAX_GLOBAL_WORKER_WAKES_PER_HOUR:
+            return {"eligible":False,"reason":"global_hourly_wake_budget","lane":lane}
     last=db.execute("SELECT requested_at FROM wake_reservation WHERE lane=?",(lane,)).fetchone()
     if last and now-last[0]<cooldown:
         return {"eligible":False,"reason":"wake_cooldown","lane":lane,
@@ -74,6 +85,9 @@ def check(root,lane,reserve=False,requestor="chief",now=None,cooldown=COOLDOWN_S
             db.execute("CREATE TABLE IF NOT EXISTS wake_reservation ("
                        "lane TEXT PRIMARY KEY,requested_at REAL NOT NULL,"
                        "task_id TEXT NOT NULL,requestor TEXT NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS wake_history ("
+                       "id INTEGER PRIMARY KEY AUTOINCREMENT,lane TEXT NOT NULL,"
+                       "requested_at REAL NOT NULL,task_id TEXT NOT NULL,requestor TEXT NOT NULL)")
         else:
             # In a new installation with no previous reservations, inspect without mutation.
             exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
@@ -90,6 +104,8 @@ def check(root,lane,reserve=False,requestor="chief",now=None,cooldown=COOLDOWN_S
             db.execute("INSERT INTO wake_reservation VALUES (?,?,?,?) "
                        "ON CONFLICT(lane) DO UPDATE SET requested_at=excluded.requested_at,"
                        "task_id=excluded.task_id,requestor=excluded.requestor",
+                       (lane,instant,result["task_id"],requestor))
+            db.execute("INSERT INTO wake_history(lane,requested_at,task_id,requestor) VALUES(?,?,?,?)",
                        (lane,instant,result["task_id"],requestor))
             result["reserved"]=True
             result["note"]="Call Automations.run_now once; success means requested, not completed"
@@ -122,6 +138,10 @@ def review_readiness(db,now,cooldown=600,settle_seconds=120):
     if active and now-oldest < settle_seconds:
         return {'eligible':False,'reason':'other_workers_finishing',
                 'review_count':len(tasks),'active_leases':active}
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wake_history'").fetchone():
+        count=db.execute("SELECT COUNT(*) FROM wake_history WHERE lane='C' AND requested_at>?",(now-3600,)).fetchone()[0]
+        if count>=MAX_CHIEF_WAKES_PER_HOUR:
+            return {'eligible':False,'reason':'chief_hourly_wake_budget'}
     last=db.execute("SELECT requested_at FROM wake_reservation WHERE lane='C'").fetchone()
     if last and now-last[0]<cooldown:
         return {'eligible':False,'reason':'chief_wake_cooldown',
@@ -143,6 +163,9 @@ def check_review(root,reserve=False,requestor='worker',now=None,cooldown=600):
             db.execute('CREATE TABLE IF NOT EXISTS wake_reservation '
                        '(lane TEXT PRIMARY KEY,requested_at REAL NOT NULL,'
                        'task_id TEXT NOT NULL,requestor TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS wake_history '
+                       '(id INTEGER PRIMARY KEY AUTOINCREMENT,lane TEXT NOT NULL,'
+                       'requested_at REAL NOT NULL,task_id TEXT NOT NULL,requestor TEXT NOT NULL)')
         elif not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
                             "AND name='wake_reservation'").fetchone():
             db.execute('CREATE TEMP TABLE wake_reservation '
@@ -157,6 +180,8 @@ def check_review(root,reserve=False,requestor='worker',now=None,cooldown=600):
                        "ON CONFLICT(lane) DO UPDATE SET requested_at=excluded.requested_at,"
                        "task_id=excluded.task_id,requestor=excluded.requestor",
                        (instant,outcome['task_id'],requestor))
+            db.execute('INSERT INTO wake_history(lane,requested_at,task_id,requestor) VALUES(?,?,?,?)',
+                       ('C',instant,outcome['task_id'],requestor))
             outcome['reserved']=True
             outcome['note']='Cloud worker must invoke supported Chief Automations.run_now once; platform may refuse'
         if reserve:
