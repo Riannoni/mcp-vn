@@ -994,6 +994,10 @@ def assess(job,raw,background):
                 metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
                     "details":str(err)[:140]}
                 warnings.append("CG pose geometry verification unavailable")
+    # Profile the geometry gate within this exact attempt, including any
+    # Comfy verification wait. Never infer it from unpaired job percentiles.
+    metrics["qa_pose_geometry_ms"]=round(
+        max(0,(time.monotonic()-qa_t0)*1000),3)
     if reasons and metrics.get("panel_collage_detected"):
         semantic="failed"
         metrics["vlm_skipped_reason"]="panel_layout_failed"
@@ -1001,6 +1005,7 @@ def assess(job,raw,background):
         semantic="failed"
         metrics["vlm_skipped_reason"]="pose_geometry_failed"
     if not reasons and os.environ.get("VN_VISION_QA","1").lower() not in ("0","false","off"):
+        vision_started=time.monotonic()
         try:
             payload={"kind":"scene" if kind=="local_cg" else kind,
                      "quality":(job.get("spec") or {}).get("quality","standard"),
@@ -1014,7 +1019,57 @@ def assess(job,raw,background):
                     payload["candidate_face_b64"]=base64.b64encode(pil_png(head_crop(image))).decode("ascii")
                 except Exception as identity_err:
                     metrics["identity_check_error"]=str(identity_err)[:100]
-            validation=request(VISION,"/judge","POST",payload,timeout=90)
+            metrics["qa_vision_prepare_ms"]=round(
+                max(0,(time.monotonic()-vision_started)*1000),3)
+            http_started=time.monotonic()
+            try:
+                validation=request(VISION,"/judge","POST",payload,timeout=90)
+            finally:
+                metrics["qa_vision_http_ms"]=round(
+                    max(0,(time.monotonic()-http_started)*1000),3)
+            # Server times are advisory, not evidence for an acceptance verdict.
+            # Monotonic durations from this ONE request must also be mutually
+            # possible: nested decode+lock+model fit before-send; before-send
+            # fits the client HTTP roundtrip; caption inference fits model.
+            # Invalid server timings are discarded AS A GROUP to avoid a
+            # seemingly credible but impossible partial timing breakdown.
+            stage_data=validation.get("qa_stage_ms")
+            stage_fields=("input_decode","lock_wait","model_analyze","handler_before_send")
+            def finite_stage(value):
+                return (float(value) if type(value) in (int,float)
+                        and value==value and 0<=value<=300000 else None)
+            stage_values=({field:finite_stage(stage_data.get(field))
+                           for field in stage_fields}
+                          if isinstance(stage_data,dict) else {})
+            caption_raw=validation.get("vlm_caption_ms")
+            caption_ms=finite_stage(caption_raw)
+            # Cross-process monotonic clocks have unrelated epochs. Compare
+            # durations only, with 2ms headroom for per-span rounding.
+            stage_tolerance_ms=2.0
+            stage_reason=None
+            if not isinstance(stage_data,dict):
+                stage_reason="missing_server_stages"
+            elif any(stage_values[field] is None for field in stage_fields):
+                stage_reason="invalid_server_stages"
+            elif stage_values["handler_before_send"] > metrics["qa_vision_http_ms"]+stage_tolerance_ms:
+                stage_reason="handler_exceeds_http"
+            elif (stage_values["input_decode"]+stage_values["lock_wait"]+
+                  stage_values["model_analyze"] >
+                  stage_values["handler_before_send"]+stage_tolerance_ms):
+                stage_reason="nested_spans_exceed_handler"
+            elif caption_ms is None:
+                stage_reason="invalid_or_missing_caption"
+            elif caption_ms > stage_values["model_analyze"]+stage_tolerance_ms:
+                stage_reason="caption_exceeds_analyze"
+            if stage_reason:
+                metrics["qa_vision_server_stage_ms"]={}
+                metrics["qa_vision_stage_integrity"]="unavailable" if stage_reason=="missing_server_stages" else "untrusted"
+                metrics["qa_vision_stage_integrity_reason"]=stage_reason
+            else:
+                metrics["qa_vision_server_stage_ms"]={
+                    field:round(stage_values[field],3) for field in stage_fields}
+                metrics["qa_vision_caption_ms"]=round(caption_ms,3)
+                metrics["qa_vision_stage_integrity"]="consistent"
             semantic=validation.get("status","unavailable")
             if semantic not in ("passed","failed","unavailable"):semantic="unavailable"
             metrics["vlm_caption"]=str(validation.get("caption",""))[:145]
@@ -1042,6 +1097,9 @@ def assess(job,raw,background):
         except (OSError,ValueError,TimeoutError,URLError,HTTPError) as error:
             semantic="unavailable"
             metrics["vlm_error"]=str(error)[:140]
+        finally:
+            metrics["qa_vision_attempt_ms"]=round(
+                max(0,(time.monotonic()-vision_started)*1000),3)
     # Never trust a generic "passed" verdict if a required action was not
     # affirmatively verified by vision. This check is independent of QA's
     # status field so future VLM changes cannot accidentally bypass it.
@@ -1100,6 +1158,10 @@ def assess(job,raw,background):
                               features.get("ground_pose") is True),
                             "features":features}
     qa_ms=(time.monotonic()-qa_t0)*1000
+    # Explicit unattributed residue: do not call it network or CLIP time.
+    metrics["qa_remaining_ms"]=round(max(0,qa_ms-
+        metrics.get("qa_pose_geometry_ms",0)-
+        metrics.get("qa_vision_attempt_ms",0)),3)
 
     return output,{"passed":not reasons,"reasons":reasons,"warnings":warnings,
                    "metrics":metrics,"evidence":evidence,"semantic_status":semantic,
