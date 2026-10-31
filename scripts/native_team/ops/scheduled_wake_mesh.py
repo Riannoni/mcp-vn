@@ -27,6 +27,9 @@ TARGETS = {
     "provenance": "6ae5dd11d4748191adb005926b42c083",
     "reliability": "6ae57b40434c8191857969a577627d2f",
     "e2e": "6ae5dcb6f8c88191b2cc46a83f64d8da",
+    "dispatcher": "6ae5e8ac2e58819188b5f87aa17d0f97",
+    "decision": "6ae5e8a59f2c8191a29d40c1c12712f0",
+    "gpu_lab": "6ae5e8a91cfc8191bb938957f214f8c3",
 }
 KINDS = {"source_pr_ready", "review_accepted", "visual_candidate_ready",
          "blocker_cleared", "contract_verified", "integration_ready"}
