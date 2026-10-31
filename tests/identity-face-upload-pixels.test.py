@@ -109,6 +109,22 @@ class FaceUploadPixelsTests(unittest.TestCase):
                 with self.assertRaises(FaceUploadBlocked):
                     verify_sprite_face_upload(**args)
 
+    def test_blank_or_invisible_canonical_reference_is_not_admitted(self):
+        # A matching transformed upload cannot create identity information
+        # that was absent from the original private face reference.
+        cases = (
+            ("invisible_rgba", Image.new("RGBA", (640, 800), (50, 100, 150, 0))),
+            ("uniform_opaque_rgb", Image.new("RGB", (640, 800), (50, 100, 150))),
+        )
+        for label, im in cases:
+            with self.subTest(reference=label):
+                original = png(im)
+                fitted = ImageOps.fit(im.convert("RGB"), (512, 512),
+                                      method=Image.Resampling.LANCZOS)
+                upload = png(fitted)
+                with self.assertRaisesRegex(FaceUploadBlocked, "invisible|blank"):
+                    verify_sprite_face_upload(**opts(original, upload))
+
     def test_symlink_or_file_path_not_accepted_as_image_bytes(self):
         source, upload, _ = fixture()
         args = opts(source, upload)
