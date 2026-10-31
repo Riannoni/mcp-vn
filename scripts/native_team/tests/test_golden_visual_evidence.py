@@ -4,7 +4,9 @@ All bytes in this module are synthetic private fixtures. Synthetic PASS is
 not real G2 approval; no image/job/GPU is produced or changed by these tests.
 """
 import base64
+import contextlib
 import hashlib
+import io
 import importlib.util
 import json
 from pathlib import Path
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from uuid import UUID
 
 SRC = Path(__file__).resolve().parents[1]
@@ -312,6 +315,51 @@ class GoldenEvidenceTests(unittest.TestCase):
                 spec["artifacts"]=dict(self.artifacts)
                 with self.assertRaises(ValueError):
                     self.enqueue(spec)
+
+    def test_same_gpu_job_cannot_be_enqueued_with_new_task_id(self):
+        self.enqueue()
+        again=json.loads(json.dumps(self.spec))
+        again["task_id"]="G-13"
+        with self.assertRaisesRegex(ValueError,"replay"):
+            self.enqueue(again)
+
+    def test_cli_routes_visual_only_without_source_diff(self):
+        def cli(*args):
+            output=io.StringIO()
+            with patch.object(sys,"argv",["teamctl.py",*args]),contextlib.redirect_stdout(output):
+                self.assertEqual(m.main(),0)
+            return json.loads(output.getvalue())
+
+        spec_path=self.private/"case/task-spec.json"
+        spec_path.write_text(json.dumps(self.spec))
+        spec_path.chmod(0o600)
+        self.assertEqual(cli("enqueue-visual","--spec",str(spec_path))["enqueued"],TASK)
+        x=m.claim(self.db,"G","golden-cli")
+        self.assertTrue(x["claimed"])
+        p=self.receipt(x)
+        self.assertEqual(cli("submit-visual","--task",TASK,
+                             "--owner",x["owner"],"--fence",x["fence"],
+                             "--evidence",str(p))["g2"],"FAIL")
+        with self.assertRaisesRegex(ValueError,"review-visual"):
+            m.review(self.db,TASK,True,"Source review command is wrong",None)
+        review=cli("review-visual","--task",TASK,"--reviewer","chief-cli",
+                   "--approve","--verified-png-sha",
+                   self.artifacts["original_png"]["sha256"],
+                   "--note","Actual independent verification of synthetic negative receipt")
+        self.assertTrue(review["approved"])
+        note=self.db.execute("SELECT note FROM visual_review WHERE task_id=?",
+                             (TASK,)).fetchone()["note"]
+        self.assertIn("independent verification",note)
+
+    def test_approved_review_rehashes_canonical_bytes_again(self):
+        x=self.claim()
+        ge.submit(self.db,TASK,x["owner"],x["fence"],self.receipt(x))
+        ref=Path(self.artifacts["canonical_ref"]["path"])
+        ref.write_bytes(PNG+b"tampered canonical")
+        with self.assertRaises(ValueError):
+            ge.review(self.db,TASK,"chief-independent",True,
+                      "Canonical bytes changed after original receipt submission",
+                      self.artifacts["original_png"]["sha256"])
 
     def test_only_golden_visual_task_and_no_code_paths(self):
         s=json.loads(json.dumps(self.spec))
