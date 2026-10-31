@@ -223,6 +223,18 @@ class IdentityGraphContractTests(unittest.TestCase):
         with self.assertRaisesRegex(IdentityGraphBlocked,"spec missing"):
             check({"kind":"sprite","spec":"oops"},sprite(),ONE,SU)
 
+    def test_cross_family_model_name_must_not_be_caller_selected(self):
+        # Adversarial model swap: a matching caller-provided name cannot prove
+        # the installed checkpoint is the approved Pony/SDXL family.
+        for candidate in ("Z-Image-Turbo.safetensors", "unknown_sdxl.safetensors"):
+            with self.subTest(checkpoint=candidate):
+                g = sprite()
+                g["1"]["inputs"]["ckpt_name"] = candidate
+                with self.assertRaisesRegex(IdentityGraphBlocked, "Pony|checkpoint|family"):
+                    validate_sdxl_identity_graph(
+                        SJOB, g, ONE, checkpoint=candidate, face_uploads=SU
+                    )
+
     def test_wrong_checkpoint_not_allowed(self):
         g=sprite();g["1"]["inputs"]["ckpt_name"]="wrong_family.safetensors"
         with self.assertRaisesRegex(IdentityGraphBlocked,"Checkpoint"):
