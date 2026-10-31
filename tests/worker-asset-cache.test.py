@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("VN_WORKER_TOKEN","test-only-worker-token")
 os.environ.setdefault("VN_ASSET_CACHE_MIB","128")
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
 import worker
 from PIL import Image
 
