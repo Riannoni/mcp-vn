@@ -69,7 +69,11 @@ def calculate(db, now=None, threshold=600):
                 ready=max(0,round(now-min(starts)))
         planning_idle=(max(0,round(now-latest_done))
                        if state=="no_backlog" and latest_done is not None else None)
+        review_times=[t["completed_at"] for t in tasks if t["state"]=="review_pending" and t["completed_at"] is not None]
+        review_wait=max(0,round(now-min(review_times))) if review_times else None
         out[lane]={"state":state,
+                   "review_wait_seconds":review_wait,
+                   "review_over_10_minutes":review_wait is not None and review_wait>threshold,
                    "planning_deficit_seconds":planning_idle,
                    "planning_deficit_over_5_minutes":planning_idle is not None and planning_idle>300,
                    "planning_deficit_over_10_minutes":planning_idle is not None and planning_idle>600,
