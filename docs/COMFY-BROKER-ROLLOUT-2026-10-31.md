@@ -25,7 +25,7 @@ SQLite WAL, synchronous FULL, BEGIN IMMEDIATE, exclusive process flock, unique i
 
 POST /prompt returns a prompt_id receipt immediately while the job is durably queued. This avoids legacy clients' 12–15s HTTP timeout while waiting behind another GPU job. The actual backend POST is serialized until prior terminal history. A first-shot dispatcher sets an 8-second bounded queue-wait header so its 90-second GPU timer cannot admit a late 120-second queued job; other clients retain the 120-second maximum. A rejected graph or queue expiry becomes a synthetic **error** history for that UUID; never a fake success. Queue capacity is 64; identical graph/execution options (ignoring transport client_id and prompt_id) or explicit Idempotency-Key retries reuse the original UUID, including after restart. To deliberately repeat identical graph and seed, use a new explicit key. Private payloads are in 0700/0600 local state, not GitHub.
 
-GET /queue and /api/queue include broker-held pending work. /history, /view, /upload/image, static HTTP routes and /ws + /api/ws text/binary pass through. Mutating /queue, /interrupt and /history are blocked. POST /free requires a matching external GPU lease. Kobold gateway now acquires a durable external lease before freeing Comfy memory, holds it through ROCm inference and process cleanup, then releases in finally; contention falls back to CPU without tripping the ROCm circuit breaker. If gateway crashes, the external lease remains fail-closed until operator inspection; no unsafe TTL takeover.
+GET /queue and /api/queue include broker-held pending work. /history, /view, /upload/image, static HTTP routes and /ws + /api/ws text/binary pass through. Mutating /queue, /interrupt and /history are blocked. POST /free requires a matching external GPU lease. Kobold gateway now acquires a durable external lease before freeing Comfy memory, holds it through ROCm inference and process cleanup, then releases in finally; both preflight queue contention and lease-acquisition contention fall back to CPU without tripping the ROCm circuit breaker. If gateway crashes, the external lease remains fail-closed until operator inspection; no unsafe TTL takeover.
 
 Health/metrics: /broker/health, /broker/metrics, /broker/jobs/{prompt_id}; queue depth, owner, external owner, foreign jobs, fault, stale diagnostic lease. No private prompt content in metrics.
 
@@ -33,8 +33,8 @@ Health/metrics: /broker/health, /broker/metrics, /broker/jobs/{prompt_id}; queue
 
 ## Tests and regression
 
-CPU-only fake-Comfy tests, **zero GPU submits**: 27/27 broker, 4/4 Kobold integration, 28/28 first-shot suite PASS in the isolated home checkout (Python 3.10, aiohttp 3.13.5; Pillow installed only in isolated test target).
-- Two simultaneous distinct submitters, same-key retries, restart with active prompt, crash between reservation and POST, HTTP 500 before/after acceptance, malformed queue, invalid graph, foreign queue, foreign disappearance without history, history HTTP 500, queue timeout, /api/prompt alias, websocket text/binary, upload/view/history, unsafe mutations, external lease and restart.
+CPU-only fake-Comfy tests, **zero GPU submits**: 28/28 broker, 5/5 Kobold integration, 28/28 first-shot suite PASS in the isolated home checkout (Python 3.10, aiohttp 3.13.5; Pillow installed only in isolated test target).
+- Two simultaneous distinct submitters, same-key retries, restart with active prompt, crash between reservation and POST, HTTP 500 before/after acceptance, malformed queue, invalid graph, foreign queue, foreign disappearance without history, history HTTP 500, queue timeout, /api/prompt alias, websocket text/binary, raw and real multipart /api/upload/image, view/history, unsafe mutations, external lease and restart.
 - Kobold gateway no-GPU tests cover lease scope, free authorization header, exception cleanup, CPU fallback without false ROCm circuit break.
 - Dispatcher regression exercises pending -> running -> review_pending. Previously the code attempted path.replace from the stale pending path, causing FileNotFoundError; it now uses saved running_path.
 
@@ -45,7 +45,7 @@ Commands in isolated checkout:
 - python3 -m py_compile scripts/comfy_broker/broker.py deploy/kobold-gateway.py
 - git diff --check
 
-The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 53083ae7c750e877ad364a40576427d7c52b479c was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 27/27 broker, 4/4 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
+The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 027a19ab6ade483eaed298f40a3dd2c49e7ab8e3 was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 28/28 broker, 5/5 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
 
 ## Explicit deployment gates — DO NOT EXECUTE UNTIL INDEPENDENT REVIEW
 
