@@ -60,7 +60,7 @@ class LabPoseTests(unittest.TestCase):
             "reviewer": "lab-photo-observer", "reviewed_at": "2026-10-31T12:00:00Z",
             "rear_three_quarter": True, "vertical_wall": True,
             "both_palms_visible_on_wall": True, "forward_lean": True,
-            "both_boots_visible": True,
+            "both_feet_visible": True,
         }
 
     def _sha(self, name):
