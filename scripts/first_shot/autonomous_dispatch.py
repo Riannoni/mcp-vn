@@ -26,7 +26,7 @@ import zimage_backend as z
 import run_one as r
 
 ID = re.compile(r"^[A-Z][A-Z0-9_-]{5,55}$")
-ALLOWED = {"prompt_text"}
+ALLOWED = {"prompt_text", "native_pose"}
 STATES = ("pending", "running", "review_pending", "blocked", "reviewed")
 MAX_WALL_SECONDS = 90
 
@@ -67,10 +67,15 @@ def validate(p):
     if not isinstance(p["falsifier"], str) or not 30 <= len(p["falsifier"]) <= 700:
         raise ValueError("no_explicit_falsifier")
     value = p["new_value"]
-    if not isinstance(value, str) or not 10 <= len(value) <= 5000 or "\x00" in value:
-        raise ValueError("invalid_prompt")
-    if value == r.load_case(p["case"])["prompt"]:
-        raise ValueError("no_actual_changed_factor")
+    if p["factor"] == "native_pose":
+        from pose_graph_native import POSE_GUIDE_SHA256
+        if p["case"] != "CG-03" or value != POSE_GUIDE_SHA256:
+            raise ValueError("unapproved_native_pose_factor_or_hash")
+    else:
+        if not isinstance(value, str) or not 10 <= len(value) <= 5000 or "\x00" in value:
+            raise ValueError("invalid_prompt")
+        if value == r.load_case(p["case"])["prompt"]:
+            raise ValueError("no_actual_changed_factor")
     return p
 
 
@@ -95,6 +100,56 @@ def queue(root, p):
         return {"enqueued": False, "reason": "pending_candidate_exists"}
     atomic(root / "pending" / (p["id"] + ".json"), p)
     return {"enqueued": True, "id": p["id"]}
+
+
+def build_graph_for_plan(p, case, prefix):
+    """Build frozen baseline; for CG-03 add only SHA-pinned native pose patch.
+
+    Caller must hold the lab GPU lock, and lab_exclusive must have stopped all
+    known competing dev /prompt writers before the first GPU submission.
+    This helper itself cannot submit, publish or claim G2.
+    """
+    is_pose = p["factor"] == "native_pose"
+    graph = z.create_graph(
+        case["prompt"] if is_pose else p["new_value"],
+        seed=case["seed"], prefix=prefix, width=case["canvas"][0],
+        height=case["canvas"][1], private_unanchored=True)
+    if not is_pose:
+        return graph, {}
+
+    import pose_graph_native as pose
+    # Source is an existing private lab-only guide in the Comfy mount, not an
+    # arbitrary plan-supplied path. The pinned hash, not its filename, is trust.
+    input_dir = Path.home() / ".local/share/mcp-vn-comfy/input"
+    source = input_dir / "wall_push_rear_oblique_01.png"
+    pose.verify_private_guide(source, expected_sha=p["new_value"])
+    info = r.api("/object_info", timeout=8)
+    pose.validate_native_nodes(info)
+    staged_name = "vn_pose_probe_" + p["id"].lower() + ".png"
+    graph = pose.add_native_pose_to_frozen_cg03(
+        graph, case, staged_guide_name=staged_name, object_info=info)
+    raw = source.read_bytes()
+    if sha(raw) != p["new_value"]:
+        raise ValueError("pose_guide_changed_during_preflight")
+    if not input_dir.is_dir() or input_dir.is_symlink():
+        raise ValueError("comfy_input_directory_untrusted")
+    staged = input_dir / staged_name
+    # Exclusive creation: never overwrite another request's guide. A crash
+    # leaves a blocked unique candidate rather than an automatic resend.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(staged, flags, 0o600)
+    with os.fdopen(fd, "wb") as dst:
+        dst.write(raw)
+        dst.flush()
+        os.fsync(dst.fileno())
+    if sha(staged.read_bytes()) != p["new_value"]:
+        raise ValueError("staged_pose_guide_integrity_failed")
+    return graph, {
+        "pose_guide_sha256": p["new_value"],
+        "staged_pose_filename": staged_name,
+        "native_union_patch": pose.POSE_PATCH_NAME,
+        "pose_approval": "LAB_ONLY_experimental_unapproved",
+    }
 
 
 def tick(root):
@@ -125,17 +180,26 @@ def tick(root):
             return {"status": "GPU_QUEUE_BUSY_DEFER", "id": p["id"]}
         case = r.load_case(p["case"])
         prefix = "vn_zimage_probe_ab_" + p["id"].lower() + "_"
-        graph = z.create_graph(p["new_value"], seed=case["seed"], prefix=prefix,
-                               width=case["canvas"][0], height=case["canvas"][1],
-                               private_unanchored=True)
+        try:
+            graph, pose_evidence = build_graph_for_plan(p, case, prefix)
+        except Exception as exc:
+            # PRE-SUBMIT refusal: no Comfy prompt was sent. The known-blocked
+            # result lets lab_exclusive restore stopped dev services safely.
+            path.replace(root / "blocked" / path.name)
+            return {"status": "BLOCKED_INVALID_PLAN", "detail": type(exc).__name__}
         graph_sha = sha(json.dumps(graph, sort_keys=True).encode())
         record = dict(p)
         record.update(status="PREPARED_NOT_SUBMITTED",
                       started_utc=datetime.now(timezone.utc).isoformat(),
                       source_pack_case_sha256=base_sha(p["case"]),
-                      graph_sha256=graph_sha, first_attempt=2,
+                      graph_sha256=graph_sha,
+                      first_attempt=3 if p["factor"] == "native_pose" else 2,
+                      experiment_class="disposable_AB_not_pack_first_shot",
+                      frozen_seed=case["seed"],
+                      frozen_prompt_sha256=sha(case["prompt"].encode()),
                       g1="NOT_MEASURED", g2="NOT_REVIEWED",
-                      changed_factors=["prompt_text"], published=False)
+                      changed_factors=[p["factor"]], published=False)
+        record.update(pose_evidence)
         work = root / "runs" / p["id"]
         if work.exists():
             path.replace(root / "blocked" / path.name)
@@ -191,7 +255,7 @@ def tick(root):
                           canvas=size, gpu_submit_to_png_seconds=round(time.monotonic()-t, 3),
                           completed_utc=datetime.now(timezone.utc).isoformat())
             atomic(work / "result.json", record)
-            path.replace(root / "review_pending" / path.name)
+            (root / "running" / path.name).replace(root / "review_pending" / path.name)
             return {"status": record["status"], "id": p["id"],
                     "prompt_id": pid, "png_sha256": record["png_sha256"],
                     "submit_to_png_seconds": record["gpu_submit_to_png_seconds"]}
