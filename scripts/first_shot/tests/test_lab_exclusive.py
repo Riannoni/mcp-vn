@@ -94,6 +94,47 @@ class LabTests(unittest.TestCase):
         (self.root/"service-state.json").write_text('{"status":"unknown"}')
         self.assertEqual(m.run(self.root,Path("/tmp/dummy"),ops=self.ops())["status"],
                          "BLOCKED_UNRESOLVED_PRIOR_LAB_SESSION")
+    def test_crash_before_submit_autorecovers_original_dev_services(self):
+        self.pending()
+        self.active[m.SERVICES[0]]=False
+        self.active[m.SERVICES[1]]=False
+        (self.root/"service-state.json").write_text(json.dumps({
+            "schema":"firstshot-lab-service-state-v1",
+            "status":"quiesced",
+            "before":{unit:True for unit in m.SERVICES},
+        }))
+        x=m.run(self.root,Path("/tmp/dummy"),ops=self.ops())
+        self.assertEqual(x["status"],"LAB_PREVIOUS_SESSION_RECOVERED")
+        self.assertTrue(self.active[m.SERVICES[0]])
+        self.assertTrue(self.active[m.SERVICES[1]])
+        self.assertFalse((self.root/"service-state.json").exists())
+        self.assertEqual(self.dispatch_count,0)
+
+    def test_previous_unknown_gpu_running_never_restores(self):
+        self.pending()
+        (self.root/"running/R13.json").write_text("{}")
+        (self.root/"service-state.json").write_text(json.dumps({
+            "schema":"firstshot-lab-service-state-v1",
+            "status":"quiesced",
+            "before":{unit:True for unit in m.SERVICES},
+        }))
+        x=m.run(self.root,Path("/tmp/dummy"),ops=self.ops())
+        self.assertEqual(x["status"],"BLOCKED_UNRESOLVED_PRIOR_LAB_SESSION")
+        self.assertEqual(self.starts,[])
+
+    def test_review_pending_restores_services_after_terminal_crash(self):
+        (self.root/"review_pending/R13.json").write_text("{}")
+        self.active[m.SERVICES[0]]=False
+        (self.root/"service-state.json").write_text(json.dumps({
+            "schema":"firstshot-lab-service-state-v1",
+            "status":"completed",
+            "before":{unit:True for unit in m.SERVICES},
+        }))
+        x=m.run(self.root,Path("/tmp/dummy"),ops=self.ops())
+        self.assertEqual(x["status"],"LAB_PREVIOUS_SESSION_RECOVERED")
+        self.assertIn(m.SERVICES[0],self.starts)
+        self.assertEqual(self.dispatch_count,0)
+
     def test_mutual_exclusion(self):
         self.pending()
         path=self.root.parent/"exclusive-dev-lab-maintenance.lock"
