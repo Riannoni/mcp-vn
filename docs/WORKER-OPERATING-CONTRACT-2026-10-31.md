@@ -1,6 +1,6 @@
 # Native worker operating contract — 2026-10-31
 
-This is the current compact operating contract for the existing **14 enabled ordinary ChatGPT Scheduled workers**. It replaces append-only historical prompt checkpoints and conflicting old role, quota and handoff instructions. It does not relax [AGENTS.md](../AGENTS.md), [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md), privacy, independent visual acceptance or single-GPU ownership. Read those two files fully first. Then inspect current [issue #20](https://github.com/Riannoni/web-vn/issues/20), relevant PR heads and actual runtime; historical notes are not live state.
+This is the current compact operating contract for all **15 existing ordinary ChatGPT Scheduled worker roles**. It replaces append-only historical prompt checkpoints and conflicting old role, quota and handoff instructions. It does not relax [AGENTS.md](../AGENTS.md), [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md), privacy, independent visual acceptance or single-GPU ownership. Read those two files fully first. Then inspect current [issue #20](https://github.com/Riannoni/web-vn/issues/20), relevant PR heads and actual runtime; historical notes are not live state.
 
 The versioned prompt source is [worker-prompts.json](../scripts/native_team/ops/worker-prompts.json). For each worker, its complete replacement prompt is exactly:
 
@@ -8,7 +8,7 @@ The versioned prompt source is [worker-prompts.json](../scripts/native_team/ops/
 full_prompt = manifest["common_prompt"] + "\n\n" + worker["role_prompt"]
 ```
 
-Replace the saved prompt as a whole; do not append another historical override. The manifest is a proposed configuration, **not proof that an automation was updated, a helper was installed or a worker ran**. Official automation receipts and runtime evidence establish those facts separately. Golden Evidence Engineer `6ae5dcacb7908191b72d98510a3db5b6` stays paused; do not create a duplicate role or reporter.
+Replace the saved prompt as a whole; do not append another historical override. The manifest is a proposed configuration, **not proof that an automation was updated, a helper was installed or a worker ran**. Official automation receipts and runtime evidence establish those facts separately. Resume the existing Golden Evidence Engineer `6ae5dcacb7908191b72d98510a3db5b6` for the continuing evidence-integrity duty below; do not create a duplicate role or reporter. Its earlier self-pause followed completion of #76 and is historical. Completion of one issue does not authorize a continuing role to disable itself; Chief assigns its next useful bounded work. Preserve explicit owner/platform pauses and never invent work to keep a worker busy.
 
 ## Owner goal and the clocks
 
@@ -24,7 +24,7 @@ Current unanchored Z-Image lab images cannot establish canonical identity. The n
 
 ## Ownership and proposed hourly phases
 
-All schedules remain **hourly**, using **Asia/Novosibirsk**. Moving Dispatcher from :42 to :30 fills the hole left by the paused :30 Golden Evidence role. The proposed aggregate phases have no gap greater than five minutes, but they guarantee neither cloud admission nor a particular worker's start/consumption latency. Rename its title to **web-vn Autonomous Handoff Dispatcher**; it is not a five-minute recurrence.
+All schedules remain **hourly**, using **Asia/Novosibirsk**. Dispatcher uses :30 and the resumed Golden Evidence Engineer uses :28. The proposed aggregate phases have no gap greater than five minutes, but they guarantee neither cloud admission nor a particular worker's start/consumption latency. The dispatcher title is **web-vn Autonomous Handoff Dispatcher**; it is not a five-minute recurrence.
 
 | Role | Automation ID | Hourly minute | Exclusive responsibility |
 | --- | --- | ---: | --- |
@@ -36,6 +36,7 @@ All schedules remain **hourly**, using **Asia/Novosibirsk**. Moving Dispatcher f
 | Renderer | `6ae57b3727688191ab20279ff8fba0af` | :20 | Frozen graph/typed dispatcher source and candidate preparation |
 | GPU Lab | `6ae5e8a91cfc8191bb938957f214f8c3` | :22 | **Sole real GPU submitter**, lab deployment and bounded experiment |
 | Golden | `6ae57b3d794c8191aff21eac865b780b` | :25 | Independent direct-original review and recorded terminal review |
+| Golden Evidence Engineer | `6ae5dcacb7908191b72d98510a3db5b6` | :28 | CPU evidence-integrity engineering and adversarial receipt validation; no pixel verdict |
 | Handoff Dispatcher | `6ae5e8ac2e58819188b5f87aa17d0f97` | :30 | Durable delivery, run/outcome reconciliation and unresolved handoffs |
 | Pose Researcher | `6ae5dcafbf7c8191aaf823beed911ff2` | :35 | Authentic exact-view guide/source evidence |
 | Identity/Wardrobe | `6ae5dcb38de4819193cccf1a9c5954d2` | :40 | Canonical face/current-outfit conditioning and fail-closed refs |
@@ -44,6 +45,8 @@ All schedules remain **hourly**, using **Asia/Novosibirsk**. Moving Dispatcher f
 | E2E/Latency | `6ae5dcb6f8c88191b2cc46a83f64d8da` | :55 | Authenticated stage timings and disposable browser evidence |
 
 Chief selects the next causal hypothesis from actual evidence. Decision independently accepts/rejects source and authorizes bounded installation scope. Dispatcher ensures the responsible worker consumes the handoff; it does not become another planner or reviewer. Renderer prepares source/graphs, Identity supplies canonical conditioning, and GPU Lab alone queues/submits one accepted experiment. Golden cannot render or approve its own producer work. Reliability changes control-only runtime within its assigned scope; Lab owns its lab timer/source switch. No two roles edit the same active files or lease the same lane concurrently.
+
+Golden Evidence Engineer owns the continuing trust boundary between actual Golden observations, controller receipts and their consumers. Its first task is to reconcile current PR #83 with existing independent findings and validate a changed repair or an untested CPU boundary. Do not repeat an unchanged known failure; reuse its exact evidence and route the blocker to E2E, then take the next genuinely unowned Chief assignment. In the evidence path, forged/self-authored review identity, omitted mandatory conditions, non-PNG/substituted bytes, stale/replayed/cross-candidate receipts and fabricated human labels must not yield an accepted numerator. E2E retains ownership of its active PR #83 and timing code; Golden Evidence must inspect its exact current head and pending work, return concrete counterexamples and review fixes without editing that active scope. Later evidence-engineering changes require an explicitly disjoint Chief assignment and independent source review. Provenance continues to own authentic creation-time inputs; Golden alone supplies independent pixel observations. Evidence Engineer cannot create a G2 verdict, perform GPU work, reopen delivered #76 merely to create activity, or count a source fix as rendered success.
 
 ## Mandatory reconciliation before action
 
