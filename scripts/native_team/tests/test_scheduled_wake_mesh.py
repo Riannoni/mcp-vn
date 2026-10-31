@@ -54,6 +54,7 @@ class NativeWakeMeshTests(unittest.TestCase):
             x=list(ex.map(lambda _: self.call(),range(4)))
         self.assertEqual(sum(bool(z.get("reserved")) for z in x),1)
     def test_missing_native_state_is_error(self):
+        (self.root/"state").rmdir()
         with self.assertRaises(FileNotFoundError):
             self.call()
 
