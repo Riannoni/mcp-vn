@@ -36,6 +36,29 @@ class FirstShotTests(unittest.TestCase):
             self.assertEqual(x["status"],"PREFLIGHT_ONLY")
             self.assertEqual(x["gpu_jobs"],0)
             self.assertFalse((Path(t)/"case/BG-01-result.json").exists())
+    def test_same_graph_new_run_directory_has_distinct_broker_key(self):
+        with tempfile.TemporaryDirectory() as t:
+            a=Path(t)/"first-attempt-A"
+            b=Path(t)/"first-attempt-B"
+            ka=mod.first_shot_idempotency_key("CG-03",a)
+            kb=mod.first_shot_idempotency_key("CG-03",b)
+            self.assertNotEqual(ka,kb)
+            self.assertEqual(ka,mod.first_shot_idempotency_key("CG-03",a))
+            self.assertTrue(ka.startswith("first-shot-v1:"))
+            self.assertLessEqual(len(ka),200)
+
+    def test_prompt_http_request_carries_broker_run_key(self):
+        import io
+        with patch.object(mod.urllib.request,"urlopen",
+                          return_value=io.BytesIO(b'{"prompt_id":"synthetic-no-gpu"}')) as fake:
+            receipt=mod.api("/prompt",{"prompt":{}},timeout=3,idempotency_key="first-shot-run-key")
+        self.assertEqual(receipt["prompt_id"],"synthetic-no-gpu")
+        req=fake.call_args.args[0]
+        headers={k.lower():v for k,v in req.header_items()}
+        self.assertEqual(headers["idempotency-key"],"first-shot-run-key")
+        self.assertEqual(headers["x-broker-queue-wait-seconds"],"8")
+        self.assertEqual(req.get_method(),"POST")
+
     def test_busy_gpu_fails_before_submit(self):
         with tempfile.TemporaryDirectory() as t, patch.object(mod,"queue_empty",return_value=False):
             with self.assertRaisesRegex(RuntimeError,"GPU_QUEUE_BUSY"):
