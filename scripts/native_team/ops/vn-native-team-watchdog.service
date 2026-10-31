@@ -1,0 +1,10 @@
+[Unit]
+Description=web-vn native ChatGPT four-lane local state watchdog
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/.local/share/web-vn-native-team/run-20261031-full/control/watchdog-run.sh
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=256M
+CPUQuota=25%
+RuntimeMaxSec=30
