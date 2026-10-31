@@ -172,7 +172,8 @@ def check_review(root,reserve=False,requestor='worker',now=None,cooldown=600):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--root",type=Path,required=True)
-    p.add_argument("--lane",choices=LANES)\n    p.add_argument("--chief-review",action="store_true")
+    p.add_argument("--lane",choices=LANES)
+    p.add_argument("--chief-review",action="store_true")
     p.add_argument("--reserve",action="store_true")
     p.add_argument("--requestor",default="chief")
     args=p.parse_args()
