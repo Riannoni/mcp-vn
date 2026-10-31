@@ -994,6 +994,10 @@ def assess(job,raw,background):
                 metrics["pose_geometry"]={"verified":False,"reason":"verification_unavailable",
                     "details":str(err)[:140]}
                 warnings.append("CG pose geometry verification unavailable")
+    # Profile the geometry gate within this exact attempt, including any
+    # Comfy verification wait. Never infer it from unpaired job percentiles.
+    metrics["qa_pose_geometry_ms"]=round(
+        max(0,(time.monotonic()-qa_t0)*1000),3)
     if reasons and metrics.get("panel_collage_detected"):
         semantic="failed"
         metrics["vlm_skipped_reason"]="panel_layout_failed"
@@ -1001,6 +1005,7 @@ def assess(job,raw,background):
         semantic="failed"
         metrics["vlm_skipped_reason"]="pose_geometry_failed"
     if not reasons and os.environ.get("VN_VISION_QA","1").lower() not in ("0","false","off"):
+        vision_started=time.monotonic()
         try:
             payload={"kind":"scene" if kind=="local_cg" else kind,
                      "quality":(job.get("spec") or {}).get("quality","standard"),
@@ -1014,7 +1019,28 @@ def assess(job,raw,background):
                     payload["candidate_face_b64"]=base64.b64encode(pil_png(head_crop(image))).decode("ascii")
                 except Exception as identity_err:
                     metrics["identity_check_error"]=str(identity_err)[:100]
-            validation=request(VISION,"/judge","POST",payload,timeout=90)
+            metrics["qa_vision_prepare_ms"]=round(
+                max(0,(time.monotonic()-vision_started)*1000),3)
+            http_started=time.monotonic()
+            try:
+                validation=request(VISION,"/judge","POST",payload,timeout=90)
+            finally:
+                metrics["qa_vision_http_ms"]=round(
+                    max(0,(time.monotonic()-http_started)*1000),3)
+            # Remote timing is advisory attribution, never acceptance evidence.
+            # Reject non-finite, boolean, negative and implausible inputs.
+            stage_data=validation.get("qa_stage_ms")
+            valid_stages={}
+            if isinstance(stage_data,dict):
+                for field in ("input_decode","lock_wait","model_analyze","handler_before_send"):
+                    value=stage_data.get(field)
+                    if type(value) in (int,float) and value==value and 0<=value<=300000:
+                        valid_stages[field]=round(float(value),3)
+            metrics["qa_vision_server_stage_ms"]=valid_stages
+            caption_ms=validation.get("vlm_caption_ms")
+            if (type(caption_ms) in (int,float) and caption_ms==caption_ms
+                    and 0<=caption_ms<=300000):
+                metrics["qa_vision_caption_ms"]=round(float(caption_ms),3)
             semantic=validation.get("status","unavailable")
             if semantic not in ("passed","failed","unavailable"):semantic="unavailable"
             metrics["vlm_caption"]=str(validation.get("caption",""))[:145]
@@ -1042,6 +1068,9 @@ def assess(job,raw,background):
         except (OSError,ValueError,TimeoutError,URLError,HTTPError) as error:
             semantic="unavailable"
             metrics["vlm_error"]=str(error)[:140]
+        finally:
+            metrics["qa_vision_attempt_ms"]=round(
+                max(0,(time.monotonic()-vision_started)*1000),3)
     # Never trust a generic "passed" verdict if a required action was not
     # affirmatively verified by vision. This check is independent of QA's
     # status field so future VLM changes cannot accidentally bypass it.
@@ -1100,6 +1129,10 @@ def assess(job,raw,background):
                               features.get("ground_pose") is True),
                             "features":features}
     qa_ms=(time.monotonic()-qa_t0)*1000
+    # Explicit unattributed residue: do not call it network or CLIP time.
+    metrics["qa_remaining_ms"]=round(max(0,qa_ms-
+        metrics.get("qa_pose_geometry_ms",0)-
+        metrics.get("qa_vision_attempt_ms",0)),3)
 
     return output,{"passed":not reasons,"reasons":reasons,"warnings":warnings,
                    "metrics":metrics,"evidence":evidence,"semantic_status":semantic,
