@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import {artSnapshot} from "../src/art-spec.mjs";
-import {verifyNarrativeSourceProvenance,verifyOriginalImageChain} from "../src/source-canonical-provenance.mjs";
+import {deriveNarrativeSourceProvenance,verifyNarrativeSourceProvenance,verifyOriginalImageChain} from "../src/source-canonical-provenance.mjs";
 
 const url=id=>"https://example.invalid/assets/"+id+".png?sig=disposable";
 const id=n=>String(n).padStart(8,"0")+"-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -36,9 +36,11 @@ function fixture(){
  };
 }
 function snapshot(g){
- return artSnapshot(g,{kind:"scene",style:"realistic",character:"",
+ const spec=artSnapshot(g,{kind:"scene",style:"realistic",character:"",
   prompt:g.scene.image_prompts?.cg||"Non-narrator fallback image prompt",
   neural_scene:true,narrator_prompt:!!g.scene.image_prompts?.cg});
+ spec.source_provenance_v1=deriveNarrativeSourceProvenance(g,spec);
+ return spec;
 }
 test("neural CG creation pins canonical narrator, face, outfit, action and scene source",()=>{
  const game=fixture(),spec=snapshot(game),p=spec.source_provenance_v1;
@@ -82,9 +84,11 @@ test("stale version and cross-scene typed contract are rejected",()=>{
 });
 test("forged narrator image prompt cannot claim canonical narrative provenance",()=>{
  const game=fixture();
- assert.throws(()=>artSnapshot(game,{kind:"scene",style:"realistic",
-  prompt:"unrelated synthetic prompt",neural_scene:true,narrator_prompt:true}),
-  /narrator|canonical.*prompt/i);
+ assert.throws(()=>{
+  const spec=artSnapshot(game,{kind:"scene",style:"realistic",
+   prompt:"unrelated synthetic prompt",neural_scene:true,narrator_prompt:true});
+  deriveNarrativeSourceProvenance(game,spec);
+ },/narrator|canonical.*prompt/i);
 });
 test("prior-turn narrator without a linked player action is not certified",()=>{
  const game=fixture();game.turn_metrics.last.action_id="different-action";
