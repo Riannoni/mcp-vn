@@ -84,8 +84,20 @@ fake-Comfy before any real GPU. The gateway and broker must receive the *same*
 credential version; rotation while a lease is outstanding must retain HOLD
 until a human verifies the process group and safely reconciles ownership.
 This shared-token scheme does **not** authenticate individual processes that
-can read the gateway UID's private file; use a separate least-privileged gateway
-service UID and assess same-UID access during independent security review.
+can read the gateway UID's private file. A gateway running as the rootless
+Comfy/Podman owner can expose its 0600 token to that owner's other processes.
+The proposed gateway source now fails closed before any GPU lease if
+`VN_BROKER_COMFY_OWNER_UID` is missing/invalid or equals its effective UID.
+Provision that value only after independently verifying the REAL owner UID of
+the Comfy/Podman systemd user service. Use a separate least-privileged gateway
+service UID, migrate the gateway code/model/runtime dependencies with
+separately verified read-only permissions, and provision the token as an
+owner-only regular file under that dedicated UID. Do not enable broker GPU
+leases while the existing Xavok user gateway service remains in place.
+The environment variable is a misconfiguration guard, NOT an independently
+authenticated statement of Comfy ownership: exact runtime UID, token access
+from the Comfy owner, service startup, model access and rollback need external
+negative/positive acceptance before production cutover.
 It cannot prevent a privileged Podman administrator from bypassing the OS guard.
 
 ## Explicit deployment gates — DO NOT EXECUTE UNTIL INDEPENDENT REVIEW

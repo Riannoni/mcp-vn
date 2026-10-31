@@ -54,7 +54,10 @@ class GatewayLeaseTests(unittest.TestCase):
             token = "fixture-only-gateway-test-token-abcdef0123456789"
             path.write_text(token + "\n")
             path.chmod(0o600)
-            with patch.dict(os.environ, {"VN_BROKER_LEASE_TOKEN_FILE": str(path)}):
+            with patch.dict(os.environ, {
+                "VN_BROKER_LEASE_TOKEN_FILE": str(path),
+                "VN_BROKER_COMFY_OWNER_UID": str(os.geteuid() + 1),
+            }):
                 self.assertEqual(g.broker_lease_token(), token)
                 path.chmod(0o644)
                 with self.assertRaisesRegex(RuntimeError, "permissions invalid"):
@@ -77,6 +80,37 @@ class GatewayLeaseTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "credential absent"):
                 with g.gpu_lease():
                     self.fail("unauthorized lease entered")
+
+    def test_gpu_token_denied_when_gateway_shares_comfy_owner_uid(self):
+        # Dedicated service account is mandatory for broker GPU credentials.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "broker.token"
+            path.write_text("fixture-only-gateway-test-token-abcdef0123456789\n")
+            path.chmod(0o600)
+            with patch.dict(os.environ, {
+                "VN_BROKER_LEASE_TOKEN_FILE": str(path),
+                "VN_BROKER_COMFY_OWNER_UID": str(os.geteuid()),
+            }):
+                with self.assertRaisesRegex(RuntimeError, "distinct service UID"):
+                    g.broker_lease_token()
+
+    def test_gpu_token_requires_verified_comfy_owner_uid_configuration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "broker.token"
+            path.write_text("fixture-only-gateway-test-token-abcdef0123456789\n")
+            path.chmod(0o600)
+            with patch.dict(os.environ, {
+                "VN_BROKER_LEASE_TOKEN_FILE": str(path),
+                "VN_BROKER_COMFY_OWNER_UID": "",
+            }):
+                with self.assertRaisesRegex(RuntimeError, "not configured"):
+                    g.broker_lease_token()
+            with patch.dict(os.environ, {
+                "VN_BROKER_LEASE_TOKEN_FILE": str(path),
+                "VN_BROKER_COMFY_OWNER_UID": str(os.geteuid() + 1),
+            }):
+                self.assertEqual(g.broker_lease_token(),
+                                 "fixture-only-gateway-test-token-abcdef0123456789")
 
     def test_free_requires_and_sends_lease_header(self):
         seen = []

@@ -74,6 +74,14 @@ def broker_lease_token():
         raise RuntimeError("GPU broker credential permissions invalid")
     if info.st_uid != os.geteuid():
         raise RuntimeError("GPU broker credential owner invalid")
+    # The owner of the rootless Comfy/Podman service must be independently
+    # configured from its real UID during cutover. A gateway running under
+    # that same UID cannot keep a 0600 capability secret from Comfy clients.
+    comfy_uid = os.environ.get("VN_BROKER_COMFY_OWNER_UID", "")
+    if not comfy_uid or not comfy_uid.isascii() or not comfy_uid.isdecimal():
+        raise RuntimeError("GPU broker Comfy owner UID not configured")
+    if os.geteuid() == int(comfy_uid):
+        raise RuntimeError("GPU broker gateway requires distinct service UID")
     token = path.read_text(encoding="ascii").strip()
     if not (32 <= len(token) <= 128) or any(c.isspace() for c in token):
         raise RuntimeError("GPU broker credential invalid")
