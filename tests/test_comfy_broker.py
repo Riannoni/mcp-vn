@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CPU-only protocol/race/fault tests. Fake Comfy; NEVER submit to a GPU."""
 import asyncio
+import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -14,6 +15,8 @@ PATH = Path(__file__).resolve().parents[1] / "scripts/comfy_broker/broker.py"
 spec = importlib.util.spec_from_file_location("comfy_broker", PATH)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+
+TEST_EXTERNAL_TOKEN = "fixture-only-broker-lease-token-abcdef0123456789"
 
 
 class FakeComfy:
@@ -112,7 +115,9 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
 
     async def start_broker(self, wait=2):
         self.broker = m.Broker(self.tmp.name, str(self.backend_server.make_url("/")).rstrip("/"),
-                               wait_seconds=wait, poll_seconds=.02, backend_timeout=.4)
+                               wait_seconds=wait, poll_seconds=.02, backend_timeout=.4,
+                               external_auth_digest=hashlib.sha256(
+                                   TEST_EXTERNAL_TOKEN.encode()).hexdigest())
         self.server = TestServer(m.make_app(self.broker))
         self.client = TestClient(self.server)
         await self.client.start_server()
@@ -395,9 +400,79 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         self.fake.finish(first["prompt_id"])
         await self.until(lambda: self.broker.owner() is None)
 
-    async def test_external_gpu_lease_blocks_comfy_and_guards_free(self):
+    @staticmethod
+    def external_headers():
+        return {"Authorization": "Bearer " + TEST_EXTERNAL_TOKEN}
+
+    async def test_external_credential_is_required_even_when_header_present(self):
+        # Missing broker-side provisioning must fail closed, not trust headers.
+        previous = self.broker.external_auth_digest
+        try:
+            self.broker.external_auth_digest = None
+            async with self.client.post("/broker/external/acquire",
+                                        json={"client": "kobold-gateway"},
+                                        headers=self.external_headers()) as response:
+                self.assertEqual(response.status, 401)
+            self.assertIsNone(self.broker.external()["lease_id"])
+        finally:
+            self.broker.external_auth_digest = previous
+
+    async def test_external_digest_file_rejects_world_access_or_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "lease.sha256"
+            data = hashlib.sha256(TEST_EXTERNAL_TOKEN.encode()).hexdigest()
+            path.write_text(data + "\n")
+            path.chmod(0o600)
+            self.assertEqual(m.load_external_auth_digest(path), data)
+            path.chmod(0o644)
+            with self.assertRaisesRegex(ValueError, "insecure_external_auth_digest_file"):
+                m.load_external_auth_digest(path)
+            path.chmod(0o600)
+            path.write_text("not-a-digest")
+            with self.assertRaisesRegex(ValueError, "invalid_external_auth_digest_file"):
+                m.load_external_auth_digest(path)
+            link = Path(directory) / "alias.sha256"
+            link.symlink_to(path)
+            with self.assertRaisesRegex(ValueError, "insecure_external_auth_digest_file"):
+                m.load_external_auth_digest(link)
+
+    async def test_anonymous_external_lease_spoof_is_denied(self):
+        # RED: mere client-name knowledge must never create a GPU owner.
+        await self.until(lambda: self.broker.fault is None)
         async with self.client.post("/broker/external/acquire",
                                     json={"client": "kobold-gateway"}) as response:
+            self.assertEqual(response.status, 401)
+        self.assertIsNone(self.broker.external()["lease_id"])
+        self.assertEqual(len(self.fake.posts), 0)
+
+    async def test_wrong_token_cannot_acquire_or_release_gpu_lease(self):
+        await self.until(lambda: self.broker.fault is None)
+        for value in ("Bearer wrong-but-long-token-0123456789abcdef", ""):
+            async with self.client.post("/broker/external/acquire",
+                                        json={"client": "kobold-gateway"},
+                                        headers={"Authorization": value}) as response:
+                self.assertEqual(response.status, 401)
+        self.assertIsNone(self.broker.external()["lease_id"])
+        async with self.client.post("/broker/external/acquire",
+                                    json={"client": "kobold-gateway"},
+                                    headers=self.external_headers()) as response:
+            self.assertEqual(response.status, 200)
+            lease = (await response.json())["lease_id"]
+        for headers in ({}, {"Authorization": "Bearer wrong-but-long-token-0123456789abcdef"}):
+            async with self.client.post("/broker/external/release",
+                                        json={"lease_id": lease}, headers=headers) as response:
+                self.assertEqual(response.status, 401)
+            self.assertEqual(self.broker.external()["lease_id"], lease)
+        async with self.client.post("/broker/external/release",
+                                    json={"lease_id": lease},
+                                    headers=self.external_headers()) as response:
+            self.assertEqual(response.status, 200)
+        self.assertIsNone(self.broker.external()["lease_id"])
+
+    async def test_external_gpu_lease_blocks_comfy_and_guards_free(self):
+        async with self.client.post("/broker/external/acquire",
+                                    json={"client": "kobold-gateway"},
+                                    headers=self.external_headers()) as response:
             self.assertEqual(response.status, 200)
             lease = (await response.json())["lease_id"]
         async with self.client.post("/free", json={"unload_models": True}) as response:
@@ -413,16 +488,19 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("external-gpu-lease",
                           [e[1] for e in (await response.json())["queue_pending"]])
         async with self.client.post("/broker/external/release",
-                                    json={"lease_id": str(uuid.uuid4())}) as response:
+                                    json={"lease_id": str(uuid.uuid4())},
+                                    headers=self.external_headers()) as response:
             self.assertEqual(response.status, 409)
         async with self.client.post("/broker/external/release",
-                                    json={"lease_id": lease}) as response:
+                                    json={"lease_id": lease},
+                                    headers=self.external_headers()) as response:
             self.assertEqual((await response.json())["released"], True)
         await self.until(lambda: len(self.fake.posts) == 1)
 
     async def test_external_lease_survives_broker_restart(self):
         async with self.client.post("/broker/external/acquire",
-                                    json={"client": "kobold-gateway"}) as response:
+                                    json={"client": "kobold-gateway"},
+                                    headers=self.external_headers()) as response:
             lease = (await response.json())["lease_id"]
         await self.stop_broker()
         await self.start_broker()
@@ -431,7 +509,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.08)
         self.assertEqual(self.fake.posts, [])
         async with self.client.post("/broker/external/release",
-                                    json={"lease_id": lease}) as response:
+                                    json={"lease_id": lease},
+                                    headers=self.external_headers()) as response:
             self.assertEqual(response.status, 200)
         await self.until(lambda: len(self.fake.posts) == 1)
 
@@ -500,7 +579,8 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         await self.post(1)
         await self.until(lambda: len(self.fake.posts) == 1)
         async with self.client.post("/broker/external/acquire",
-                                    json={"client": "kobold-gateway"}) as response:
+                                    json={"client": "kobold-gateway"},
+                                    headers=self.external_headers()) as response:
             self.assertEqual(response.status, 409)
 
     async def test_websocket_api_alias(self):

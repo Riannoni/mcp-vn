@@ -15,6 +15,8 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
+import stat
 import sqlite3
 import time
 import uuid
@@ -65,7 +67,14 @@ def terminal_history(data, prompt_id):
 
 class Broker:
     def __init__(self, state_dir, backend, wait_seconds=120, poll_seconds=0.25,
-                 backend_timeout=8, lease_seconds=15, max_queue=64):
+                 backend_timeout=8, lease_seconds=15, max_queue=64,
+                 external_auth_digest=None):
+        # Disable external leases unless provisioned with an exact SHA-256
+        # digest of a private capability (no cleartext credential in SQLite).
+        if external_auth_digest is not None and not re.fullmatch(
+                r"[0-9a-f]{64}", external_auth_digest):
+            raise ValueError("invalid_external_auth_digest")
+        self.external_auth_digest = external_auth_digest
         self.root = Path(state_dir)
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.root, 0o700)
@@ -429,8 +438,23 @@ async def submit(request):
                               "broker_queued": row["state"] == "QUEUED"})
 
 
+def external_authorized(request, broker):
+    # Client name and source IP are not credentials. Loopback is shared by
+    # unrelated applications; protect both acquire and release.
+    header = request.headers.get("Authorization", "")
+    if not broker.external_auth_digest or not header.startswith("Bearer "):
+        return False
+    token = header[len("Bearer "):]
+    if not (32 <= len(token) <= 128) or any(c.isspace() for c in token):
+        return False
+    actual = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(actual, broker.external_auth_digest)
+
+
 async def external_acquire(request):
     broker = request.app[BROKER_KEY]
+    if not external_authorized(request, broker):
+        return web.json_response({"error": "external_client_auth_required"}, status=401)
     try:
         body = await request.json()
     except ValueError:
@@ -463,6 +487,8 @@ async def external_acquire(request):
 
 async def external_release(request):
     broker = request.app[BROKER_KEY]
+    if not external_authorized(request, broker):
+        return web.json_response({"error": "external_client_auth_required"}, status=401)
     try:
         body = await request.json()
     except ValueError:
@@ -646,6 +672,20 @@ def make_app(broker):
     return app
 
 
+def load_external_auth_digest(path):
+    # The digest is not a bearer secret, but treat it as privileged config.
+    # Refuse symlinks, world-readable or group-writable configuration.
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o027:
+        raise ValueError("insecure_external_auth_digest_file")
+    if info.st_uid not in (0, os.geteuid()):
+        raise ValueError("untrusted_external_auth_digest_owner")
+    digest = path.read_text(encoding="ascii").strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("invalid_external_auth_digest_file")
+    return digest
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen", default="127.0.0.1")
@@ -654,10 +694,14 @@ def main():
     parser.add_argument("--state-dir", type=Path, default=Path("/var/lib/comfy-broker"))
     parser.add_argument("--queue-wait", type=float, default=120)
     parser.add_argument("--backend-timeout", type=float, default=30)
+    parser.add_argument("--external-auth-sha256-file", type=Path, required=True,
+                        help="root-provisioned SHA-256 of Kobold external lease token")
     args = parser.parse_args()
     os.umask(0o077)
     broker = Broker(args.state_dir, args.backend, wait_seconds=args.queue_wait,
-                    backend_timeout=args.backend_timeout)
+                    backend_timeout=args.backend_timeout,
+                    external_auth_digest=load_external_auth_digest(
+                        args.external_auth_sha256_file))
     web.run_app(make_app(broker), host=args.listen, port=args.port, access_log=None)
 
 
