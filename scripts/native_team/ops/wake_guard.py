@@ -11,12 +11,13 @@ import sqlite3
 import subprocess
 import time
 from pathlib import Path
+from quota_gate import permit as quota_permit
 
 LANES={"R":"renderer","Q":"qa","G":"golden","S":"reliability"}
-COOLDOWN_S=3600
-MAX_LANE_WAKES_PER_HOUR=1
-MAX_GLOBAL_WORKER_WAKES_PER_HOUR=4
-MAX_CHIEF_WAKES_PER_HOUR=1
+COOLDOWN_S=120
+MAX_LANE_WAKES_PER_HOUR=6
+MAX_GLOBAL_WORKER_WAKES_PER_HOUR=20
+MAX_CHIEF_WAKES_PER_HOUR=12
 
 
 def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
@@ -35,12 +36,8 @@ def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
                            "--untracked-files=all"],capture_output=True,text=True,timeout=10)
     if result.returncode or result.stdout.strip():
         return {"eligible":False,"reason":"worktree_dirty_or_missing","lane":lane}
-    if "blocked" in states:
-        return {"eligible":False,"reason":"blocker_requires_review","lane":lane}
-    if "review_pending" in states:
-        return {"eligible":False,"reason":"review_pending","lane":lane}
     completed={x[0] for x in db.execute("SELECT id FROM task WHERE state='done'")}
-    occupied=[json.loads(x[0]) for x in db.execute("SELECT paths FROM task WHERE state='leased'")]
+    occupied=[json.loads(x[0]) for x in db.execute("SELECT paths FROM task WHERE state IN ('leased','blocked','review_pending')")]
     def overlaps(a,b):
         return any(x==y or x.startswith(y.rstrip("/")+"/") or y.startswith(x.rstrip("/")+"/")
                    for x in a for y in b)
@@ -55,7 +52,9 @@ def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
             continue
         ready.append(row[0])
     if not ready:
-        return {"eligible":False,"reason":"no_ready_task","lane":lane}
+        reason=("blocker_requires_review" if "blocked" in states else
+                "review_pending" if "review_pending" in states else "no_ready_task")
+        return {"eligible":False,"reason":reason,"lane":lane}
     history_exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wake_history'").fetchone()
     if history_exists:
         lane_recent=db.execute("SELECT COUNT(*) FROM wake_history WHERE lane=? AND requested_at>?",(lane,now-3600)).fetchone()[0]
@@ -98,6 +97,10 @@ def check(root,lane,reserve=False,requestor="chief",now=None,cooldown=COOLDOWN_S
                            "task_id TEXT NOT NULL,requestor TEXT NOT NULL)")
         instant=time.time() if now is None else now
         result=readiness(root,lane,db,instant,cooldown)
+        if result["eligible"]:
+            quota=quota_permit(root,instant)
+            if not quota["eligible"]:
+                result={**result,**quota}
         if reserve and result["eligible"]:
             if not requestor or len(requestor)>100:
                 raise ValueError("invalid requestor")
@@ -121,7 +124,7 @@ def check(root,lane,reserve=False,requestor="chief",now=None,cooldown=COOLDOWN_S
 
 
 
-def review_readiness(db,now,cooldown=600,settle_seconds=120):
+def review_readiness(db,now,cooldown=120,settle_seconds=120):
     """Chief review is ready when submitted evidence needs independent checking.
 
     Wait briefly for sibling workers, but never pretend a local scanner can
@@ -150,7 +153,7 @@ def review_readiness(db,now,cooldown=600,settle_seconds=120):
             'review_count':len(tasks),'active_leases':active,'task_id':tasks[0][0]}
 
 
-def check_review(root,reserve=False,requestor='worker',now=None,cooldown=600):
+def check_review(root,reserve=False,requestor='worker',now=None,cooldown=120):
     root=Path(root).resolve()
     dbpath=root/'state/team.sqlite3'
     if not dbpath.is_file():
@@ -173,6 +176,10 @@ def check_review(root,reserve=False,requestor='worker',now=None,cooldown=600):
                        'task_id TEXT NOT NULL,requestor TEXT NOT NULL)')
         instant=time.time() if now is None else now
         outcome=review_readiness(db,instant,cooldown)
+        if outcome["eligible"]:
+            quota=quota_permit(root,instant)
+            if not quota["eligible"]:
+                outcome={**outcome,**quota}
         if reserve and outcome['eligible']:
             if not isinstance(requestor,str) or not requestor or len(requestor)>100:
                 raise ValueError('invalid requestor')
