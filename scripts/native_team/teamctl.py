@@ -169,7 +169,7 @@ def submit(db,lane,owner,fence,tid,file):
             'commit_sha':head}
 
 
-def review(db,task_id,approve,note):
+def review(db,task_id,approve,note,verified_commit_sha=None):
     if not isinstance(note,str) or len(note.strip())<12:
         raise ValueError('independent review note required')
     x=db.execute('SELECT state,result,paths FROM task WHERE id=?',(task_id,)).fetchone()
@@ -188,6 +188,8 @@ def review(db,task_id,approve,note):
     declared=json.loads(f.read_text())
     if declared.get('g2')!='UNVERIFIED' or declared.get('g3')!='NO_GO':
         raise ValueError('visual release claim unsupported')
+    if approve and verified_commit_sha!=doc.get('commit_sha'):
+        raise ValueError('reviewer must explicitly acknowledge exact submitted commit SHA')
     paths=_safe_source_diff(
         lane,doc.get('baseline_sha'),doc.get('commit_sha'),
         _checked_scope(lane,json.loads(x['paths'])))
@@ -233,7 +235,7 @@ def main():
     cc=subs.add_parser('claim');cc.add_argument('--lane',choices=LANES,required=True);cc.add_argument('--owner',required=True)
     cc=subs.add_parser('heartbeat');cc.add_argument('--task',required=True);cc.add_argument('--owner',required=True);cc.add_argument('--fence',required=True)
     cc=subs.add_parser('submit');cc.add_argument('--lane',choices=LANES,required=True);cc.add_argument('--task',required=True);cc.add_argument('--owner',required=True);cc.add_argument('--fence',required=True);cc.add_argument('--evidence',required=True)
-    cc=subs.add_parser('review');cc.add_argument('--task',required=True);cc.add_argument('--approve',action='store_true');cc.add_argument('--note',required=True)
+    cc=subs.add_parser('review');cc.add_argument('--task',required=True);cc.add_argument('--approve',action='store_true');cc.add_argument('--note',required=True);cc.add_argument('--verified-commit')
     cc=subs.add_parser('enqueue');cc.add_argument('--spec',required=True)
     cc=subs.add_parser('stop');cc.add_argument('--reason',required=True)
     args=p.parse_args()
@@ -245,7 +247,7 @@ def main():
         elif args.cmd=='claim':result=claim(db,args.lane,args.owner)
         elif args.cmd=='heartbeat':result={'accepted':c.heartbeat(db,args.task,args.owner,args.fence,ttl=2700)}
         elif args.cmd=='submit':result=submit(db,args.lane,args.owner,args.fence,args.task,args.evidence)
-        elif args.cmd=='review':result=review(db,args.task,args.approve,args.note)
+        elif args.cmd=='review':result=review(db,args.task,args.approve,args.note,args.verified_commit)
         elif args.cmd=='enqueue':
             d=json.loads(Path(args.spec).read_text())
             if d['lane'] not in LANES or not d['id'].startswith(d['lane']+'-'):
