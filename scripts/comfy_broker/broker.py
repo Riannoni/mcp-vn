@@ -430,6 +430,10 @@ async def submit(request):
     if row["state"] == "UNCERTAIN":
         return web.json_response({"error": "submission_outcome_unknown", "prompt_id": pid,
                                   "retry_safe": False}, status=503)
+    if row["state"] == "REJECTED":
+        return web.json_response({"error": "broker_job_rejected",
+                                  "reason": row["error"] or "job_rejected",
+                                  "prompt_id": pid, "retry_safe": False}, status=409)
     if row["state"] == "EXPIRED":
         # An idempotent reconnect cannot revive a timed-out logical action.
         # Do not return a success-shaped receipt for a job that will never run.
