@@ -95,4 +95,15 @@ test("missing canonical source plate bytes reject neural CG before a job is queu
  const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
  assert.equal(after,before,"missing source bytes must not mutate the job queue");
 });
+test("symlinked canonical face bytes reject neural CG before queue mutation",async()=>{
+ const {game,face,background}=await fixture();
+ const facePath=path.join(root,"assets",face);
+ await fs.unlink(facePath);
+ await fs.symlink(background,facePath);
+ const jobDir=path.join(root,"jobs");
+ const before=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ await assert.rejects(()=>enqueue(game),/ELOOP|symlink|canonical|source.*asset/i);
+ const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ assert.equal(after,before,"symlinked face must not mutate queue");
+});
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));

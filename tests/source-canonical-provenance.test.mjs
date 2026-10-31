@@ -135,8 +135,15 @@ function resultChain(job,png,output=png){
   original_sha256:sha(png),final_sha256:sha(output),result_signature:result.signature});
  return {intent,dispatch,result,final};
 }
+function sourceEvidence(job){
+ const content={background:"background source bytes",actor_face:"canonical face bytes",
+  actor_anchor:"canonical body bytes"};
+ return job.creation_receipt_v1.source_assets.map(x=>({
+  role:x.role,actor:x.actor,asset:x.asset,bytes:Buffer.from(content[x.role])}));
+}
 function audit(job,binding,originalBytes,expectedPromptId=id(91)){
- return verifyOriginalImageChain({job,binding,originalBytes,expectedPromptId,
+ return verifyOriginalImageChain({job,binding,originalBytes,
+  sourceAssetBytes:sourceEvidence(job),expectedPromptId,
   producerKeyHex:producerKey,resultKeyHex:resultKey});
 }
 test("signed source to workflow/prompt/original PNG is byte-bound but NOT G2",()=>{
@@ -162,6 +169,33 @@ test("forged source receipt, missing pre-submit intent, stale attempt fail close
  assert.throws(()=>audit(job,missing,png),/intent|phase|chain/i);
  const stale=clone(job);stale.attempts=2;
  assert.throws(()=>audit(stale,chain,png),/attempt|stale/i);
+});
+test("signed PNG chain must reject missing, substituted and misattributed canonical bytes",()=>{
+ const job=sourceJob(),png=Buffer.from("exact original png for source-byte test");
+ const chain=resultChain(job,png);
+ const source=job.creation_receipt_v1.source_assets.map(x=>({
+  role:x.role,actor:x.actor,asset:x.asset,
+  bytes:Buffer.from({background:"background source bytes",
+   actor_face:"canonical face bytes",
+   actor_anchor:"canonical body bytes"}[x.role])}));
+ const params={job,binding:chain,originalBytes:png,expectedPromptId:id(91),
+  producerKeyHex:producerKey,resultKeyHex:resultKey};
+ // A valid producer HMAC and worker PNG HMAC are insufficient when the
+ // independent reviewer has not re-read the actual canonical source bytes.
+ assert.throws(()=>verifyOriginalImageChain(params),/canonical source|source bytes|missing/i);
+ assert.throws(()=>verifyOriginalImageChain({...params,sourceAssetBytes:source.slice(1)}),
+  /canonical source|source bytes|missing/i);
+ const replaced=source.map(x=>({...x}));
+ replaced[1]={...replaced[1],bytes:Buffer.from("forged other-face bytes")};
+ assert.throws(()=>verifyOriginalImageChain({...params,sourceAssetBytes:replaced}),
+  /canonical source|source bytes|sha|digest|mismatch/i);
+ const cross=source.map(x=>({...x}));
+ cross[1]={...cross[1],actor:"A different scene actor"};
+ assert.throws(()=>verifyOriginalImageChain({...params,sourceAssetBytes:cross}),
+  /canonical source|attribution|actor|scene|mismatch/i);
+ const valid=verifyOriginalImageChain({...params,sourceAssetBytes:source});
+ assert.equal(valid.g2,"NOT_REVIEWED");
+ assert.equal(valid.source_assets_count,3);
 });
 test("unsigned producer/result and placeholder keys cannot authenticate pixels",()=>{
  const job=sourceJob(),png=Buffer.from("bytes"),chain=resultChain(job,png);

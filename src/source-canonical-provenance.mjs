@@ -208,16 +208,46 @@ function verifyProducer(job,producerKey){
  }
  return signature;
 }
+// Golden/source reviewers MUST re-read actual private canonical bytes from
+// the attributed local asset store. Signed filenames/hashes alone do not prove
+// those references are still present, unmodified or from the same scene.
+// The caller must independently obtain these Buffers; this auditor never
+// accepts asserted SHA strings in place of source bytes.
+function verifyCreationSourceBytes(signedAssets,sourceAssetBytes){
+ requireTrue(Array.isArray(signedAssets)&&signedAssets.length>=2&&signedAssets.length<=25,
+  "canonical source receipt asset set missing or invalid");
+ requireTrue(Array.isArray(sourceAssetBytes)&&sourceAssetBytes.length===signedAssets.length,
+  "canonical source bytes missing or extra source supplied");
+ const seen=new Set();
+ for(let i=0;i<signedAssets.length;i++){
+  const ref=signedAssets[i],observed=sourceAssetBytes[i];
+  const actor=ref?.actor??null;
+  const identity=JSON.stringify([ref?.role,actor,ref?.asset]);
+  requireTrue(typeof ref?.role==="string"&&ASSET.test(ref?.asset??"")&&
+   !seen.has(identity),"canonical source receipt duplicated or invalid");
+  seen.add(identity);
+  requireTrue(observed&&observed.role===ref.role&&
+   (observed.actor??null)===actor&&observed.asset===ref.asset,
+   "canonical source actor/asset attribution or scene mismatch");
+  requireTrue(Buffer.isBuffer(observed.bytes)&&observed.bytes.length>0&&
+   observed.bytes.length<=64*1024*1024,
+   "canonical source bytes missing or invalid");
+  equalHex(ref.sha256,digest(observed.bytes),
+   "canonical source SHA256 mismatch with signed creation receipt");
+ }
+ return signedAssets.length;
+}
 const sorted=payload=>Object.fromEntries(Object.keys(payload).sort().map(k=>[k,payload[k]]));
 const PHASES=["intent","dispatch","result","final"];
 
 // Offline, byte-level auditor intended for a private Golden evidence path.
 // It requires distinct trusted producer/worker signing keys from approved
-// secret storage and does not read/print private prompts or images itself.
+// secret storage and independently re-read canonical source Buffers. It does
+// not read/print private prompts or images itself.
 // Actual worker/result phase is implemented by R-11 and must be deployed
 // separately; this is an independent check, NOT a Comfy/G2 attestation.
-export function verifyOriginalImageChain({job,binding,originalBytes,expectedPromptId,
- producerKeyHex,resultKeyHex}={}){
+export function verifyOriginalImageChain({job,binding,originalBytes,sourceAssetBytes,
+ expectedPromptId,producerKeyHex,resultKeyHex}={}){
  const producerKey=validatedKey(producerKeyHex,"producer");
  const workerKey=validatedKey(resultKeyHex,"result");
  requireTrue(producerKeyHex!==resultKeyHex,"producer/result signer keys must be independent");
@@ -226,6 +256,8 @@ export function verifyOriginalImageChain({job,binding,originalBytes,expectedProm
  requireTrue(UUID.test(job?.id||"")&&Number.isSafeInteger(job?.attempts)&&job.attempts>0,
   "source job ID or attempt invalid");
  const sourceSignature=verifyProducer(job,producerKey);
+ const sourceAssetsCount=verifyCreationSourceBytes(
+  job.creation_receipt_v1.source_assets,sourceAssetBytes);
  requireTrue(binding&&typeof binding==="object"&&UUID.test(expectedPromptId||""),
   "worker result binding or expected Comfy prompt ID missing");
  let graph=null,prompt=null;
@@ -273,7 +305,8 @@ export function verifyOriginalImageChain({job,binding,originalBytes,expectedProm
  requireTrue(binding.result.original_sha256===originalSha,
   "original PNG SHA256 does not match signed Comfy result");
  return {verified:true,scope:"trusted_worker_signed_source_to_original_bytes",
-  source_signature:sourceSignature,original_sha256:originalSha,
+  source_signature:sourceSignature,source_assets_count:sourceAssetsCount,
+  original_sha256:originalSha,
   graph_sha256:graph,comfy_prompt_id:prompt,g2:"NOT_REVIEWED",g3:"NO_GO",
   requires_independent_comfy_history:true};
 }
