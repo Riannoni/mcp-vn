@@ -1,0 +1,395 @@
+"""S-13 negative regression tests for source-only, fail-closed latency evidence."""
+import json
+import math
+import pathlib
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import render_firstshot_latency_probe as probe
+
+
+class LatencyProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        self.lab = self.root / "lab"
+        self.lab.mkdir()
+
+    def case(self, name="BG-01", prompt="p1", elapsed=11.04):
+        d = {
+            "case": name, "prompt_id": prompt, "png_sha256": "a" * 64,
+            "g1": "PASS", "first_attempt": True,
+            "started_at": "2026-10-31T10:00:00+00:00",
+            "completed_at": "2026-10-31T10:00:11.040+00:00",
+            "total_submit_to_output_seconds": elapsed,
+            "submit_seconds": 0.001, "original_png_path": str(self.root / "no-png")
+        }
+        (self.lab / f"{name}-result.json").write_text(json.dumps(d))
+        return d
+
+    def test_firstshot_does_not_invent_gpu_or_fullturn(self):
+        self.case()
+        out = probe.build_report(self.lab, [], verify_png=False)
+        row = out["lab"][0]
+        self.assertEqual(row["stages_s"]["submit_to_png"], 11.04)
+        for stage in ("queue_wait", "preflight", "gpu", "postprocess", "cpu_vlm", "qa", "retry", "publish", "full_turn"):
+            self.assertIsNone(row["stages_s"][stage], stage)
+        self.assertEqual(out["summary"]["submit_to_png"]["n"], 1)
+
+    def test_integer_first_attempt_receipt_is_accepted(self):
+        d = self.case()
+        d["first_attempt"] = 1
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        self.assertTrue(probe.build_report(self.lab, [], verify_png=False)["lab"][0]["first_attempt"])
+
+    def test_worker_generation_is_comfy_roundtrip_not_gpu(self):
+        events = [{"kind": "worker_timings", "job_id": "j1", "prompt_id": "p1",
+                   "timings": {"prepare_ms": 120, "generation_ms": 23000,
+                               "postprocess_ms": 310, "qa_ms": 70000}}]
+        out = probe.build_report(None, events, verify_png=False)
+        row = out["live"][0]
+        self.assertEqual(row["stages_s"]["comfy_roundtrip"], 23)
+        self.assertEqual(row["stages_s"]["qa"], 70)
+        self.assertEqual(row["stages_s"]["graph_prepare"], .12)
+        self.assertIsNone(row["stages_s"]["gpu"])
+        self.assertIsNone(row["stages_s"]["full_turn"])
+
+    def test_full_turn_requires_explicit_timestamps(self):
+        events = [{"kind": "full_turn", "job_id": "j1",
+                   "started_at": "2026-10-31T10:00:00Z",
+                   "completed_at": "2026-10-31T10:01:43Z"}]
+        out = probe.build_report(None, events, verify_png=False)
+        self.assertEqual(out["live"][0]["stages_s"]["full_turn"], 103)
+        self.assertIsNone(out["live"][0]["stages_s"]["qa"])
+
+    def test_missing_timestamps_fail_closed(self):
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [{"kind": "full_turn", "job_id": "j1",
+                                           "duration_seconds": 103}], verify_png=False)
+
+    def test_duplicate_conflicting_stage_rejected(self):
+        events = [
+            {"kind": "stage", "job_id": "j1", "stage": "cpu_vlm",
+             "started_at": "2026-10-31T10:00:00Z", "completed_at": "2026-10-31T10:00:10Z"},
+            {"kind": "stage", "job_id": "j1", "stage": "cpu_vlm",
+             "started_at": "2026-10-31T10:00:00Z", "completed_at": "2026-10-31T10:00:20Z"},
+        ]
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, events, verify_png=False)
+
+    def test_negative_nan_and_inverted_timestamps_rejected(self):
+        for bad in (-1, float("nan"), float("inf")):
+            with self.subTest(bad=bad), self.assertRaises(probe.EvidenceError):
+                probe.build_report(self.lab, [{"kind": "worker_timings", "job_id": "j",
+                    "timings": {"qa_ms": bad}}], verify_png=False)
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [{"kind": "stage", "job_id": "j", "stage": "queue_wait",
+                "started_at": "2026-10-31T10:00:10Z", "completed_at": "2026-10-31T10:00:00Z"}],
+                verify_png=False)
+
+    def test_skipping_png_hash_cannot_create_visual_or_human_pass(self):
+        self.case()
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "original_pixels_reviewed": True, "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_human", "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=False)["lab"][0]
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertFalse(row["human_label"])
+        self.assertNotIn("sha_bound_pixel_review", row["evidence"])
+
+    def test_forged_human_claim_with_real_png_sha_remains_unverified(self):
+        import hashlib
+        import struct
+        import zlib
+        def chunk(kind, payload):
+            return (struct.pack(">I", len(payload)) + kind + payload
+                    + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff))
+        raw = b"\x00" + b"\x00" * 4  # filter byte + transparent RGBA pixel
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        pixels = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                  + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+        png = self.root / "real-original.png"
+        png.write_bytes(pixels)
+        d = self.case()
+        d["original_png_path"] = str(png)
+        d["png_sha256"] = hashlib.sha256(pixels).hexdigest()
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        # Anyone with local JSON write access can falsely claim to be a human.
+        review = {"case": "BG-01", "prompt_id": "p1",
+                  "png_sha256": d["png_sha256"],
+                  "original_pixels_reviewed": True,
+                  "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_human", "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertFalse(row["human_label"])
+        self.assertTrue(row["human_label_claim_unverified"])
+
+    def test_matching_original_png_still_cannot_authenticate_review(self):
+        import hashlib
+        data = self._authentic_one_pixel_png()
+        png = self.root / "original.png"
+        png.write_bytes(data)
+        d = self.case()
+        d["png_sha256"] = hashlib.sha256(data).hexdigest()
+        d["original_png_path"] = str(png)
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        review = {"case": "BG-01", "prompt_id": "p1",
+                  "png_sha256": d["png_sha256"], "original_pixels_reviewed": True,
+                  "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_reviewer", "human_label": False}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertTrue(row["g2_claim_unverified"])
+        self.assertFalse(row["mandatory_set_authenticated"])
+        self.assertIn("unattested_pixel_review", row["evidence"])
+
+    def _authentic_one_pixel_png(self):
+        import struct
+        import zlib
+        def chunk(name, data):
+            return (struct.pack(">I", len(data)) + name + data
+                    + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff))
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\x00"))
+                + chunk(b"IEND", b""))
+
+    def _bound_file_and_review(self, pixels, mandatory):
+        import hashlib
+        original = self.root / "source-original.png"
+        original.write_bytes(pixels)
+        d = self.case()
+        d["original_png_path"] = str(original)
+        d["png_sha256"] = hashlib.sha256(pixels).hexdigest()
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": d["png_sha256"],
+                  "original_pixels_reviewed": True,
+                  "reviewer_type": "independent_gold_self_claim",
+                  "mandatory": mandatory,
+                  "checks": {key: "verified" for key in mandatory},
+                  "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        return d
+
+    def test_valid_sha_and_forged_golden_reviewer_cannot_certify_g2(self):
+        self._bound_file_and_review(self._authentic_one_pixel_png(),
+                                    ["environment", "cast", "pose"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertTrue(row["g2_claim_unverified"])
+        self.assertFalse(row["human_label"])
+        self.assertIn("unattested_pixel_review", row["evidence"])
+
+    def test_truncated_mandatory_list_not_scene_contract_g2(self):
+        self._bound_file_and_review(self._authentic_one_pixel_png(), ["pose"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertFalse(row["mandatory_set_authenticated"])
+
+    def test_matching_sha_of_non_png_payload_is_rejected(self):
+        self._bound_file_and_review(b"not even a PNG", ["environment"])
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [], verify_png=True)
+
+    def test_png_with_corrupt_chunk_crc_rejected(self):
+        pixels = bytearray(self._authentic_one_pixel_png())
+        pixels[-2] ^= 0x01
+        self._bound_file_and_review(bytes(pixels), ["environment"])
+        with self.assertRaisesRegex(probe.EvidenceError, "CRC"):
+            probe.build_report(self.lab, [], verify_png=True)
+
+    def test_sha_and_review_prompt_mismatch_rejected(self):
+        self.case()
+        review = {"case": "BG-01", "prompt_id": "different", "png_sha256": "a" * 64,
+                  "original_pixels_reviewed": True, "mandatory": ["environment"],
+                  "checks": {"environment": "verified"}, "human_label": False}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [], verify_png=False)
+
+    def test_review_mandatory_unknown_not_pass(self):
+        self.case()
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "original_pixels_reviewed": True, "mandatory": ["environment"],
+                  "checks": {"environment": "unobservable"}, "human_label": False}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=False)["lab"][0]
+        self.assertEqual(row["g2"], "FAIL")
+        self.assertFalse(row["human_label"])
+
+    def test_unattributed_visual_review_cannot_pass(self):
+        self.case()
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "original_pixels_reviewed": True, "mandatory": ["environment"],
+                  "checks": {"environment": "verified"}, "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=False)["lab"][0]
+        self.assertEqual(row["g2"], "FAIL")
+        self.assertFalse(row["human_label"])
+
+    def test_lab_wrong_job_cannot_reuse_correct_prompt_and_fake_full_turn(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        forged = {"kind": "full_turn", "job_id": "wrong-job-B", "prompt_id": "p1",
+                  "started_at": "2010-01-01T00:00:00Z",
+                  "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "job_id|job"):
+            probe.build_report(self.lab, [forged], verify_png=False)
+
+    def test_stale_full_turn_cannot_join_same_lab_job(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        stale = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "started_at": "2010-01-01T00:00:00Z",
+                 "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "timeline|stale|lifecycle"):
+            probe.build_report(self.lab, [stale], verify_png=False)
+
+    def test_unanchored_lab_result_rejects_stage_join_even_with_same_prompt(self):
+        self.case()  # Original receipt has no authentic job_id.
+        invented = {"kind": "stage", "job_id": "invented-job", "prompt_id": "p1",
+                    "stage": "gpu", "started_at": "2026-10-31T10:00:01Z",
+                    "completed_at": "2026-10-31T10:00:09Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "job_id|unanchored"):
+            probe.build_report(self.lab, [invented], verify_png=False)
+
+    def test_correctly_bound_lab_gpu_stage_inside_job_window_is_preserved(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        observed = {"kind": "stage", "job_id": "authentic-job-A", "prompt_id": "p1",
+                    "png_sha256": "a" * 64,
+                    "stage": "gpu", "started_at": "2026-10-31T10:00:01Z",
+                    "completed_at": "2026-10-31T10:00:09Z"}
+        row = probe.build_report(self.lab, [observed], verify_png=False)["lab"][0]
+        self.assertEqual(row["job_id"], "authentic-job-A")
+        self.assertEqual(row["stages_s"]["gpu"], 8)
+
+    def test_png_container_crc_does_not_certify_decoded_g1(self):
+        import struct
+        import zlib
+        def chunk(name, data):
+            return (struct.pack(">I", len(data)) + name + data
+                    + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff))
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        invalid_idat = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                        + chunk(b"IDAT", b"not-valid-zlib") + chunk(b"IEND", b""))
+        self._bound_file_and_review(invalid_idat, ["environment"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertEqual(row["original_png_validation"], "container_crc_only")
+        self.assertFalse(row["original_png_decoded"])
+        self.assertEqual(row["g1_claim"], "PASS")
+        self.assertEqual(row["g1"], "UNVERIFIED")
+
+    def test_stale_qa_stage_with_matching_job_and_png_is_rejected(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        stale = {"kind": "stage", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "stage": "qa",
+                 "started_at": "2010-01-01T00:00:00Z",
+                 "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "stale|lifecycle"):
+            probe.build_report(self.lab, [stale], verify_png=False)
+
+    def test_full_turn_cannot_claim_another_action_id(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["action_id"] = "canonical-action"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        wrong = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "action_id": "unrelated-action",
+                 "started_at": "2026-10-31T09:59:58Z",
+                 "completed_at": "2026-10-31T10:00:20Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "action_id"):
+            probe.build_report(self.lab, [wrong], verify_png=False)
+
+    def test_correlated_full_turn_is_not_authenticated_browser_e2e(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["action_id"] = "canonical-action"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        event = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "action_id": "canonical-action",
+                 "started_at": "2026-10-31T09:59:58Z",
+                 "completed_at": "2026-10-31T10:00:20Z"}
+        report = probe.build_report(self.lab, [event], verify_png=False)
+        self.assertEqual(report["lab"][0]["stages_s"]["full_turn"], 22)
+        self.assertFalse(report["lab"][0]["stage_receipts_authenticated"])
+        self.assertEqual(report["trusted_browser_e2e"], {"status": "NOT_MEASURED", "n": 0})
+
+    def test_duplicate_prompt_across_jobs_rejected(self):
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [
+                {"kind": "worker_timings", "job_id": "j1", "prompt_id": "p", "timings": {"qa_ms": 10}},
+                {"kind": "worker_timings", "job_id": "j2", "prompt_id": "p", "timings": {"qa_ms": 20}}
+            ], verify_png=False)
+
+    def test_percentiles_are_observed_only(self):
+        self.assertEqual(probe.percentiles([5.05, 6.024, 6.028, 7.029, 11.04])["p50"], 6.028)
+        self.assertAlmostEqual(probe.percentiles([5.05, 6.024, 6.028, 7.029, 11.04])["p90"], 9.4356)
+        self.assertIsNone(probe.percentiles([])["p90"])
+
+    def test_empty_lab_directory_is_not_success(self):
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [], verify_png=False)
+
+    def test_non_first_attempt_rejected(self):
+        d = self.case()
+        d["first_attempt"] = 2
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [], verify_png=False)
+
+    def test_missing_original_png_rejected_by_default(self):
+        self.case()
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [])
+
+    def test_lab_join_rejects_wrong_png_sha(self):
+        self.case()
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [{"kind": "worker_timings", "job_id": "j1",
+                "prompt_id": "p1", "png_sha256": "b" * 64,
+                "timings": {"qa_ms": 20}}], verify_png=False)
+
+    def test_actual_worker_published_log_parsing(self):
+        log = self.root / "worker.log"
+        log.write_text("2026-10-31T10:00Z python: PUBLISHED j-42 applied True quality passed timings " + json.dumps({"generation_ms": 12000, "qa_ms": 61000, "postprocess_ms": 100}) + "\n")
+        events = probe._load_worker_log(log)
+        row = probe.build_report(None, events)["live"][0]
+        self.assertEqual(row["job_id"], "j-42")
+        self.assertEqual(row["stages_s"]["comfy_roundtrip"], 12)
+        self.assertEqual(row["stages_s"]["qa"], 61)
+        self.assertIsNone(row["stages_s"]["gpu"])
+        self.assertIsNone(row["stages_s"]["full_turn"])
+
+    def test_malformed_worker_published_log_rejected(self):
+        log = self.root / "worker.log"
+        log.write_text("PUBLISHED j-42 invalid/private-data\n")
+        with self.assertRaises(probe.EvidenceError):
+            probe._load_worker_log(log)
+
+    def test_private_png_paths_never_exported(self):
+        self.case()
+        report = probe.build_report(self.lab, [], verify_png=False)
+        self.assertNotIn(str(self.root), json.dumps(report))
+
+
+if __name__ == "__main__":
+    unittest.main()
