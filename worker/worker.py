@@ -1027,20 +1027,49 @@ def assess(job,raw,background):
             finally:
                 metrics["qa_vision_http_ms"]=round(
                     max(0,(time.monotonic()-http_started)*1000),3)
-            # Remote timing is advisory attribution, never acceptance evidence.
-            # Reject non-finite, boolean, negative and implausible inputs.
+            # Server times are advisory, not evidence for an acceptance verdict.
+            # Monotonic durations from this ONE request must also be mutually
+            # possible: nested decode+lock+model fit before-send; before-send
+            # fits the client HTTP roundtrip; caption inference fits model.
+            # Invalid server timings are discarded AS A GROUP to avoid a
+            # seemingly credible but impossible partial timing breakdown.
             stage_data=validation.get("qa_stage_ms")
-            valid_stages={}
-            if isinstance(stage_data,dict):
-                for field in ("input_decode","lock_wait","model_analyze","handler_before_send"):
-                    value=stage_data.get(field)
-                    if type(value) in (int,float) and value==value and 0<=value<=300000:
-                        valid_stages[field]=round(float(value),3)
-            metrics["qa_vision_server_stage_ms"]=valid_stages
-            caption_ms=validation.get("vlm_caption_ms")
-            if (type(caption_ms) in (int,float) and caption_ms==caption_ms
-                    and 0<=caption_ms<=300000):
-                metrics["qa_vision_caption_ms"]=round(float(caption_ms),3)
+            stage_fields=("input_decode","lock_wait","model_analyze","handler_before_send")
+            def finite_stage(value):
+                return (float(value) if type(value) in (int,float)
+                        and value==value and 0<=value<=300000 else None)
+            stage_values=({field:finite_stage(stage_data.get(field))
+                           for field in stage_fields}
+                          if isinstance(stage_data,dict) else {})
+            caption_raw=validation.get("vlm_caption_ms")
+            caption_ms=finite_stage(caption_raw)
+            # Cross-process monotonic clocks have unrelated epochs. Compare
+            # durations only, with 2ms headroom for per-span rounding.
+            stage_tolerance_ms=2.0
+            stage_reason=None
+            if not isinstance(stage_data,dict):
+                stage_reason="missing_server_stages"
+            elif any(stage_values[field] is None for field in stage_fields):
+                stage_reason="invalid_server_stages"
+            elif stage_values["handler_before_send"] > metrics["qa_vision_http_ms"]+stage_tolerance_ms:
+                stage_reason="handler_exceeds_http"
+            elif (stage_values["input_decode"]+stage_values["lock_wait"]+
+                  stage_values["model_analyze"] >
+                  stage_values["handler_before_send"]+stage_tolerance_ms):
+                stage_reason="nested_spans_exceed_handler"
+            elif caption_ms is None:
+                stage_reason="invalid_or_missing_caption"
+            elif caption_ms > stage_values["model_analyze"]+stage_tolerance_ms:
+                stage_reason="caption_exceeds_analyze"
+            if stage_reason:
+                metrics["qa_vision_server_stage_ms"]={}
+                metrics["qa_vision_stage_integrity"]="unavailable" if stage_reason=="missing_server_stages" else "untrusted"
+                metrics["qa_vision_stage_integrity_reason"]=stage_reason
+            else:
+                metrics["qa_vision_server_stage_ms"]={
+                    field:round(stage_values[field],3) for field in stage_fields}
+                metrics["qa_vision_caption_ms"]=round(caption_ms,3)
+                metrics["qa_vision_stage_integrity"]="consistent"
             semantic=validation.get("status","unavailable")
             if semantic not in ("passed","failed","unavailable"):semantic="unavailable"
             metrics["vlm_caption"]=str(validation.get("caption",""))[:145]
