@@ -33,7 +33,10 @@ def api(path, data=None, timeout=8):
     req = urllib.request.Request(
         COMFY + path,
         data=None if data is None else json.dumps(data).encode("utf-8"),
-        headers={"Content-Type": "application/json"} if data is not None else {},
+        headers=({"Content-Type": "application/json",
+                  "X-Broker-Queue-Wait-Seconds": "8"} if data is not None
+                 and path in ("/prompt", "/api/prompt") else
+                 {"Content-Type": "application/json"} if data is not None else {}),
         method="POST" if data is not None else "GET",
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:

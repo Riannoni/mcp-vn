@@ -133,7 +133,7 @@ class Broker:
             self.db.execute("ROLLBACK")
             raise
 
-    def enqueue(self, key, digest, payload):
+    def enqueue(self, key, digest, payload, wait_seconds=None):
         now = time.time()
         def insert():
             row = self.row(key)
@@ -156,7 +156,7 @@ class Broker:
             self.db.execute(
                 "INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (key, digest, prompt_id, canonical(payload), "QUEUED",
-                 None, None, now, now + self.wait_seconds, now))
+                 None, None, now, now + (wait_seconds or self.wait_seconds), now))
             return self.row(key), None
         return self.transaction(insert)
 
@@ -379,7 +379,16 @@ async def submit(request):
     if explicit is not None and not (1 <= len(explicit) <= 200):
         return web.json_response({"error": "invalid_idempotency_key"}, status=400)
     key = "explicit:" + explicit if explicit else "payload:" + digest
-    row, error = broker.enqueue(key, digest, body)
+    requested_wait = request.headers.get("X-Broker-Queue-Wait-Seconds")
+    wait = None
+    if requested_wait is not None:
+        try:
+            wait = float(requested_wait)
+        except ValueError:
+            return web.json_response({"error": "invalid_queue_wait"}, status=400)
+        if not 1 <= wait <= broker.wait_seconds:
+            return web.json_response({"error": "queue_wait_out_of_bounds"}, status=400)
+    row, error = broker.enqueue(key, digest, body, wait_seconds=wait)
     if error:
         return web.json_response({"error": error}, status=503 if error == "queue_capacity_exceeded" else
                                  409 if "conflict" in error or "reserved" in error else 400)

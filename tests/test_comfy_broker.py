@@ -457,6 +457,24 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         async with self.client.get("/history/" + pid) as response:
             self.assertEqual((await response.json())[pid]["status"]["status_str"], "error")
 
+    async def test_per_client_queue_wait_is_bounded(self):
+        await self.post(1)
+        await self.until(lambda: len(self.fake.posts) == 1)
+        async with self.client.post("/prompt", json=self.body(2),
+                                    headers={"X-Broker-Queue-Wait-Seconds": "1"}) as response:
+            self.assertEqual(response.status, 200)
+            pid = (await response.json())["prompt_id"]
+        await self.until(lambda: self.broker.db.execute(
+            "SELECT state FROM jobs WHERE prompt_id=?", (pid,)).fetchone()[0] == "EXPIRED",
+            timeout=1.8)
+        self.assertEqual(len(self.fake.posts), 1)
+        async with self.client.post("/prompt", json=self.body(3),
+                                    headers={"X-Broker-Queue-Wait-Seconds": "999"}) as response:
+            self.assertEqual(response.status, 400)
+        async with self.client.post("/prompt", json=self.body(3),
+                                    headers={"X-Broker-Queue-Wait-Seconds": "NaN"}) as response:
+            self.assertEqual(response.status, 400)
+
     async def test_second_broker_same_state_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "another_broker"):
             m.Broker(self.tmp.name, str(self.backend_server.make_url("/")))
