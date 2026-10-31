@@ -164,6 +164,11 @@ def _verified_spec(spec):
         or any(not isinstance(k, str) or not CHECKS.fullmatch(k) for k in mandatory)
     ):
         raise ValueError("original typed Scene Contract has no valid mandatory checks")
+    if contract.get("case_id") != spec["case_id"] or (
+        contract.get("canonical_sha256") != spec["artifacts"]["canonical_ref"]["sha256"]
+        or contract.get("source_save_sha256") != spec["artifacts"]["source_save"]["sha256"]
+    ):
+        raise ValueError("Scene Contract not bound to exact canonical reference and save")
     if not isinstance(source, dict) or source.get("status") != "GPU_FINISHED_REVIEW_REQUIRED":
         raise ValueError("no confirmed original GPU receipt")
     if source.get("prompt_id") != spec["prompt_id"] or source.get("case") != spec["case_id"] or (
