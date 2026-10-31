@@ -10,6 +10,8 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import stat
 from pathlib import Path
 
 from PIL import Image
@@ -203,9 +205,12 @@ def main():
     if output.exists():
         raise LabPoseError("refuse_overwrite")
     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Exclusive create, no replace, private permissions.
-    with output.open("x") as stream:
-        output.chmod(0o600)
+    if stat.S_IMODE(output.parent.stat().st_mode) & 0o077:
+        raise LabPoseError("unsafe_output_dir_permissions")
+    # Atomic exclusive creation with 0600 from the first instant; no public
+    # readability window and no following an existing output symlink.
+    fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as stream:
         json.dump(result, stream, indent=2, sort_keys=True)
         stream.write("\n")
     print("LAB_PROPOSAL_ONLY", result["reference_id"],
