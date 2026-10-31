@@ -3,6 +3,8 @@ import copy
 import hashlib
 import importlib.util
 import json
+import io
+import zlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -26,6 +28,29 @@ def save_json(path, obj):
     data = json.dumps(obj, sort_keys=True, indent=2).encode()
     path.write_bytes(data)
     return hashlib.sha256(data).hexdigest()
+
+
+def crc_valid_but_undecodable_png(raw):
+    """Replace IDAT with a valid CRC and a valid but undersized zlib stream."""
+    assert raw[:8] == bytes.fromhex("89504e470d0a1a0a")
+    output = bytearray(raw[:8])
+    off = 8
+    replaced = 0
+    while off < len(raw):
+        n = int.from_bytes(raw[off:off+4], "big")
+        kind = raw[off+4:off+8]
+        payload = raw[off+8:off+8+n]
+        off += n+12
+        if kind == b"IDAT":
+            payload = zlib.compress(b"\x00")
+            replaced += 1
+        output += len(payload).to_bytes(4, "big") + kind + payload
+        output += (zlib.crc32(kind + payload) & 0xffffffff).to_bytes(4, "big")
+    assert off == len(raw) and replaced == 1
+    corrupted = bytes(output)
+    with Image.open(io.BytesIO(corrupted)) as im:
+        im.verify()  # The failure must be in full pixel decoding, not CRC.
+    return corrupted
 
 
 class SDXLCanonicalSpriteFactorTests(unittest.TestCase):
@@ -158,6 +183,27 @@ class SDXLCanonicalSpriteFactorTests(unittest.TestCase):
         self.assertEqual(evidence["alpha_status"], "NOT_PROVIDED_BY_NATIVE_VAE_GRAPH")
         self.assertFalse(evidence["publish_eligible"])
         self.assertNotIn("checkpoint_sha256_attested", evidence)
+
+    def test_rejects_crc_valid_undecodable_face_before_gpu(self):
+        data = crc_valid_but_undecodable_png((self.input / "face0.png").read_bytes())
+        self.face_sha = hashlib.sha256(data).hexdigest()
+        (self.root / "private_assets" / (self.face_sha + ".png")).write_bytes(data)
+        (self.input / "face0.png").write_bytes(data)
+        self.manifest["face_original_sha256"] = self.face_sha
+        self.manifest["face_uploads"]["Actor_A"]["source_sha256"] = self.face_sha
+        self.manifest["face_uploads"]["Actor_A"]["upload_sha256"] = self.face_sha
+        self.receipt["face_original_sha256"] = self.face_sha
+        self.repin()
+        with self.assertRaisesRegex(ValueError, "invalid_png_pixels"):
+            self._validate()
+
+    def test_rejects_crc_valid_undecodable_body_upload_before_gpu(self):
+        data = crc_valid_but_undecodable_png((self.input / "body0.png").read_bytes())
+        (self.input / "body0.png").write_bytes(data)
+        self.manifest["body_seed"]["upload_sha256"] = hashlib.sha256(data).hexdigest()
+        self.repin()
+        with self.assertRaisesRegex(ValueError, "invalid_png_pixels"):
+            self._validate()
 
     def test_missing_private_face_original_never_queues(self):
         (self.root / "private_assets" / (self.face_sha + ".png")).unlink()
