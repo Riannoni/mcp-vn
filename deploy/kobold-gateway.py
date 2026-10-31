@@ -8,6 +8,7 @@ a restricted home-server SSH local forward.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 import hmac
 import os
 import signal
@@ -56,13 +57,39 @@ def http_json(url: str, body=None, timeout=4.0):
         return json.loads(r.read(1024 * 512).decode("utf-8"))
 
 
-def free_comfy():
+class GPUBusy(RuntimeError):
+    """Broker has an active Comfy job, foreign owner or queued work."""
+
+
+@contextmanager
+def gpu_lease():
+    try:
+        receipt = http_json("http://127.0.0.1:8188/broker/external/acquire",
+                            {"client": "kobold-gateway"}, timeout=6)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 409:
+            raise GPUBusy("GPU broker has an active owner") from exc
+        raise
+    lease_id = receipt.get("lease_id")
+    if not isinstance(lease_id, str) or len(lease_id) < 16:
+        raise RuntimeError("GPU broker returned invalid lease")
+    try:
+        yield lease_id
+    finally:
+        # Only after run_single_inference's process-cleanup finally has finished.
+        released = http_json("http://127.0.0.1:8188/broker/external/release",
+                             {"lease_id": lease_id}, timeout=6)
+        if released.get("released") is not True:
+            raise RuntimeError("GPU broker lease release unconfirmed")
+
+
+def free_comfy(lease_id):
     # Other GPU work is already prevented by the main server's coordinator.
     # Free only idle cached models and leave the ComfyUI service running.
     req = urllib.request.Request(
         "http://127.0.0.1:8188/free",
         data=b'{"unload_models":true,"free_memory":true}',
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-GPU-Lease-ID": lease_id},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as r:
@@ -101,13 +128,15 @@ def backend_for(model: str) -> str:
 
 
 def run_single_inference(chosen, model_path, ctx_size, gpu_layers,
-                         clean, params, max_tokens, mode):
+                         clean, params, max_tokens, mode, lease_id=None):
     """Always terminate the transient LLM process and release the GPU."""
     started = time.monotonic()
     if mode == "rocm":
         # ComfyUI may have cached Pony/WAI/Anima weights after the queue
         # becomes empty. Free those buffers before allocating LLM tensors.
-        free_comfy()
+        if not lease_id:
+            raise RuntimeError("ROCm inference requires durable GPU broker lease")
+        free_comfy(lease_id)
     os.makedirs(ROOT / "logs", mode=0o700, exist_ok=True)
     logfile = ROOT / "logs" / "kobold-last.log"
     binary = BINARY_ROCM if mode == "rocm" else BINARY
@@ -206,9 +235,19 @@ def generate(payload: dict):
 
     mode = backend_for(chosen)
     try:
+        if mode == "rocm":
+            with gpu_lease() as lease_id:
+                return run_single_inference(
+                    chosen, model_path, ctx_size, gpu_layers, clean,
+                    params, max_tokens, mode, lease_id=lease_id)
         return run_single_inference(
             chosen, model_path, ctx_size, gpu_layers, clean,
             params, max_tokens, mode)
+    except GPUBusy:
+        # Ordinary contention is NOT a ROCm failure and must not trip circuit breaker.
+        return run_single_inference(
+            chosen, model_path, ctx_size, gpu_layers, clean,
+            params, max_tokens, "cpu")
     except Exception as error:
         if mode != "rocm":
             raise

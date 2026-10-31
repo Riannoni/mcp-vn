@@ -143,7 +143,8 @@ def tick(root):
         work.mkdir(mode=0o700, parents=True)
         atomic(work / "graph-private.json", graph)
         atomic(work / "result.json", record)
-        path.replace(root / "running" / path.name)
+        running_path = root / "running" / path.name
+        path.replace(running_path)
         if not r.queue_empty():
             record["status"] = "STOP_QUEUE_CHANGED_BEFORE_SUBMIT"
             atomic(work / "result.json", record)
@@ -191,7 +192,7 @@ def tick(root):
                           canvas=size, gpu_submit_to_png_seconds=round(time.monotonic()-t, 3),
                           completed_utc=datetime.now(timezone.utc).isoformat())
             atomic(work / "result.json", record)
-            path.replace(root / "review_pending" / path.name)
+            running_path.replace(root / "review_pending" / running_path.name)
             return {"status": record["status"], "id": p["id"],
                     "prompt_id": pid, "png_sha256": record["png_sha256"],
                     "submit_to_png_seconds": record["gpu_submit_to_png_seconds"]}
