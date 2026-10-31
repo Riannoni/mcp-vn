@@ -11,6 +11,8 @@ FILE=pathlib.Path(__file__).resolve().parents[1]/"ops/wake_guard.py"
 spec=importlib.util.spec_from_file_location("wakeguard",FILE)
 m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+# Quota admission has an independent, focused test suite; this fixture tests wake CAS.
+m.quota_permit=lambda root,now: {"eligible":True}
 
 
 class WakeGuardTests(unittest.TestCase):
@@ -54,7 +56,7 @@ class WakeGuardTests(unittest.TestCase):
         self.assertTrue(first["reserved"])
         second=m.check(self.root,"R",reserve=True,now=101)
         self.assertFalse(second["eligible"])
-        self.assertEqual(second["reason"],"lane_hourly_wake_budget")
+        self.assertEqual(second["reason"],"wake_cooldown")
         later=m.check(self.root,"R",now=3701)
         self.assertTrue(later["eligible"])
 
@@ -65,7 +67,7 @@ class WakeGuardTests(unittest.TestCase):
                 lambda _:m.check(self.root,"R",reserve=True,now=100),
                 range(4)))
         self.assertEqual(sum(bool(a.get("reserved")) for a in attempts),1)
-        self.assertEqual(sum(a.get("reason")=="lane_hourly_wake_budget" for a in attempts),3)
+        self.assertEqual(sum(a.get("reason")=="wake_cooldown" for a in attempts),3)
 
     def test_hourly_lane_budget_prevents_wake_storm(self):
         first=m.check(self.root,"R",reserve=True,now=100)
@@ -73,10 +75,15 @@ class WakeGuardTests(unittest.TestCase):
         db=self.db()
         db.execute("UPDATE wake_reservation SET requested_at=-10000 WHERE lane='R'")
         db.commit();db.close()
+        # 6 explicit wake reservations in one hour must cap further requests.
+        db=self.db()
+        for i in range(5):
+            db.execute("INSERT INTO wake_history(lane,requested_at,task_id,requestor) VALUES('R',?,?,?)",(150+i,'R-03','test'))
+        db.commit();db.close()
         second=m.check(self.root,"R",reserve=True,now=701)
         self.assertFalse(second["eligible"])
         self.assertEqual(second["reason"],"lane_hourly_wake_budget")
-        self.assertTrue(m.check(self.root,"R",now=3702)["eligible"])
+        self.assertTrue(m.check(self.root,"R",now=4402)["eligible"])
 
     def test_chief_hourly_budget(self):
         db=self.db()
@@ -86,6 +93,10 @@ class WakeGuardTests(unittest.TestCase):
         db=self.db()
         db.execute("UPDATE wake_reservation SET requested_at=-10000 WHERE lane='C'")
         db.commit();db.close()
+        db=self.db()
+        for i in range(11):
+            db.execute("INSERT INTO wake_history(lane,requested_at,task_id,requestor) VALUES('C',?,?,?)",(151+i,'R-03','test'))
+        db.commit();db.close()
         second=m.check_review(self.root,reserve=True,now=701)
         self.assertEqual(second["reason"],"chief_hourly_wake_budget")
 
@@ -94,6 +105,13 @@ class WakeGuardTests(unittest.TestCase):
             self.set_task("R-03",state)
             result=m.check(self.root,"R",now=100)
             self.assertEqual(result["reason"],expected)
+
+    def test_unrelated_blocked_scope_does_not_stop_lane(self):
+        self.set_task("R-03","blocked")
+        db=self.db()
+        db.execute("INSERT INTO task(id,state,deps,paths,priority) VALUES(\'R-04\',\'pending\',\'[]\',\'[\"worker/y.py\"]\',5)")
+        db.commit();db.close()
+        self.assertTrue(m.check(self.root,"R",now=100)["eligible"])
 
     def test_dependencies_checked(self):
         db=self.db()
@@ -129,7 +147,7 @@ class WakeGuardTests(unittest.TestCase):
         first=m.check_review(self.root,reserve=True,now=200,requestor="R-worker")
         self.assertTrue(first.get("reserved"))
         next_=m.check_review(self.root,reserve=True,now=201,requestor="Q-worker")
-        self.assertEqual(next_["reason"],"chief_hourly_wake_budget")
+        self.assertEqual(next_["reason"],"chief_wake_cooldown")
         self.assertTrue(m.check_review(self.root,now=3801)["eligible"])
 
     def test_chief_review_waits_briefly_on_live_workers(self):
