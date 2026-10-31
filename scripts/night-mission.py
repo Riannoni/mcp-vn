@@ -7,6 +7,8 @@ skipped tasks remain explicitly BLOCKED, not completed.
 import datetime as dt
 import json
 import os
+import re
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -58,12 +60,31 @@ def test_evidence(step):
         pattern = "atomic-prop*.test.py"
     else:
         pattern = "*.test.py"
+    # Tests use hyphenated *.test.py filenames: unittest discover silently
+    # runs zero tests for these non-importable module names. Execute the
+    # fixed, repository-local test files directly, never model-supplied shell.
     try:
-        command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", pattern]
-        result = subprocess.run(command, cwd=WORK, capture_output=True, text=True, timeout=timeout)
-        combined = (result.stdout + "\n" + result.stderr)[-1400:]
-        return result.returncode == 0 and "Ran " in combined, "passed" if result.returncode == 0 and "Ran " in combined else "tests_failed"
-    except (OSError, subprocess.TimeoutExpired):
+        paths = sorted((WORK / "tests").glob(pattern))
+        if not paths:
+            return False, "tests_missing"
+        deadline = time.monotonic() + timeout
+        for path in paths:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False, "test_timeout"
+            result = subprocess.run(
+                ["python3", "-B", str(path), "-q"], cwd=WORK,
+                capture_output=True, text=True, timeout=remaining
+            )
+            output = result.stdout + "\n" + result.stderr
+            count = re.search(r"\bRan ([1-9]\d*) tests?\b", output)
+            passed = re.search(r"(?m)^OK(?: \(skipped=\d+\))?\s*$", output)
+            if result.returncode != 0 or not count or not passed:
+                return False, "tests_failed"
+        return True, "passed"
+    except subprocess.TimeoutExpired:
+        return False, "test_timeout"
+    except OSError:
         return False, "test_unavailable"
 
 
