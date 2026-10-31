@@ -138,6 +138,8 @@ class FourLaneControlTests(unittest.TestCase):
         w=self.root/"lane-renderer"
         p=w/"worker"
         p.symlink_to(self.root, target_is_directory=True)
+        git(w,"add","worker")
+        git(w,"commit","-qm","symlink fixture")
         with self.assertRaisesRegex(ValueError,"escapes lane"):
             m.claim(self.db,"R","author")
 
