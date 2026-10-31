@@ -91,7 +91,7 @@ def _paths_conflict(a, b):
                for x in a for y in b)
 
 
-def claim(db, owner, ttl=120, now=None, lane=None):
+def claim(db, owner, ttl=120, now=None, lane=None, allowed_actions=None):
     if not owner or len(owner) > 100 or ttl < 5 or ttl > 3600:
         raise ValueError("Invalid lease")
     now = time.time() if now is None else now
@@ -110,6 +110,8 @@ def claim(db, owner, ttl=120, now=None, lane=None):
         parked = [x for x in db.execute("SELECT id,paths,state FROM task WHERE state IN ('blocked','review_pending')")]
         for row in candidates:
             if lane is not None and not row["id"].startswith(lane+"-"):
+                continue
+            if allowed_actions is not None and row["action"] not in allowed_actions:
                 continue
             # Visual tasks have no source paths: preserve at most one Golden
             # active lease even though ordinary path-conflict checks see [].
@@ -251,7 +253,8 @@ def persist_evidence(outdir, task_id, fence, blob):
 
 def worker(dbpath, workspace, outdir, owner, task_id=None):
     db = database(dbpath)
-    lease = claim(db, owner, ttl=60)
+    lease = claim(db, owner, ttl=60,
+                  allowed_actions={"source_inventory", "source_compile"})
     if not lease:
         return 3
     if task_id is not None and lease["id"] != task_id:
