@@ -296,6 +296,43 @@ class LatencyProbeTests(unittest.TestCase):
         self.assertEqual(row["g1_claim"], "PASS")
         self.assertEqual(row["g1"], "UNVERIFIED")
 
+    def test_stale_qa_stage_with_matching_job_and_png_is_rejected(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        stale = {"kind": "stage", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "stage": "qa",
+                 "started_at": "2010-01-01T00:00:00Z",
+                 "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "stale|lifecycle"):
+            probe.build_report(self.lab, [stale], verify_png=False)
+
+    def test_full_turn_cannot_claim_another_action_id(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["action_id"] = "canonical-action"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        wrong = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "action_id": "unrelated-action",
+                 "started_at": "2026-10-31T09:59:58Z",
+                 "completed_at": "2026-10-31T10:00:20Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "action_id"):
+            probe.build_report(self.lab, [wrong], verify_png=False)
+
+    def test_correlated_full_turn_is_not_authenticated_browser_e2e(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["action_id"] = "canonical-action"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        event = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "png_sha256": "a" * 64, "action_id": "canonical-action",
+                 "started_at": "2026-10-31T09:59:58Z",
+                 "completed_at": "2026-10-31T10:00:20Z"}
+        report = probe.build_report(self.lab, [event], verify_png=False)
+        self.assertEqual(report["lab"][0]["stages_s"]["full_turn"], 22)
+        self.assertFalse(report["lab"][0]["stage_receipts_authenticated"])
+        self.assertEqual(report["trusted_browser_e2e"], {"status": "NOT_MEASURED", "n": 0})
+
     def test_duplicate_prompt_across_jobs_rejected(self):
         with self.assertRaises(probe.EvidenceError):
             probe.build_report(self.lab, [
