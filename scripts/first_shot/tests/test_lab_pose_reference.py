@@ -93,6 +93,9 @@ class LabPoseTests(unittest.TestCase):
         self.assertEqual(result["broker_enforcement"], "NOT_VERIFIED")
         self.assertEqual(result["generated_image_g2"], "NOT_REVIEWED")
         self.assertEqual(result["scene_seed"], 202610310105)
+        self.assertTrue(result["source_footwear_not_target_wardrobe_proof"])
+        self.assertIn("both_feet_visible", result["source_photo_observation"]["checks"])
+        self.assertNotIn("both_boots_visible", result["source_photo_observation"]["checks"])
         self.assertEqual(before, (self.root / "manifest.json").read_bytes())
 
     def test_side_camera_cannot_substitute(self):
