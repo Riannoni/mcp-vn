@@ -146,8 +146,9 @@ def complete(db, task_id, owner, fence, evidence, now=None, passed=True):
         ):
             db.execute("ROLLBACK")
             return False
-        state = "review_pending" if passed else (
-            "blocked" if row["attempt"] >= row["max_attempts"] else "pending")
+        # A failed or uncertain attempt is NOT safe for automatic retry:
+        # the agent may have modified files or submitted external jobs.
+        state = "review_pending" if passed else "blocked"
         db.execute(
             "UPDATE task SET state=?,result=?,completed_at=?,owner=NULL,fence=NULL,"
             " lease_until=0 WHERE id=?",
