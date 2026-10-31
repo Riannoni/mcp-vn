@@ -34,6 +34,9 @@ TARGETS = {
     "decision": "6ae5e8a59f2c8191a29d40c1c12712f0",
     "gpu_lab": "6ae5e8a91cfc8191bb938957f214f8c3",
 }
+# Owner-authorized setup/review can emit a handoff without impersonating a
+# Scheduled worker. It is never a wake target or a recipient acknowledgement.
+REQUESTORS = set(TARGETS) | {"operator"}
 KINDS = {"source_pr_ready", "review_accepted", "visual_candidate_ready",
          "blocker_cleared", "contract_verified", "integration_ready",
          "visual_review_completed", "operation_blocked"}
@@ -46,7 +49,7 @@ OBSERVERS = {"chief", "dispatcher", "decision"}
 
 
 def _validate(target, kind, evidence_sha, requestor):
-    if target not in TARGETS or requestor not in TARGETS:
+    if target not in TARGETS or requestor not in REQUESTORS:
         raise ValueError("unknown cloud role")
     if kind not in KINDS or not isinstance(evidence_sha, str) or not SHA.fullmatch(evidence_sha):
         raise ValueError("unverified event type or source hash")
@@ -283,7 +286,7 @@ def main():
     p.add_argument("--target", choices=sorted(TARGETS))
     p.add_argument("--event-kind", choices=sorted(KINDS))
     p.add_argument("--evidence-sha")
-    p.add_argument("--requestor", choices=sorted(TARGETS))
+    p.add_argument("--requestor", choices=sorted(REQUESTORS))
     actions = p.add_mutually_exclusive_group()
     actions.add_argument("--reserve", action="store_true")
     actions.add_argument("--defer", action="store_true")

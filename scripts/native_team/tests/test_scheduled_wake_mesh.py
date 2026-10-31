@@ -182,5 +182,15 @@ class NativeWakeMeshTests(unittest.TestCase):
         self.assertIsNone(pending[S2]["delivery"])
         self.assertTrue(self.call(sha=S2,now=340)["reserved"])
 
+    def test_authorized_setup_operator_is_not_a_fictitious_scheduled_worker(self):
+        result=m.check(self.root,"identity","source_pr_ready",S1,"operator",True,100)
+        self.assertTrue(result["reserved"])
+        self.assertNotIn("operator",m.TARGETS)
+        m.record_outcome(self.root,"identity","source_pr_ready",S1,"operator",
+                         result["reservation_id"],"requested",RECEIPT,now=101)
+        with self.assertRaises(ValueError):
+            m.acknowledge(self.root,"identity","source_pr_ready",S1,"operator",
+                          RECEIPT,RUN_ID,now=102)
+
 if __name__=="__main__":
     unittest.main()
