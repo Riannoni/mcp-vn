@@ -162,7 +162,7 @@ export async function captureDisposableBrowserAsset(page,binding,{capture_path}=
   throw Error("Asset is not a project PNG path");
  const selector=selectorFor(binding);
  const expected=asset.href;
- const observation=await page.evaluate(async ({selector,expected,gameId,kind})=>{
+ const observeScene=()=>page.evaluate(async ({selector,expected,gameId,kind})=>{
   const fail=reason=>({ok:false,reason});
   const app=document.getElementById("app");
   if(!app||app.hidden||document.visibilityState!=="visible")return fail("document_not_visible");
@@ -201,8 +201,16 @@ export async function captureDisposableBrowserAsset(page,binding,{capture_path}=
   return {ok:true,epoch_ms:Date.now(),performance_ms:performance.now(),
    browser_time_origin_ms:performance.timeOrigin};
  },{selector,expected,gameId:binding.game_id,kind:binding.kind});
+ const observation=await observeScene();
  if(!observation?.ok)throw Error("Browser capture refused: "+(observation?.reason||"unknown"));
  const shot=await page.locator(selector).screenshot({timeout:5000,animations:"disabled"});
+ // Screenshot is a separate browser command: its target/save may change after
+ // the pre-check. Fail closed if it has changed before persisting evidence.
+ const after=await observeScene();
+ if(!after?.ok)throw Error("Browser capture refused: changed_after_capture:"+
+    (after?.reason||"unknown"));
+ if(await page.url()!==origin.href)
+  throw Error("Browser capture refused: navigated_after_capture");
  const decoded=decodeScreenshotPng(shot);
  // Never overwrite an existing screenshot, particularly a canonical/private one.
  await fs.writeFile(capture_path,shot,{flag:"wx",mode:0o600});
@@ -216,10 +224,13 @@ export async function captureDisposableBrowserAsset(page,binding,{capture_path}=
   screenshot_width:decoded.width,screenshot_height:decoded.height,
   screenshot_decoded_pixels_sha256:decoded.decoded_pixels_sha256,
   asset_url_sha256:crypto.createHash("sha256").update(expected).digest("hex"),
-  screenshot_epoch_ms:observation.epoch_ms,
-  browser_performance_ms:observation.performance_ms,
+  pre_capture_observed_epoch_ms:observation.epoch_ms,
+  post_capture_observed_epoch_ms:after.epoch_ms,
+  pre_capture_browser_performance_ms:observation.performance_ms,
+  post_capture_browser_performance_ms:after.performance_ms,
   browser_time_origin_ms:observation.browser_time_origin_ms,
   limitations:["producer_lineage_not_authenticated","screenshot_pixels_not_independently_reviewed",
-   "capture_is_not_enqueue_to_eligible","browser_paint_not_proven_by_raf"]
+   "capture_is_not_enqueue_to_eligible","browser_paint_not_proven_by_raf",
+   "pre_post_observation_not_atomic_source_attribution"]
  };
 }
