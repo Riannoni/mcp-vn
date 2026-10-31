@@ -14,22 +14,54 @@ class IdleMetricsTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(":memory:")
         self.db.row_factory=sqlite3.Row
-        self.db.execute("CREATE TABLE task(id TEXT,state TEXT,started_at REAL,completed_at REAL)")
+        self.db.execute("CREATE TABLE task(id TEXT,state TEXT,started_at REAL,completed_at REAL,deps TEXT,paths TEXT)")
         self.db.execute("CREATE TABLE event(task_id TEXT,kind TEXT,ts REAL)")
         self.addCleanup(self.db.close)
 
-    def add(self,task,state,start=None,end=None,enqueued=10):
-        self.db.execute("INSERT INTO task VALUES(?,?,?,?)",(task,state,start,end))
+    def add(self,task,state,start=None,end=None,enqueued=10,deps="[]",paths=None):
+        import json
+        self.db.execute("INSERT INTO task VALUES(?,?,?,?,?,?)",(task,state,start,end,deps,paths or json.dumps(["worker/"+task+".py"])))
         self.db.execute("INSERT INTO event VALUES(?,'enqueued',?)",(task,enqueued))
 
     def test_pending_idle_over_10_minutes(self):
         self.add("R-01","done",100,150)
         self.add("R-02","pending",None,None,160)
         x=m.calculate(self.db,now=780)["R"]
-        self.assertEqual(x["state"],"pending_ready_or_dependency")
+        self.assertEqual(x["state"],"pending_ready")
         self.assertEqual(x["ready_idle_seconds"],620)
         self.assertEqual(x["worker_idle_seconds"],630)
         self.assertTrue(x["over_10_minutes"])
+
+    def test_approved_dependency_time_starts_real_sla_clock(self):
+        self.add("R-01","done",100,150)
+        self.add("R-02","pending",None,None,enqueued=160,deps='["R-01"]')
+        self.db.execute("INSERT INTO event VALUES('R-01','review_pass',500)")
+        x=m.calculate(self.db,now=900)["R"]
+        self.assertEqual(x["ready_idle_seconds"],400)
+        self.assertFalse(x["over_10_minutes"])
+
+    def test_unrelated_blocked_path_still_measures_actionable_idle(self):
+        self.add("R-01","blocked",100,150,paths='["worker/blocked.py"]')
+        self.add("R-02","pending",None,None,enqueued=200,paths='["worker/independent.py"]')
+        x=m.calculate(self.db,now=901)["R"]
+        self.assertTrue(x["over_10_minutes"])
+        self.assertEqual(x["actionable_count"],1)
+        self.assertEqual(x["state"],"pending_ready")
+
+    def test_conflicting_blocker_cannot_falsely_trigger_sla(self):
+        self.add("R-01","blocked",100,150,paths='["worker/shared.py"]')
+        self.add("R-02","pending",None,None,enqueued=200,paths='["worker/shared.py"]')
+        x=m.calculate(self.db,now=1000)["R"]
+        self.assertFalse(x["over_10_minutes"])
+        self.assertIsNone(x["ready_idle_seconds"])
+        self.assertEqual(x["state"],"blocked")
+
+    def test_pending_dependency_not_yet_approved_is_not_actionable(self):
+        self.add("R-01","review_pending",100,150)
+        self.add("R-02","pending",None,None,enqueued=160,deps='["R-01"]')
+        x=m.calculate(self.db,now=1000)["R"]
+        self.assertFalse(x["over_10_minutes"])
+        self.assertIsNone(x["ready_idle_seconds"])
 
     def test_active_worker_has_no_idle_alert(self):
         self.add("R-01","done",100,150)
