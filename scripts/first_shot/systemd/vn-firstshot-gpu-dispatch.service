@@ -1,0 +1,10 @@
+[Unit]
+Description=web-vn autonomous first-shot GPU dispatcher
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/share/web-vn-autonomous-lab/code/scripts/first_shot/autonomous_dispatch.py tick --root %h/.local/share/web-vn-native-team/first-shot-lab-20261031/autonomous
+TimeoutStartSec=180
+UMask=0077
+NoNewPrivileges=yes
