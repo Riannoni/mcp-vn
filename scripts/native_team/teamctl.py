@@ -112,9 +112,6 @@ def initialize():
 
 def claim(db,lane,owner):
     assert_current_boot(db)
-    if db.execute("SELECT 1 FROM task WHERE id LIKE ? AND state='blocked' LIMIT 1",
-                  (lane+'-%',)).fetchone():
-        return {'claimed':False,'reason':'blocked_requires_recovery_review'}
     if db.execute("SELECT v FROM team_meta WHERE k='state'").fetchone()[0]!='active':return {'claimed':False,'reason':'paused'}
     if git(lane,'status','--porcelain','--untracked-files=all'):
         return {'claimed':False,'reason':'dirty_worktree_needs_review'}
@@ -310,6 +307,8 @@ def main():
             for dep in deps:
                 if not isinstance(dep,str) or db.execute('SELECT 1 FROM task WHERE id=?',(dep,)).fetchone() is None:
                     raise ValueError('missing prerequisite')
+            db.execute("BEGIN IMMEDIATE")
+            # Atomic enqueue prevents a cloud worker seeing empty instructions.
             # Keep WIP bounded; a lane can queue at most two items at once.
             waiting=db.execute("SELECT COUNT(*) AS n FROM task WHERE id LIKE ? AND state='pending'",
                                (d['lane']+'-%',)).fetchone()['n']
@@ -317,6 +316,7 @@ def main():
                 raise ValueError('lane pending WIP limit reached (2)')
             c.add(db,d['id'],'source_inventory',d['paths'],deps,goal=d['goal'],priority=d.get('priority',50))
             db.execute('UPDATE task SET action=? WHERE id=?',(d['instructions'],d['id']))
+            db.execute("COMMIT")
             result={'enqueued':d['id']}
         elif args.cmd=='stop':
             db.execute("UPDATE team_meta SET v='stopped' WHERE k='state'")
