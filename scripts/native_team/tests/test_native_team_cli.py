@@ -167,11 +167,39 @@ class FourLaneControlTests(unittest.TestCase):
         x = m.claim(self.db, "R", "owner")
         self.assertEqual(x["reason"], "dirty_worktree_needs_review")
 
+    def test_reboot_fences_leased_worker_before_original_timeout(self):
+        import time
+        task=m.claim(self.db,"R","worker-before-power-outage")
+        self.assertTrue(task["claimed"])
+        self.db.execute("UPDATE task SET lease_until=? WHERE id='R-01'",(time.time()+3600,))
+        m.watchdog(self.db,observed_boot_id="boot-A")
+        self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"],"leased")
+        m.watchdog(self.db,observed_boot_id="boot-B")
+        x=self.db.execute("SELECT state,owner,fence FROM task WHERE id='R-01'").fetchone()
+        self.assertEqual(x["state"],"blocked")
+        self.assertIsNone(x["owner"])
+        self.assertIsNone(x["fence"])
+        self.assertFalse(m.claim(self.db,"R","second")["claimed"])
+
+    def test_no_reboot_does_not_fence_live_lease(self):
+        import time
+        m.claim(self.db,"R","worker")
+        self.db.execute("UPDATE task SET lease_until=? WHERE id='R-01'",(time.time()+3600,))
+        m.watchdog(self.db,observed_boot_id="same-boot")
+        m.watchdog(self.db,observed_boot_id="same-boot")
+        self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"],"leased")
+
+    def test_old_worker_submit_rejected_before_boot_reconciliation(self):
+        m.claim(self.db,"R","old-lease")
+        m.watchdog(self.db,observed_boot_id="synthetic-old-boot")
+        with self.assertRaisesRegex(RuntimeError,"host reboot detected"):
+            m.submit(self.db,"R","old-lease","bogus","R-01","missing-evidence.json")
+
     def test_watchdog_emits_only_on_state_change(self):
         before=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
         first=m.watchdog(self.db)
         n1=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
-        self.assertEqual(n1,before+1)
+        self.assertEqual(n1,before+2)
         second=m.watchdog(self.db)
         n2=self.db.execute("SELECT COUNT(*) FROM event").fetchone()[0]
         self.assertEqual(n2,n1)
