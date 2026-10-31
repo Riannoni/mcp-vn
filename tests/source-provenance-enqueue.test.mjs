@@ -127,4 +127,22 @@ test("source save version changed during byte preflight must reject before queue
  const after=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
  assert.equal(after,before,"stale save must not create a queued job");
 });
+test("source plate swapped after successful byte preflight must reject job",async()=>{
+ const {game,face,background}=await fixture();
+ const platePath=path.join(root,"assets",background),jobDir=path.join(root,"jobs");
+ const before=(await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length;
+ const originalOpen=fs.open;let swapped=false;
+ fs.open=async (...args)=>{
+  if(!swapped&&String(args[0]).endsWith(face)){
+   swapped=true;
+   await fs.writeFile(platePath,Buffer.from("substituted-canonical-source-plate"));
+  }
+  return originalOpen(...args);
+ };
+ try{
+  await assert.rejects(()=>enqueue(game),/canonical.*source|source.*changed|source.*bytes|mismatch|substitut/i);
+ }finally{fs.open=originalOpen}
+ assert.equal(swapped,true,"the source swap must occur after original plate preflight");
+ assert.equal((await fs.readdir(jobDir)).filter(x=>x.endsWith(".json")).length,before);
+});
 test.after(async()=>fs.rm(root,{recursive:true,force:true}));

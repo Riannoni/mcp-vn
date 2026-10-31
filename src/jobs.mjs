@@ -47,6 +47,7 @@ async function requireCanonicalSourceBytes(name,role){
   const bytes=await handle.readFile();
   if(bytes.length!==stat.size)
    throw Error("Canonical "+role+" source asset bytes changed during preflight");
+  return crypto.createHash("sha256").update(bytes).digest("hex");
  }finally{await handle.close()}
 }
 export function styleList(){return Object.keys(styles)}
@@ -98,6 +99,11 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
   if(kind==="local_cg"&&!local_visual_state?.characters?.length)
    throw Error("Local CG requires characters in the local visual state");
  }
+ const canonicalSourceFingerprints=[];
+ const preflightSource=async(name,role)=>{
+  canonicalSourceFingerprints.push({name,role,
+   sha256:await requireCanonicalSourceBytes(name,role)});
+ };
  // Only the real canonical game enqueue may issue this source record.
  // R-10 must HMAC-sign the resulting complete spec *after* this preflight;
  // R-11 separately binds the Comfy graph/prompt/original PNG.
@@ -105,10 +111,10 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
    spec.source_provenance_v1=deriveNarrativeSourceProvenance(game,spec);
    // Existence is mandatory before queue mutation, but the R-10 receipt
    // must later sign the full saved spec and byte digests under the queue lock.
-   await requireCanonicalSourceBytes(spec.background_asset,"background plate");
+   await preflightSource(spec.background_asset,"background plate");
    for(const actor of spec.source_provenance_v1.canonical_actors){
-    await requireCanonicalSourceBytes(actor.face_asset,"face");
-    if(actor.body_asset)await requireCanonicalSourceBytes(actor.body_asset,"body");
+    await preflightSource(actor.face_asset,"face");
+    if(actor.body_asset)await preflightSource(actor.body_asset,"body");
    }
   }
  const defaultPriority={background:90,sprite:80,scene:50,video:20,local_cg:65};
@@ -119,8 +125,17 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
   // between the first gameGet and this job-queue lock. Reject a stale
   // narrator/scene/actor snapshot before any queued-job mutation. R-10 must
   // separately sign the actual source bytes at creation; this is not HMAC.
-  if(kind==="scene"&&spec.composition==="neural_story")
+  if(kind==="scene"&&spec.composition==="neural_story"){
    verifyNarrativeSourceProvenance(await gameGet(game_id),spec);
+   // Recheck every byte hash under the queue lock: an asset can be swapped
+   // without changing its URL or the save version during async preflight.
+   // R-10 must still sign these trusted bytes at creation for immutable proof.
+   for(const {name,role,sha256} of canonicalSourceFingerprints){
+    if(await requireCanonicalSourceBytes(name,role)!==sha256)
+     throw Error("Canonical "+role+" source bytes changed before enqueue");
+   }
+   verifyNarrativeSourceProvenance(await gameGet(game_id),spec);
+  }
   // Explicit exact-variant reuse, while a manual regenerate (force=true) bypasses cache.
   const id=game.identities?.[character];
   const key=[style,spec.variant.outfit,spec.variant.pose,spec.variant.emotion].join("|");
