@@ -14,11 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          # Repository has no committed npm lockfile; do not request a lockfile cache.
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
       - run: npm run build
