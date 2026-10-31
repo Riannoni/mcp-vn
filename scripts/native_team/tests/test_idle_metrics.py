@@ -55,11 +55,20 @@ class IdleMetricsTests(unittest.TestCase):
         self.assertEqual(x["gap_p50_seconds"],70)
         self.assertEqual(x["gap_p90_seconds"],94)
 
-    def test_no_backlog_excluded(self):
+    def test_no_backlog_is_separate_planning_violation(self):
         self.add("R-01","done",100,150)
         x=m.calculate(self.db,now=100000)["R"]
         self.assertFalse(x["over_10_minutes"])
         self.assertIsNone(x["ready_idle_seconds"])
+        self.assertTrue(x["planning_deficit_over_5_minutes"])
+        self.assertTrue(x["planning_deficit_over_10_minutes"])
+        self.assertEqual(x["planning_deficit_seconds"],99850)
+
+    def test_recently_empty_backlog_has_no_alert(self):
+        self.add("R-01","done",100,950)
+        x=m.calculate(self.db,now=1000)["R"]
+        self.assertFalse(x["planning_deficit_over_5_minutes"])
+        self.assertEqual(x["planning_deficit_seconds"],50)
 
 
 if __name__=="__main__":
