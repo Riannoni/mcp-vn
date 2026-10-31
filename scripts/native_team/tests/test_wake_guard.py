@@ -31,7 +31,7 @@ class WakeGuardTests(unittest.TestCase):
         db.execute("CREATE TABLE team_meta(k TEXT PRIMARY KEY,v TEXT)")
         db.execute("INSERT INTO team_meta VALUES('state','active')")
         db.execute("CREATE TABLE task(id TEXT PRIMARY KEY,state TEXT, deps TEXT,paths TEXT,priority INTEGER,completed_at REAL)")
-        db.execute("INSERT INTO task VALUES('R-03','pending','[]','[\"worker/x.py\"]',10)")
+        db.execute("INSERT INTO task(id,state,deps,paths,priority) VALUES('R-03','pending','[]','[\"worker/x.py\"]',10)")
         db.commit()
         db.close()
 
@@ -79,7 +79,7 @@ class WakeGuardTests(unittest.TestCase):
         db.commit();db.close()
         self.assertEqual(m.check(self.root,"R",now=100)["reason"],"no_ready_task")
         db=self.db()
-        db.execute("INSERT INTO task VALUES('R-02','done','[]','[\"worker/y.py\"]',1)")
+        db.execute("INSERT INTO task(id,state,deps,paths,priority) VALUES('R-02','done','[]','[\"worker/y.py\"]',1)")
         db.commit();db.close()
         self.assertTrue(m.check(self.root,"R",now=100)["eligible"])
 
@@ -93,7 +93,7 @@ class WakeGuardTests(unittest.TestCase):
 
     def test_cross_lane_conflict_prevents_wake(self):
         db=self.db()
-        db.execute("INSERT INTO task VALUES('Q-01','leased','[]','[\"worker/x.py\"]',3)")
+        db.execute("INSERT INTO task(id,state,deps,paths,priority) VALUES('Q-01','leased','[]','[\"worker/x.py\"]',3)")
         db.commit();db.close()
         self.assertEqual(m.check(self.root,"R",now=100)["reason"],"no_ready_task")
 
@@ -139,7 +139,7 @@ class WakeGuardTests(unittest.TestCase):
 
     def test_unrelated_lane_lease_allows_wake(self):
         db=self.db()
-        db.execute("INSERT INTO task VALUES('Q-01','leased','[]','[\"tests/other.py\"]',3)")
+        db.execute("INSERT INTO task(id,state,deps,paths,priority) VALUES('Q-01','leased','[]','[\"tests/other.py\"]',3)")
         db.commit();db.close()
         self.assertTrue(m.check(self.root,"R",now=100)["eligible"])
 
