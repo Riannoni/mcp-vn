@@ -44,6 +44,32 @@ def _receipt(receipt, original_sha, label):
     return name
 
 
+def _check_exact_render_output(graph):
+    """The submitted graph must save the same face-conditioned sampler output.
+
+    Checking only the canonical sampler's model is insufficient: another
+    KSampler/SaveImage can produce the PNG while the checked branch is dead.
+    This contract intentionally permits a single narrow SDXL Lab output graph.
+    """
+    samplers = {"KSampler", "KSamplerAdvanced", "SamplerCustom", "SamplerCustomAdvanced"}
+    outputs = {"SaveImage", "PreviewImage", "SaveImageWebsocket",
+               "SaveAnimatedWEBP", "SaveAnimatedPNG"}
+    for key, value in graph.items():
+        if not isinstance(value, dict):
+            raise IdentityGraphBlocked("Malformed render node")
+        kind = value.get("class_type")
+        if kind in samplers and str(key) != "5":
+            raise IdentityGraphBlocked("Unexpected independent sampler bypass")
+        if kind in outputs and str(key) != "7":
+            raise IdentityGraphBlocked("Unexpected second image output")
+    decoder = _node(graph, "6", "VAEDecode")
+    output = _node(graph, "7", "SaveImage")
+    if (not _edge(decoder.get("samples"), "5") or
+        not _edge(decoder.get("vae"), "1", 2) or
+        not _edge(output.get("images"), "6")):
+        raise IdentityGraphBlocked("Final SaveImage output bypasses canonical sampler/decoder")
+
+
 def validate_sdxl_identity_graph(job, graph, intent, *, checkpoint, face_uploads,
                                  mask_uploads=None, body_source=None):
     """Check intended IPAdapter wiring; never attest rendered pixels or actual bytes.
@@ -88,6 +114,7 @@ def validate_sdxl_identity_graph(job, graph, intent, *, checkpoint, face_uploads
     if _node(graph, "1", "CheckpointLoaderSimple").get("ckpt_name") != checkpoint:
         raise IdentityGraphBlocked("Checkpoint/model family changed")
     sampler = _node(graph, "5", "KSampler")
+    _check_exact_render_output(graph)
     is_sprite = job["kind"] == "sprite"
     vision_id, loader_id = ("15", "16") if is_sprite else ("60", "61")
     if _node(graph, vision_id, "CLIPVisionLoader").get("clip_name") != CLIP_VISION:
@@ -112,6 +139,11 @@ def validate_sdxl_identity_graph(job, graph, intent, *, checkpoint, face_uploads
                              ("ipadapter", [loader_id, 0]), ("clip_vision", [vision_id, 0])):
             if adapter.get(field) != value:
                 raise IdentityGraphBlocked(f"{name} IPAdapter {field} is disconnected")
+        if any(adapter.get(field) != required for field, required in (
+            ("weight_type", "linear"), ("combine_embeds", "concat"),
+            ("embeds_scaling", "V only")
+        )):
+            raise IdentityGraphBlocked(f"{name} IPAdapter embedding semantics changed")
         weight = adapter.get("weight")
         start, end = adapter.get("start_at"), adapter.get("end_at")
         if (type(weight) not in (float, int) or not 0 < weight <= 1.2 or

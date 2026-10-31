@@ -22,7 +22,9 @@ def receipt(name, digest):
 def base():
     return {"1": node("CheckpointLoaderSimple", ckpt_name=CKPT),
             "2": node("EmptyLatentImage", width=832, height=1216, batch_size=1),
-            "5": node("KSampler", model=["1",0], latent_image=["2",0])}
+            "5": node("KSampler", model=["1",0], latent_image=["2",0]),
+            "6": node("VAEDecode", samples=["5",0], vae=["1",2]),
+            "7": node("SaveImage", images=["6",0])}
 
 def sprite():
     g = base()
@@ -30,7 +32,8 @@ def sprite():
               "16": node("IPAdapterModelLoader",ipadapter_file="ip-adapter-plus-face_sdxl_vit-h.safetensors"),
               "17": node("LoadImage",image="face0.png"),
               "18": node("IPAdapterAdvanced",model=["1",0],ipadapter=["16",0],image=["17",0],
-                         clip_vision=["15",0],weight=.78,start_at=0.,end_at=.9)})
+                         clip_vision=["15",0],weight=.78,start_at=0.,end_at=.9,
+                         weight_type="linear",combine_embeds="concat",embeds_scaling="V only")})
     g["5"]["inputs"]["model"]=["18",0]
     return g
 
@@ -44,7 +47,8 @@ def cg():
         g[mask]=node("LoadImage",image=f"mask{i}.png")
         g[app]=node("IPAdapterAdvanced",model=["1",0] if i==0 else ["64",0],
                     ipadapter=["61",0],image=[im,0],clip_vision=["60",0],
-                    attn_mask=[mask,1],weight=.74,start_at=0.,end_at=.95)
+                    attn_mask=[mask,1],weight=.74,start_at=0.,end_at=.95,
+                    weight_type="linear",combine_embeds="concat",embeds_scaling="V only")
     g["5"]["inputs"]["model"]=["67",0]
     return g
 
@@ -74,6 +78,48 @@ class IdentityGraphContractTests(unittest.TestCase):
 
     def test_valid_two_principal_cg_only_claims_wiring(self):
         self.assertEqual(check(CJOB,cg(),TWO,CU,CM)["actor_count"],2)
+
+    def test_final_saved_png_must_come_from_canonical_sampler(self):
+        g=sprite();g["7"]["inputs"]["images"]=["77",0]
+        g["77"]=node("VAEDecode", samples=["5",0], vae=["1",2])
+        with self.assertRaisesRegex(IdentityGraphBlocked, "output|SaveImage|decoder"):
+            check(SJOB,g,ONE,SU)
+        g=sprite();g["6"]["inputs"]["samples"]=["99",0]
+        g["99"]=node("KSampler", model=["1",0], latent_image=["2",0])
+        with self.assertRaisesRegex(IdentityGraphBlocked, "output|sampler|decoder"):
+            check(SJOB,g,ONE,SU)
+
+    def test_second_output_or_sampler_cannot_escape_face_chain(self):
+        g=sprite();g["89"]=node("SaveImage", images=["6",0])
+        with self.assertRaisesRegex(IdentityGraphBlocked, "output|SaveImage"):
+            check(SJOB,g,ONE,SU)
+        g=sprite();g["99"]=node("KSampler", model=["1",0], latent_image=["2",0])
+        with self.assertRaisesRegex(IdentityGraphBlocked, "sampler"):
+            check(SJOB,g,ONE,SU)
+
+    def test_exact_review_counterexample_sprite_and_two_actor_cg(self):
+        # Independent Integration red-case: a valid protected sampler exists,
+        # but an unprotected sampler feeds the actual saved bytes.
+        for kind, job, graph, intent, faces, masks in (
+            ("sprite", SJOB, sprite(), ONE, SU, None),
+            ("cg_2", CJOB, cg(), TWO, CU, CM),
+        ):
+            with self.subTest(kind=kind):
+                graph["99"]=node("KSampler",model=["1",0],latent_image=["2",0])
+                graph["100"]=node("VAEDecode",samples=["99",0],vae=["1",2])
+                graph["7"]["inputs"]["images"]=["100",0]
+                with self.assertRaisesRegex(IdentityGraphBlocked,"sampler|output"):
+                    check(job,graph,intent,faces,masks)
+
+    def test_ipadapter_embedding_semantics_are_frozen(self):
+        for field,value in (("weight_type","style transfer"),
+                            ("combine_embeds","average"),
+                            ("embeds_scaling","K+V")):
+            g=sprite();g["18"]["inputs"][field]=value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                IdentityGraphBlocked, "IPAdapter|embedding"
+            ):
+                check(SJOB,g,ONE,SU)
 
     def test_current_worker_silent_face_fallback_cannot_pass(self):
         g=sprite();g["5"]["inputs"]["model"]=["1",0]
