@@ -98,8 +98,17 @@ def verify_sprite_face_upload(
     # This is only a necessary CPU sanity check: it cannot establish actual
     # facial content, origin authentication, wardrobe or visual G2.
     if ("A" in canonical.getbands() or "transparency" in canonical.info):
-        if canonical.convert("RGBA").getchannel("A").getextrema()[1] == 0:
+        # Installed worker discards alpha with .convert("RGB") rather than
+        # compositing it against an authenticated, frozen background. As a
+        # result, even one translucent pixel can feed hidden RGB into the
+        # Face-IPAdapter image. Until an independently reviewed transparent
+        # source normalization is deployed, reject *all* nonopaque source
+        # alpha; valid fully opaque RGBA and RGB sources remain supported.
+        alpha_low, alpha_high = canonical.convert("RGBA").getchannel("A").getextrema()
+        if alpha_high == 0:
             raise FaceUploadBlocked("canonical_face_reference_invisible")
+        if alpha_low < 255:
+            raise FaceUploadBlocked("canonical_face_reference_transparency_unsupported")
     canonical_rgb = canonical.convert("RGB")
     if all(low == high for low, high in canonical_rgb.getextrema()):
         raise FaceUploadBlocked("canonical_face_reference_blank")
