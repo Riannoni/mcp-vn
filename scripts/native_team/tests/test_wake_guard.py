@@ -12,7 +12,7 @@ spec=importlib.util.spec_from_file_location("wakeguard",FILE)
 m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 # Quota admission has an independent, focused test suite; this fixture tests wake CAS.
-m.quota_permit=lambda root,now: {"eligible":True}
+m.quota_permit=lambda root,now,provider="codex_oauth": {"eligible":True}
 
 
 class WakeGuardTests(unittest.TestCase):

@@ -89,3 +89,7 @@ No successful five-frame G2 score is claimed yet. Frozen v1: G1 5/5, G2 only syn
 5. Chief issues genuine next stage R-15 only after broker and source contracts, promptly wakes ready cloud workers when possible. Golden inspects every new original PNG before releasing next candidate. Chief reports to owner hourly.
 
 No extra reporter automation, Dot dependency, silent local Codex run, or Work tasks are part of this operating plan.
+
+## V17 — correct provider-scoped wake quota
+
+The `vn-proxy-quota --provider codex` sample measures **Codex OAuth**, not ordinary ChatGPT Scheduled Task usage. Do not block a genuine Scheduled `run_now` on a missing/full Codex OAuth meter. The native platform is the authority for Scheduled quota and actual admission. `wake_guard.py` keeps atomic reservation, 120s cooldown, clean worktree/scope/dependency check and per-hour rate budgets. This is never permission to launch Codex, Work or paid API. Check `peek` for task enabled/not running before invoking official `run_now`; a request is not evidence of startup or a SQLite claim.

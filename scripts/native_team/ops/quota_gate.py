@@ -12,7 +12,21 @@ MAX_5H_USED = 75
 MAX_7D_USED = 75
 MAX_SAMPLE_AGE_SECONDS = 180
 
-def permit(root, now=None):
+def permit(root, now=None, provider="codex_oauth"):
+    """Native Scheduled tasks do not use the CLIProxy Codex OAuth meter.
+
+    Admission for ChatGPT Scheduled workers is handled by ChatGPT itself.
+    This never authorizes a Codex, Work or paid API call.
+    """
+    if provider == "chatgpt_scheduled":
+        return {
+            "eligible": True,
+            "reason": "native_chatgpt_platform_quota_authoritative",
+            "quota_meter": "not_available_locally",
+        }
+    if provider != "codex_oauth":
+        raise ValueError("unknown quota provider")
+
     now = time.time() if now is None else now
     try:
         sample = json.loads((Path(root) / "state" / "quota-latest.json").read_text())
