@@ -151,7 +151,8 @@ def tick(root):
             return {"status": record["status"]}
         t = time.monotonic()
         try:
-            answer = r.api("/prompt", {"prompt": graph, "client_id": "firstshot-autonomous-lab"}, timeout=12)
+            answer = r.api("/prompt", {"prompt": graph, "client_id": "firstshot-autonomous-lab"},
+                           timeout=12, idempotency_key="first-shot-ab:" + p["id"])
             pid = answer.get("prompt_id")
             if not isinstance(pid, str) or len(pid) < 8:
                 raise RuntimeError("untrusted_comfy_prompt_id")
