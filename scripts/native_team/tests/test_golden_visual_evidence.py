@@ -260,15 +260,29 @@ class GoldenEvidenceTests(unittest.TestCase):
                       "Must reject stale save at actual independent review",
                       self.artifacts["original_png"]["sha256"])
 
-    def test_review_refuses_tampered_receipt_and_original(self):
+    def test_review_refuses_tampered_immutable_receipt(self):
         x=self.claim()
         p=self.receipt(x)
         ge.submit(self.db,TASK,x["owner"],x["fence"],p)
-        p.write_text(p.read_text()+" ")
+        doc=json.loads(self.db.execute("SELECT result FROM task WHERE id=?",(TASK,)).fetchone()["result"])
+        immutable=self.root/doc["path"]
+        self.assertNotEqual(p,immutable)
+        self.assertEqual(immutable.read_bytes(),p.read_bytes())
+        immutable.write_text(immutable.read_text()+" ")
         with self.assertRaises(ValueError):
             ge.review(self.db,TASK,"chief-reviewer",True,
-                      "Receipt mutated after original evidence submission",
+                      "Immutable receipt has changed after fenced submission",
                       self.artifacts["original_png"]["sha256"])
+
+    def test_immutable_copy_does_not_follow_mutated_input_receipt(self):
+        x=self.claim()
+        p=self.receipt(x)
+        ge.submit(self.db,TASK,x["owner"],x["fence"],p)
+        p.write_text(p.read_text()+" mutated after copy")
+        ans=ge.review(self.db,TASK,"chief-reviewer",True,
+                      "Independent reviewer checks immutable original snapshot",
+                      self.artifacts["original_png"]["sha256"])
+        self.assertTrue(ans["approved"])
 
     def test_missing_provenance_or_mismatched_job(self):
         bad = json.loads(Path(self.artifacts["gpu_receipt"]["path"]).read_text())
