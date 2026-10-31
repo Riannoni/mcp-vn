@@ -175,3 +175,35 @@ python3 scripts/parallel_task_coordinator.py status --db /tmp/new-web-vn-pilot/t
 **browser-llm-bridge (`e12ee318c363`):** в Node.js 24 без сети проверен синтаксис **23 JavaScript-файлов, 23/23 PASS**. Отсутствие `npm test` и `npm run build` остаётся пробелом тестового покрытия. Это статическая проверка, а не functional PASS.
 
 **Решение:** для дальнейшей оценки единственного разрешённого модельного backend первыми кандидатами остаются `tab2api` и `chatgpt-web-provider`, поскольку их тестовые наборы и сборки полностью прошли в офлайн-стенде. Однако **ни один** из них не прошёл фактическую авторизованную сессию, реальный tool-calling или измерение квот и поэтому **не интегрирован с night-agent**. Подготовленный двухворкерный SQLite-пилот успешно исполняет CPU/source-only операции независимо от этих проектов, без изменения production.
+
+
+## 9. Controlled localhost live preflight (31 Oct 2026, 11:34–11:40 Novosibirsk)
+
+**Owner explicitly requested stopping the current night-agent before browser-backed tests.** Existing local night run `20261031-021227` was already `paused_quota` and its selected systemd unit was inactive. Both `vn-night-quota-resume.timer` and `vn-night-watchdog.timer` were disabled and stopped. The installed CLI `vn-night stop` returned 5 because the transient systemd unit had already disappeared; after confirming every named unit inactive, we atomically marked `status.json` state `stopped` with a private backup. Existing hourly ChatGPT Automation `6ae4ec33db048191af03a0f0c102e8f4` was disabled. Game `mcp-vn-worker.service` and original CLIProxyAPI stayed active. This explicitly stopped ONLY the autonomous night agent, not the visual-novel game worker.
+
+Two isolated adapter binaries (existing Node dependencies / previously built dist, fixed upstream SHAs) were then started briefly as **loopback-only systemd transient test processes**. No signed-in Chrome or secret profiles mounted, no production changes:
+
+| Test | tab2api | chatgpt-web-provider |
+| --- | --- | --- |
+| Server startup | PASS after moving profile path under `TAB2API_DATA_DIR` (required by upstream safety check) | PASS with Chrome autolaunch disabled |
+| GET health | `/healthz` HTTP 200, service=tab2api | `/health` HTTP 200, status=degraded |
+| GET models | `/v1/models` HTTP 200 (local API key; value never printed; file 0600) | `/v1/models` HTTP 200 |
+| Authenticated readyness / browser | `/readyz` HTTP 503, session=browser_disconnected | Browser disconnected, auth_state=not_checked |
+| One harmless POST to local chat route | HTTP **503 browser_disconnected** | HTTP **503 BROWSER_UNAVAILABLE** |
+| Authenticated ChatGPT model output / tool calls | **NOT TESTED** | **NOT TESTED** |
+
+These were **live local process/network checks**, not ChatGPT online inference. Errors indicate correct fail-closed behavior and **do not consume the account's ChatGPT or Codex quota**. Both transient adapter units were subsequently **stopped**, no persistent background browser adapters installed.
+
+PC has Flatpak Chrome, but no running GUI browser and the systemd user environment is gamescope (no available DISPLAY/WAYLAND_DISPLAY for the remote SSH process). Connected Browser tool in ChatGPT returned `Browser access requires the originating browser context`; it cannot provide the missing signed-in session.
+
+For a future *manual desktop-login* preflight, installed the exact Playwright-matched Chrome for Testing `156.0.8078.4` under the isolated lab `runtime/playwright-browsers/` (not into production or system Chrome). It passed a real headless Chromium process `about:blank` check (`exit=0`, HTML rendered). A 0700 interactive helper exists:
+
+~~~bash
+~/.local/share/web-vn-bridge-eval/20261031/build/interactive-login-tab2api.sh
+~~~
+
+**Requires the owner to open a Terminal in Bazzite Desktop Mode** and personally authenticate through the dedicated Chromium window; the script refuses to start without graphical DISPLAY/WAYLAND_DISPLAY. It uses only `runtime/tab2api/data/profile` and will not copy the owner's existing browser cookies/token. The assistant did **not** execute login or inspect an account. Keep all future tests bounded, never automatically retry a submitted web prompt and never claim quota independence without separate actual usage evidence.
+
+**Compliance constraint:** OpenAI's published [personal terms](https://openai.com/policies/row-terms-of-use/) restrict automated/programmatic extraction of Output and rate-limit circumvention. OSS MIT license of a browser bridge does not authorize upstream account automation. Thus no browser bridge is approved here for autonomous quota-bypass deployment. The permitted technical preflight and source tests above remain valuable; further live use must be consistent with the provider's terms.
+
+**Current disposition:** terminated night AI agent; *neither adapter selected for production*; tab2api is the provisional stronger local test candidate (292 passing offline mock tests, first live loopback healthy, isolated Playwright runnable), but browser login, live model answers, multi-turn continuity, two simultaneous ChatGPT sessions and exact billing/quota effects all remain **UNVERIFIED**.
