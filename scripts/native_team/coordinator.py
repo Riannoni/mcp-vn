@@ -58,6 +58,8 @@ def add(db, task_id, action, paths, deps=(), goal="render-v1 #20", priority=0):
     if not isinstance(paths, (list, tuple)):
         raise ValueError("Invalid scope type")
     if action == "visual_evidence":
+        if not isinstance(task_id, str) or not task_id.startswith("G-"):
+            raise ValueError("Golden visual evidence is restricted to G lane")
         if list(paths):
             raise ValueError("Visual evidence task cannot declare source write scope")
     elif not paths:
