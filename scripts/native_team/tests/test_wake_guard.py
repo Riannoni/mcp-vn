@@ -67,6 +67,25 @@ class WakeGuardTests(unittest.TestCase):
         self.assertEqual(sum(bool(a.get("reserved")) for a in attempts),1)
         self.assertEqual(sum(a.get("reason")=="wake_cooldown" for a in attempts),3)
 
+    def test_hourly_lane_budget_prevents_wake_storm(self):
+        first=m.check(self.root,"R",reserve=True,now=100)
+        self.assertTrue(first["reserved"])
+        second=m.check(self.root,"R",reserve=True,now=701)
+        self.assertTrue(second["reserved"])
+        third=m.check(self.root,"R",reserve=True,now=1302)
+        self.assertFalse(third["eligible"])
+        self.assertEqual(third["reason"],"lane_hourly_wake_budget")
+        self.assertTrue(m.check(self.root,"R",now=3702)["eligible"])
+
+    def test_chief_hourly_budget(self):
+        db=self.db()
+        db.execute("UPDATE task SET state='review_pending',completed_at=100")
+        db.commit();db.close()
+        self.assertTrue(m.check_review(self.root,reserve=True,now=100)["reserved"])
+        self.assertTrue(m.check_review(self.root,reserve=True,now=701)["reserved"])
+        third=m.check_review(self.root,reserve=True,now=1302)
+        self.assertEqual(third["reason"],"chief_hourly_wake_budget")
+
     def test_review_pending_or_blocker_prevents_wake(self):
         for state,expected in [("leased","worker_busy"),("review_pending","review_pending"),("blocked","blocker_requires_review")]:
             self.set_task("R-03",state)
