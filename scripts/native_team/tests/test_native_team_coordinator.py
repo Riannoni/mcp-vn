@@ -54,6 +54,15 @@ class PilotTests(unittest.TestCase):
         self.assertIsNone(m.claim(self.db,"w3",now=112))
         row=self.db.execute("SELECT state FROM task WHERE id='t1'").fetchone()
         self.assertEqual(row["state"],"blocked")
+    def test_worker_failure_blocks_without_automatic_retry(self):
+        self.add()
+        lease=m.claim(self.db,"worker",now=100)
+        self.assertTrue(m.complete(self.db,"t1","worker",lease["fence"],
+                                    {"sha256":"x"*64},now=101,passed=False))
+        state=self.db.execute("SELECT state FROM task WHERE id='t1'").fetchone()["state"]
+        self.assertEqual(state,"blocked")
+        self.assertIsNone(m.claim(self.db,"next",now=102))
+
     def test_wrong_owner_cannot_heartbeat_or_complete(self):
         self.add()
         x=m.claim(self.db,"w1",ttl=5,now=100)
