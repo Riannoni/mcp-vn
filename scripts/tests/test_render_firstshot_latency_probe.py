@@ -132,9 +132,9 @@ class LatencyProbeTests(unittest.TestCase):
         self.assertFalse(row["human_label"])
         self.assertTrue(row["human_label_claim_unverified"])
 
-    def test_verified_original_png_can_pass_independent_review(self):
+    def test_matching_original_png_still_cannot_authenticate_review(self):
         import hashlib
-        data = b"real checked bytes, not a generated image"
+        data = self._authentic_one_pixel_png()
         png = self.root / "original.png"
         png.write_bytes(data)
         d = self.case()
@@ -148,9 +148,67 @@ class LatencyProbeTests(unittest.TestCase):
                   "reviewer_type": "independent_reviewer", "human_label": False}
         (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
         row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
-        self.assertEqual(row["g2"], "PASS")
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
         self.assertTrue(row["original_png_sha_verified"])
-        self.assertIn("sha_bound_pixel_review", row["evidence"])
+        self.assertTrue(row["g2_claim_unverified"])
+        self.assertFalse(row["mandatory_set_authenticated"])
+        self.assertIn("unattested_pixel_review", row["evidence"])
+
+    def _authentic_one_pixel_png(self):
+        import struct
+        import zlib
+        def chunk(name, data):
+            return (struct.pack(">I", len(data)) + name + data
+                    + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff))
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\x00"))
+                + chunk(b"IEND", b""))
+
+    def _bound_file_and_review(self, pixels, mandatory):
+        import hashlib
+        original = self.root / "source-original.png"
+        original.write_bytes(pixels)
+        d = self.case()
+        d["original_png_path"] = str(original)
+        d["png_sha256"] = hashlib.sha256(pixels).hexdigest()
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": d["png_sha256"],
+                  "original_pixels_reviewed": True,
+                  "reviewer_type": "independent_gold_self_claim",
+                  "mandatory": mandatory,
+                  "checks": {key: "verified" for key in mandatory},
+                  "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        return d
+
+    def test_valid_sha_and_forged_golden_reviewer_cannot_certify_g2(self):
+        self._bound_file_and_review(self._authentic_one_pixel_png(),
+                                    ["environment", "cast", "pose"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertTrue(row["g2_claim_unverified"])
+        self.assertFalse(row["human_label"])
+        self.assertIn("unattested_pixel_review", row["evidence"])
+
+    def test_truncated_mandatory_list_not_scene_contract_g2(self):
+        self._bound_file_and_review(self._authentic_one_pixel_png(), ["pose"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertFalse(row["mandatory_set_authenticated"])
+
+    def test_matching_sha_of_non_png_payload_is_rejected(self):
+        self._bound_file_and_review(b"not even a PNG", ["environment"])
+        with self.assertRaises(probe.EvidenceError):
+            probe.build_report(self.lab, [], verify_png=True)
+
+    def test_png_with_corrupt_chunk_crc_rejected(self):
+        pixels = bytearray(self._authentic_one_pixel_png())
+        pixels[-2] ^= 0x01
+        self._bound_file_and_review(bytes(pixels), ["environment"])
+        with self.assertRaisesRegex(probe.EvidenceError, "CRC"):
+            probe.build_report(self.lab, [], verify_png=True)
 
     def test_sha_and_review_prompt_mismatch_rejected(self):
         self.case()

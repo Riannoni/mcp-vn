@@ -24,6 +24,8 @@ import hashlib
 import json
 import math
 import re
+import struct
+import zlib
 from pathlib import Path
 import sys
 
@@ -78,11 +80,56 @@ def _sha(value, field):
     return value
 
 
+
+def _validate_png_container(payload):
+    """Reject invalid PNG containers; do not infer pixels or independent review."""
+    if not payload.startswith(bytes.fromhex("89504e470d0a1a0a")):
+        raise EvidenceError("original bytes are not a PNG")
+    offset = 8
+    seen_ihdr = seen_idat = seen_iend = False
+    while offset < len(payload):
+        if len(payload) - offset < 12:
+            raise EvidenceError("truncated PNG chunk")
+        n = struct.unpack(">I", payload[offset:offset + 4])[0]
+        kind = payload[offset + 4:offset + 8]
+        end = offset + 12 + n
+        if end > len(payload):
+            raise EvidenceError("PNG chunk beyond file bounds")
+        content = payload[offset + 8:offset + 8 + n]
+        crc = struct.unpack(">I", payload[offset + 8 + n:end])[0]
+        if (zlib.crc32(kind + content) & 0xffffffff) != crc:
+            raise EvidenceError("PNG chunk CRC mismatch")
+        if not seen_ihdr:
+            if kind != b"IHDR" or n != 13:
+                raise EvidenceError("PNG IHDR first chunk required")
+            width, height, depth, color, compression, filtering, interlace = (
+                struct.unpack(">IIBBBBB", content))
+            valid_depths = {0:(1,2,4,8,16), 2:(8,16), 3:(1,2,4,8),
+                            4:(8,16), 6:(8,16)}
+            if (not width or not height or depth not in valid_depths.get(color, ())
+                    or compression != 0 or filtering != 0 or interlace not in (0,1)):
+                raise EvidenceError("invalid PNG IHDR")
+            seen_ihdr = True
+        elif kind == b"IHDR":
+            raise EvidenceError("duplicate PNG IHDR")
+        if kind == b"IDAT":
+            seen_idat = True
+        if kind == b"IEND":
+            if n or not seen_idat or end != len(payload):
+                raise EvidenceError("invalid PNG IEND or missing image data")
+            seen_iend = True
+            break
+        offset = end
+    if not seen_ihdr or not seen_idat or not seen_iend:
+        raise EvidenceError("incomplete PNG container")
+
+
 def _new_row(case=None, prompt_id=None, job_id=None, png_sha256=None):
     return {
         "case": case, "prompt_id": prompt_id, "job_id": job_id,
         "png_sha256": png_sha256, "g1": None, "g2": "NOT_REVIEWED",
         "human_label": False, "human_label_claim_unverified": False,
+        "g2_claim_unverified": False, "mandatory_set_authenticated": False,
         "original_png_sha_verified": None,
         "stages_s": {s: None for s in STAGES},
         "evidence": [],
@@ -127,8 +174,12 @@ def _lab_rows(lab_dir, verify_png):
             if not isinstance(original, str) or not original:
                 raise EvidenceError("original PNG path missing")
             image = Path(original)
-            if not image.is_file() or hashlib.sha256(image.read_bytes()).hexdigest() != sha:
+            if not image.is_file():
+                raise EvidenceError("original PNG file unavailable")
+            contents = image.read_bytes()
+            if hashlib.sha256(contents).hexdigest() != sha:
                 raise EvidenceError("original PNG bytes do not match exact SHA")
+            _validate_png_container(contents)
             row["original_png_sha_verified"] = True
         measured = _finite_nonnegative(d.get("total_submit_to_output_seconds"), "submit_to_png")
         clock = _duration(d.get("started_at"), d.get("completed_at"), "lab")
@@ -158,14 +209,13 @@ def _lab_rows(lab_dir, verify_png):
                            and reviewer_type.startswith("independent_"))
             positive_claim = (reviewed and independent
                               and all(checks[k] == "verified" for k in mandatory))
-            # A reviewed metadata JSON is NOT a verified original pixel receipt
-            # when the optional synthetic-test-only --skip-png-hash flag was used.
-            # Never let this pathway manufacture a G2 PASS or human label.
-            row["g2"] = (
-                ("PASS" if row["original_png_sha_verified"] is True
-                 else "NOT_REVIEWED") if positive_claim else "FAIL"
-            )
-            # PNG SHA authenticates image bytes, not the human reviewer.
+            # A matching PNG SHA and self-written review JSON do NOT certify
+            # independent reviewer identity or complete canonical Scene Contract.
+            # This read-only parser cannot attest any positive G2 claim.
+            row["g2_claim_unverified"] = positive_claim
+            row["g2"] = "NOT_REVIEWED" if positive_claim else "FAIL"
+            # Explicit nonverified mandatory checks remain fail-closed.
+            # Negative local metadata is not an independent G2 verdict.
             # Editable JSON alone is never an authenticated human attestation.
             row["human_label_claim_unverified"] = rev.get("human_label") is True
             row["human_label"] = False
@@ -173,8 +223,7 @@ def _lab_rows(lab_dir, verify_png):
                 k for k in mandatory if checks[k] != "verified"
             ]
             row["evidence"].append(
-                "sha_bound_pixel_review" if row["original_png_sha_verified"] is True
-                else "unverified_review_metadata"
+                "unattested_pixel_review"
             )
         rows.append(row)
         by_prompt[prompt] = row
@@ -281,6 +330,8 @@ def build_report(lab_dir, events, verify_png=True):
             "No GPU two-way concurrency approval without monitored A/B.",
             "AI pixel reviews are not human labels; G3 remains NO_GO.",
             "Editable JSON human-reviewer claims are unauthenticated and never count as human labels.",
+            "All local pixel-review JSON claims remain unattested regardless of matching original PNG SHA.",
+            "Mandatory review lists lack authenticated canonical Scene Contract linkage.",
             "External stage receipts require independent source authentication; this parser cannot certify their origin.",
         ],
         "g3": "NO_GO",
