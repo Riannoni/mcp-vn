@@ -742,6 +742,29 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await response.json(),
                              {"filename": "test.png", "size": 12})
 
+    def test_duplicate_backend_queue_ids_are_malformed(self):
+        pid = str(uuid.uuid4())
+        for running, pending in (([[0, pid, {}], [1, pid, {}]], []),
+                                 ([[0, pid, {}]], [[1, pid, {}]])):
+            with self.subTest(running=running, pending=pending):
+                with self.assertRaisesRegex(ValueError, "duplicate_queue_prompt_id"):
+                    m.queue_ids({"queue_running": running, "queue_pending": pending})
+
+    async def test_duplicate_owner_prompt_in_backend_queue_fences_dispatch(self):
+        status, first = await self.post(88)
+        self.assertEqual(status, 200)
+        pid = first["prompt_id"]
+        await self.until(lambda: pid in self.fake.running)
+        # Reproduces backend queue ambiguity without submitting a GPU job.
+        self.fake.running.append(pid)
+        await self.until(lambda: self.broker.status()["fault"] == "reconcile_ValueError")
+        self.assertEqual(self.broker.owner(), pid)
+        self.assertEqual(len(self.fake.posts), 1)
+        status, second = await self.post(89)
+        await asyncio.sleep(.08)
+        self.assertEqual(len(self.fake.posts), 1)
+        self.assertEqual(self.broker.owner(), pid)
+
     async def test_second_broker_same_state_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "another_broker"):
             m.Broker(self.tmp.name, str(self.backend_server.make_url("/")))
