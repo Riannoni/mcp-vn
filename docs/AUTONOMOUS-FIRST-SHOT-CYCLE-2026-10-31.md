@@ -1,5 +1,7 @@
 # Autonomous first-shot GPU → original pixel → QA → fix loop
 
+> **V16 PRO OVERRIDE (2026-10-31):** [PRO-NATIVE-AUTONOMOUS-TEAM-2026-10-31.md](PRO-NATIVE-AUTONOMOUS-TEAM-2026-10-31.md) is the current scheduling/ownership and role source of truth. The account now supports 15 active Pro Scheduled Tasks and **12 ChatGPT-native workers are enabled**; reporter paused, Chief reports hourly. Previous five-task assignment is historical. **No Codex/Work/paid API**; local Codex remains stopped due rapid quota exhaustion. Do not change release gate or GPU ownership.
+
 **Effective:** 2026-10-31. Owner instruction: **the workers execute rendering, inspections, fixes, comparative experiments, and independent acceptance autonomously**. The interactive assistant chat is an interface for task setup, exceptions, and receiving reports, not a human-in-the-loop render executor. Precedence: read `AGENTS.md` first, full `docs/DEVELOPMENT-AND-TESTING.md` second; this document assigns roles and workflow within those invariants. Current P0 target `docs/FIRST-SHOT-GPU-ASSAULT-2026-10-31.md`, frozen `scripts/first_shot/pack-v1.json`, baseline `docs/FIRST-SHOT-GPU-RESULT-2026-10-31.md`, issue #20.
 
 ## Permanent objective and gates
@@ -8,7 +10,7 @@ On one RX 9070 XT, prove BG + identity-preserving transparent sprite + 3 differe
 
 ## Active scheduled autonomous work + report
 
-**2026-10-31 V14 correction:** The observed cap of five is on concurrently enabled **ChatGPT Scheduled Automation records**, not on the total number of independent workers. Four cloud roles plus one separate GPU Broker Engineer occupy five current slots. The extra read-only reporter is **paused**, because the Chief already sends a substantive hourly report. More workers can run concurrently as locally managed, quota-gated Codex subagents and CPU/services (not as extra enabled Schedule records beyond the cap). Prior allocation (below) is historical, not live:
+**2026-10-31 V14 correction:** The former Plus five-task limit is no longer current; Pro permits 15 active **ChatGPT Scheduled Automation records**, distinct from physical GPU concurrency and total worker roles. Four cloud roles plus one separate GPU Broker Engineer occupy five current slots. The extra read-only reporter is **paused**, because the Chief already sends a substantive hourly report. More workers can run concurrently as locally managed, quota-gated Codex subagents and CPU/services (not as extra enabled Schedule records beyond the cap). Prior allocation (below) is historical, not live:
 
 | Function | Automation / lane | Responsible for |
 |---|---|---|
