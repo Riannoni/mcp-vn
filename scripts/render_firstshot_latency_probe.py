@@ -160,8 +160,13 @@ def _check_lab_stage_timeline(row, event, stage):
     if source_began > source_ended:
         raise EvidenceError("lab lifecycle timestamps inverted")
     if stage == "full_turn":
-        if began > source_began or ended < source_ended:
-            raise EvidenceError("full_turn timeline does not enclose lab lifecycle")
+        action_start = row.get("action_started_at")
+        if not isinstance(action_start, str) or not action_start:
+            raise EvidenceError("full_turn source action_started_at required")
+        source_action_start = _timestamp(action_start, "lab.action_started_at")
+        if (source_action_start > source_began or began != source_action_start
+                or ended < source_ended):
+            raise EvidenceError("full_turn timeline outside source action/lab lifecycle")
         if (not isinstance(row.get("action_id"), str) or not row["action_id"]
                 or event.get("action_id") != row["action_id"]):
             raise EvidenceError("full_turn lifecycle lacks original action_id binding")
@@ -175,8 +180,10 @@ def _check_lab_stage_timeline(row, event, stage):
         if began < _timestamp(source_enqueued, "lab.asset_enqueued_at") or ended > source_ended:
             raise EvidenceError("preflight timeline outside source lifecycle")
     elif stage in ("postprocess", "cpu_vlm", "qa", "retry", "publish"):
-        if ended < source_began:
-            raise EvidenceError("stale QA/postprocess timeline before lab lifecycle")
+        # Checking only the end allowed a 2010 start with a 2026 end
+        # to pollute descriptive QA/publish latency cohorts.
+        if began < source_began:
+            raise EvidenceError("stale QA/postprocess timeline before source lifecycle")
 
 
 def _lab_rows(lab_dir, verify_png):
@@ -202,7 +209,13 @@ def _lab_rows(lab_dir, verify_png):
         row["lab_started_at"] = d.get("started_at")
         row["lab_completed_at"] = d.get("completed_at")
         row["action_id"] = d.get("action_id")
+        row["action_started_at"] = d.get("action_started_at")
         row["asset_enqueued_at"] = d.get("asset_enqueued_at")
+        source_attempt = d.get("attempt_id")
+        if source_attempt is not None and (
+                not isinstance(source_attempt, str) or not source_attempt):
+            raise EvidenceError("lab attempt_id invalid")
+        row["attempt_id"] = source_attempt
         # A self-reported G1 PASS and PNG chunk CRCs do not prove a
         # decodable image or a real Comfy terminal history.
         row["g1_claim"] = d.get("g1")
@@ -300,6 +313,15 @@ def _join_events(events, by_prompt):
                 raise EvidenceError("lab job_id mismatch for same prompt")
             if event.get("png_sha256") and event["png_sha256"] != row["png_sha256"]:
                 raise EvidenceError("event PNG SHA differs from lab original")
+            source_attempt = row.get("attempt_id")
+            event_attempt = event.get("attempt_id")
+            if event_attempt is not None and (
+                    not isinstance(event_attempt, str) or not event_attempt
+                    or source_attempt != event_attempt):
+                raise EvidenceError("event attempt_id not bound to original lab result")
+            if source_attempt is not None and kind in ("stage", "full_turn") and (
+                    event_attempt != source_attempt):
+                raise EvidenceError("stage attempt_id missing original binding")
         else:
             row = live_by_job.get(job_id)
             if row is None:
@@ -382,7 +404,8 @@ def build_report(lab_dir, events, verify_png=True):
             "Mandatory review lists lack authenticated canonical Scene Contract linkage.",
             "External stage receipts require independent source authentication; this parser cannot certify their origin.",
             "G1 is a source claim (UNVERIFIED), even with matching PNG SHA and chunk CRC; full image decode and terminal Comfy history are not checked.",
-            "Lab stage joins require original job, prompt, PNG SHA and causal source timestamps; full_turn also requires an original action_id.",
+            "Lab stage joins require original job, prompt, PNG SHA and causal source timestamps; conflicting/foreign attempt claims are rejected.",
+            "Lab full_turn joins require original action_id AND source action_started_at; timestamps from editable receipts remain descriptive, never authenticated browser E2E.",
             "Reported standalone full_turn durations are not authenticated browser E2E; verified browser cohort remains NOT MEASURED.",
         ],
         "trusted_browser_e2e": {"status": "NOT_MEASURED", "n": 0},
