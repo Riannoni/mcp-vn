@@ -24,6 +24,7 @@ class FakeComfy:
         self.running = []
         self.history = {}
         self.posts = []
+        self.free_posts = []
         self.history_broken = False
         self.post_delay = 0
         self.submit_mode = None
@@ -36,6 +37,7 @@ class FakeComfy:
         self.app.router.add_post("/upload/image", self.upload)
         self.app.router.add_post("/api/upload/image", self.upload)
         self.app.router.add_post("/free", self.free)
+        self.app.router.add_post("/api/free", self.free)
         self.app.router.add_get("/view", self.view)
         self.app.router.add_get("/ws", self.ws)
         self.app.router.add_get("/api/ws", self.ws)
@@ -69,6 +71,8 @@ class FakeComfy:
         return web.json_response({pid: self.history[pid]} if pid in self.history else {})
 
     async def free(self, request):
+        self.free_posts.append({"authorization": request.headers.get("Authorization"),
+                                "lease": request.headers.get("X-GPU-Lease-ID")})
         return web.json_response({"freed": True})
 
     async def upload(self, request):
@@ -350,7 +354,7 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await response.json(), {})
         for path in ("/queue", "/interrupt", "/free", "/history"):
             async with self.client.post(path, json={}) as response:
-                self.assertEqual(response.status, 403)
+                self.assertEqual(response.status, 401 if path == "/free" else 403)
 
     async def test_health_metrics_and_job_status(self):
         response = await self.post(1)
@@ -469,6 +473,35 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 200)
         self.assertIsNone(self.broker.external()["lease_id"])
 
+    async def test_free_with_known_lease_id_still_requires_external_credential(self):
+        # RED: possession of a lease UUID alone cannot authorize GPU memory eviction.
+        await self.until(lambda: self.broker.fault is None)
+        async with self.client.post("/broker/external/acquire",
+                                    json={"client": "kobold-gateway"},
+                                    headers=self.external_headers()) as response:
+            self.assertEqual(response.status, 200)
+            lease = (await response.json())["lease_id"]
+        for path in ("/free", "/api/free"):
+            for token in (None, "Bearer wrong-but-long-token-0123456789abcdef"):
+                headers = {"X-GPU-Lease-ID": lease}
+                if token is not None:
+                    headers["Authorization"] = token
+                async with self.client.post(path, json={"unload_models": True},
+                                            headers=headers) as response:
+                    self.assertEqual(response.status, 401)
+                self.assertEqual(self.broker.external_free_state(), "IDLE")
+                self.assertEqual(self.fake.free_posts, [])
+        async with self.client.post("/api/free", json={"unload_models": True},
+                                    headers={**self.external_headers(),
+                                             "X-GPU-Lease-ID": lease}) as response:
+            self.assertEqual(response.status, 200)
+        self.assertEqual(len(self.fake.free_posts), 1)
+        self.assertIsNone(self.fake.free_posts[0]["authorization"])
+        async with self.client.post("/broker/external/release",
+                                    json={"lease_id": lease},
+                                    headers=self.external_headers()) as response:
+            self.assertEqual(response.status, 200)
+
     async def test_external_gpu_lease_blocks_comfy_and_guards_free(self):
         async with self.client.post("/broker/external/acquire",
                                     json={"client": "kobold-gateway"},
@@ -476,9 +509,9 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 200)
             lease = (await response.json())["lease_id"]
         async with self.client.post("/free", json={"unload_models": True}) as response:
-            self.assertEqual(response.status, 403)
+            self.assertEqual(response.status, 401)
         async with self.client.post("/free", json={"unload_models": True},
-                                    headers={"X-GPU-Lease-ID": lease}) as response:
+                                    headers={**self.external_headers(), "X-GPU-Lease-ID": lease}) as response:
             self.assertEqual(response.status, 200)
         queued = await self.post(77)
         self.assertEqual(queued[0], 200)

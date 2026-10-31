@@ -86,11 +86,21 @@ class GatewayLeaseTests(unittest.TestCase):
             def __exit__(self, *args): pass
             def read(self): return b""
         def fake_open(request, timeout=10):
-            seen.append(request.get_header("X-gpu-lease-id"))
+            seen.append((request.get_header("X-gpu-lease-id"),
+                         request.get_header("Authorization")))
             return Response()
-        with patch.object(g.urllib.request, "urlopen", side_effect=fake_open):
+        with patch.object(g.urllib.request, "urlopen", side_effect=fake_open), \
+             patch.object(g, "broker_lease_token", return_value="fixture-only-secret"):
             g.free_comfy("lease-token")
-        self.assertEqual(seen, ["lease-token"])
+        self.assertEqual(seen, [("lease-token", "Bearer fixture-only-secret")])
+
+    def test_free_without_valid_credential_never_calls_backend(self):
+        with patch.object(g, "broker_lease_token",
+                          side_effect=RuntimeError("credential absent")), \
+             patch.object(g.urllib.request, "urlopen",
+                          side_effect=AssertionError("must not free")):
+            with self.assertRaisesRegex(RuntimeError, "credential absent"):
+                g.free_comfy("known-lease-id")
 
     def test_rocm_lease_spans_entire_inference(self):
         events = []
