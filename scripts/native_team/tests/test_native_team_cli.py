@@ -158,8 +158,8 @@ class FourLaneControlTests(unittest.TestCase):
         m.watchdog(self.db)
         self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"], "blocked")
         x = m.claim(self.db, "R", "new")
-        self.assertTrue(x["claimed"])
-        self.assertEqual(x["id"], "R-02")
+        self.assertFalse(x["claimed"])
+        self.assertEqual(x["reason"], "blocked_requires_recovery_review")
 
     def test_dirty_worktree_cannot_start_another_task(self):
         w = self.root / "lane-renderer"
