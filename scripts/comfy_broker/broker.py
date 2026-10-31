@@ -101,6 +101,13 @@ class Broker:
           );
           INSERT OR IGNORE INTO external_lease(singleton,lease_id,client,created)
             VALUES(1,NULL,NULL,NULL);
+          CREATE TABLE IF NOT EXISTS external_free (
+            singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+            state TEXT NOT NULL CHECK(state IN ('IDLE','IN_FLIGHT','UNKNOWN')),
+            updated REAL
+          );
+          INSERT OR IGNORE INTO external_free(singleton,state,updated)
+            VALUES(1,'IDLE',NULL);
         """)
         self.backend = backend.rstrip("/")
         self.wait_seconds = wait_seconds
@@ -124,6 +131,17 @@ class Broker:
     def external(self):
         return self.db.execute(
             "SELECT lease_id,client,created FROM external_lease WHERE singleton=1").fetchone()
+
+    def external_free_state(self):
+        return self.db.execute(
+            "SELECT state FROM external_free WHERE singleton=1").fetchone()[0]
+
+    def set_external_free_state(self, state):
+        if state not in ("IDLE", "IN_FLIGHT", "UNKNOWN"):
+            raise ValueError("invalid_free_state")
+        self.transaction(lambda: self.db.execute(
+            "UPDATE external_free SET state=?,updated=? WHERE singleton=1",
+            (state, time.time())))
 
     def transaction(self, callback):
         self.db.execute("BEGIN IMMEDIATE")
@@ -259,8 +277,8 @@ class Broker:
         if foreign:
             self.fault = "foreign_queue_requires_terminal_history"
             return
-        if self.external()["lease_id"]:
-            self.fault = None
+        if self.external()["lease_id"] or self.external_free_state() != "IDLE":
+            self.fault = "free_uncertain_requires_operator" if self.external_free_state() != "IDLE" else None
             return
         if qids:
             self.fault = "unrecognized_queue_entries"
@@ -359,6 +377,7 @@ class Broker:
                 "owner_lease_expired": bool(owner and
                     self.db.execute("SELECT lease_until FROM owner WHERE singleton=1").fetchone()[0] < time.time()),
                 "foreign_jobs": foreign, "jobs": counts,
+                "external_free_state": self.external_free_state(),
                 "queue_depth": counts.get("QUEUED", 0), "last_poll_unix": self.last_poll}
 
 
@@ -415,7 +434,8 @@ async def external_acquire(request):
     if not isinstance(body, dict) or body.get("client") != "kobold-gateway":
         return web.json_response({"error": "unsupported_external_client"}, status=403)
     async with broker.guard:
-        if broker.fault is not None or broker.owner() or broker.external()["lease_id"]:
+        if (broker.fault is not None or broker.owner() or broker.external()["lease_id"]
+                or broker.external_free_state() != "IDLE"):
             return web.json_response({"error": "gpu_owner_busy"}, status=409)
         try:
             if queue_ids(await broker.get_json("/queue")):
@@ -447,6 +467,8 @@ async def external_release(request):
     if not isinstance(lease_id, str):
         return web.json_response({"error": "lease_id_required"}, status=400)
     async with broker.guard:
+        if broker.external_free_state() != "IDLE":
+            return web.json_response({"error": "free_inflight_or_uncertain"}, status=409)
         def release():
             current = broker.external()
             if not current["lease_id"] or not hmac.compare_digest(current["lease_id"], lease_id):
@@ -524,13 +546,30 @@ async def passthrough(request):
     broker = request.app[BROKER_KEY]
     canonical_path = request.path[4:] if request.path.startswith("/api/") else request.path
     if request.method == "POST" and canonical_path == "/free":
-        lease = broker.external()
-        if broker.fault is not None or broker.owner() or not lease["lease_id"] or not hmac.compare_digest(
-                request.headers.get("X-GPU-Lease-ID", ""), lease["lease_id"]):
-            return web.json_response({"error": "external_gpu_lease_required"}, status=403)
-    elif request.method not in ("GET", "HEAD", "OPTIONS") and not (
+        # /free is a GPU mutation. Keep the same guard for its COMPLETE
+        # upstream round-trip, and persist the in-flight fence BEFORE I/O.
+        # A crash or transport timeout leaves UNKNOWN (no unsafe lease release).
+        async with broker.guard:
+            lease = broker.external()
+            if (broker.fault is not None or broker.owner() or not lease["lease_id"]
+                    or broker.external_free_state() != "IDLE" or not hmac.compare_digest(
+                        request.headers.get("X-GPU-Lease-ID", ""), lease["lease_id"])):
+                return web.json_response({"error": "external_gpu_lease_required"}, status=403)
+            broker.set_external_free_state("IN_FLIGHT")
+            try:
+                answer = await forward_read_or_upload(request, broker, canonical_path)
+                broker.set_external_free_state("IDLE" if answer.status == 200 else "UNKNOWN")
+                return answer
+            except BaseException:
+                broker.set_external_free_state("UNKNOWN")
+                raise
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not (
             request.method == "POST" and canonical_path in SAFE_MUTATING_UPLOADS):
         return web.json_response({"error": "unaudited_mutating_endpoint_denied"}, status=403)
+    return await forward_read_or_upload(request, broker, canonical_path)
+
+
+async def forward_read_or_upload(request, broker, canonical_path):
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     if request.method == "GET" and canonical_path == "/queue":
         try:
