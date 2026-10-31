@@ -23,7 +23,7 @@ Stable URL 127.0.0.1:8188 becomes a local HTTP/WebSocket broker; Comfy's contain
 
 SQLite WAL, synchronous FULL, BEGIN IMMEDIATE, exclusive process flock, unique idempotency key and unique preallocated prompt UUID implement one durable owner. The singleton owner row stores prompt_id and a diagnostic lease_until. A lease expiry **never** permits takeover. SUBMITTING is committed before the sole backend POST, with the exact same UUID injected into Comfy. After crash, recovery reconciles /queue and /history/{uuid}; if the job is absent or ambiguous, it holds UNCERTAIN without resubmitting. Only known terminal history (success/error/interrupted) and absence from queue releases the owner. Backend 500, malformed history, unknown queue item or foreign job fail closed.
 
-POST /prompt returns a prompt_id receipt immediately while the job is durably queued. This avoids legacy clients' 12–15s HTTP timeout while waiting behind another GPU job. The actual backend POST is serialized until prior terminal history. A first-shot dispatcher sets an 8-second bounded queue-wait header so its 90-second GPU timer cannot admit a late 120-second queued job; other clients retain the 120-second maximum. A rejected graph or queue expiry becomes a synthetic **error** history for that UUID; never a fake success. Queue capacity is 64; identical graph/execution options (ignoring transport client_id and prompt_id) or explicit Idempotency-Key retries reuse the original UUID, including after restart. To deliberately repeat identical graph and seed, use a new explicit key. Private payloads are in 0700/0600 local state, not GitHub.
+POST /prompt returns a prompt_id receipt immediately while the job is durably queued. This avoids legacy clients' 12–15s HTTP timeout while waiting behind another GPU job. The actual backend POST is serialized until prior terminal history. A first-shot dispatcher sets an 8-second bounded queue-wait header so its 90-second GPU timer cannot admit a late 120-second queued job; other clients retain the 120-second maximum. A rejected graph or queue expiry becomes a synthetic **error** history for that UUID; never a fake success. Queue capacity is 64; only requests bearing the same explicit Idempotency-Key and matching graph payload reuse a UUID, including after restart; unkeyed /prompt and /api/prompt return 428, and different authorized action keys never deduplicate by graph equality. To deliberately repeat identical graph and seed, use a new explicit key. Private payloads are in 0700/0600 local state, not GitHub.
 
 GET /queue and /api/queue include broker-held pending work. /history, /view, /upload/image, static HTTP routes and /ws + /api/ws text/binary pass through. Mutating /queue, /interrupt and /history are blocked. POST /free requires a matching external GPU lease. Kobold gateway now acquires a durable external lease before freeing Comfy memory, holds it through ROCm inference and process cleanup, then releases in finally; both preflight queue contention and lease-acquisition contention fall back to CPU without tripping the ROCm circuit breaker. If gateway crashes, the external lease remains fail-closed until operator inspection; no unsafe TTL takeover.
 
@@ -46,6 +46,42 @@ Commands in isolated checkout:
 - git diff --check
 
 The actual PC uses Python 3.14.7 and lacks system aiohttp. An **isolated, additive review checkout** of branch 027a19ab6ade483eaed298f40a3dd2c49e7ab8e3 was staged on PC with pinned aiohttp 3.13.5 in a private test-only target: 28/28 broker, 5/5 Kobold, 28/28 first-shot PASS and py_compile PASS on Python 3.14.7, with **zero GPU jobs and zero service changes**. This is NOT an installed production venv or live client compatibility test. nftables v1.1.6 syntax was checked with **nft -c** on the PC, without applying a rule.
+
+## External Kobold lease authentication (source-only candidate)
+
+The external GPU lease is now **credential-gated**, not based on the caller-supplied
+`client: kobold-gateway` string or the remote source IP. Both
+`/broker/external/acquire` and `/broker/external/release` reject missing/invalid
+bearer authorization with HTTP 401 before changing durable lease ownership.
+A valid lease still persists after broker restart until an authenticated matching
+release or separately approved operator reconciliation. A missing credential fails
+closed; CPU fallback remains available. Source tests are **not** proof of a live
+deployment or protection against root/same-UID host administration.
+
+**Separate approved provisioning step, NOT performed by this source patch:**
+generate a high-entropy random token (at least 32 bytes, e.g. 64 hex characters)
+using an OS CSPRNG. Store its plaintext *only* in a `0600` regular file owned
+by the gateway's distinct service UID, under a private directory; set the
+gateway user service's `VN_BROKER_LEASE_TOKEN_FILE` to that absolute file path.
+Never put the token itself in systemd `Environment=`, CLI arguments, Git,
+journals, browser responses or PRs. Compute its SHA-256 digest offline and
+provision only that lowercase digest in
+`/etc/comfy-broker/external-lease.sha256`, a root-owned
+`0640 root:comfybroker` regular file. The proposed broker unit requires this
+digest file during startup; it must be present with correct ownership/mode
+before a cutover. No automatic secret creation or rotation happens in this PR.
+
+An unrelated local HTTP client knowing the Kobold name or even a lease ID must
+not acquire/release GPU ownership without the matching token. Integration
+preflight must exercise anonymous/wrong-token 401, an authorized acquire/release,
+restart persistence and fail-closed missing-config behavior on disposable
+fake-Comfy before any real GPU. The gateway and broker must receive the *same*
+credential version; rotation while a lease is outstanding must retain HOLD
+until a human verifies the process group and safely reconciles ownership.
+This shared-token scheme does **not** authenticate individual processes that
+can read the gateway UID's private file; use a separate least-privileged gateway
+service UID and assess same-UID access during independent security review.
+It cannot prevent a privileged Podman administrator from bypassing the OS guard.
 
 ## Explicit deployment gates — DO NOT EXECUTE UNTIL INDEPENDENT REVIEW
 

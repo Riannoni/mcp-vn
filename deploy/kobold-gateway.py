@@ -12,6 +12,7 @@ from contextlib import contextmanager
 import hmac
 import os
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -45,12 +46,14 @@ PORT = 11434
 BACKEND = f"http://127.0.0.1:11435"
 
 
-def http_json(url: str, body=None, timeout=4.0):
+def http_json(url: str, body=None, timeout=4.0, headers=None):
     data = None if body is None else json.dumps(body).encode("utf-8")
+    request_headers = {"Content-Type": "application/json",
+                       "User-Agent": "mcp-vn-local-llm/1"}
+    if headers:
+        request_headers.update(headers)
     req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json", "User-Agent": "mcp-vn-local-llm/1"},
+        url, data=data, headers=request_headers,
         method="POST" if body is not None else "GET",
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -61,11 +64,30 @@ class GPUBusy(RuntimeError):
     """Broker has an active Comfy job, foreign owner or queued work."""
 
 
+def broker_lease_token():
+    name = os.environ.get("VN_BROKER_LEASE_TOKEN_FILE")
+    if not name:
+        raise RuntimeError("GPU broker credential not configured")
+    path = Path(name)
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+        raise RuntimeError("GPU broker credential permissions invalid")
+    if info.st_uid != os.geteuid():
+        raise RuntimeError("GPU broker credential owner invalid")
+    token = path.read_text(encoding="ascii").strip()
+    if not (32 <= len(token) <= 128) or any(c.isspace() for c in token):
+        raise RuntimeError("GPU broker credential invalid")
+    return token
+
+
 @contextmanager
 def gpu_lease():
+    credential = broker_lease_token()
+    headers = {"Authorization": "Bearer " + credential}
     try:
         receipt = http_json("http://127.0.0.1:8188/broker/external/acquire",
-                            {"client": "kobold-gateway"}, timeout=6)
+                            {"client": "kobold-gateway"}, timeout=6,
+                            headers=headers)
     except urllib.error.HTTPError as exc:
         if exc.code == 409:
             raise GPUBusy("GPU broker has an active owner") from exc
@@ -78,7 +100,8 @@ def gpu_lease():
     finally:
         # Only after run_single_inference's process-cleanup finally has finished.
         released = http_json("http://127.0.0.1:8188/broker/external/release",
-                             {"lease_id": lease_id}, timeout=6)
+                             {"lease_id": lease_id}, timeout=6,
+                             headers=headers)
         if released.get("released") is not True:
             raise RuntimeError("GPU broker lease release unconfirmed")
 
