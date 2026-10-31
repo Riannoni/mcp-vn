@@ -1,0 +1,12 @@
+[Unit]
+Description=web-vn first-shot GPU dispatcher every minute
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=60s
+AccuracySec=10s
+Persistent=true
+Unit=vn-firstshot-gpu-dispatch.service
+
+[Install]
+WantedBy=timers.target
