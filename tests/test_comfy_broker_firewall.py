@@ -28,6 +28,14 @@ class FirewallContractTests(unittest.TestCase):
         self.assertNotIn("ip daddr 127.0.0.1 tcp dport 8189", script)
         self.assertNotIn("ip6 daddr ::1 tcp dport 8189", script)
 
+    def test_rootless_quadlet_is_guarded_before_backend_start(self):
+        quadlet = (ROOT / "deploy" / "comfyui.container").read_text()
+        self.assertIn("PublishPort=127.0.0.1:8189:8188", quadlet)
+        self.assertIn(
+            "ExecStartPre=/usr/bin/sudo -n /usr/local/libexec/comfy-broker-firewall check",
+            quadlet,
+        )
+
     def _check(self, simulated_rules):
         with tempfile.TemporaryDirectory(prefix="comfy-firewall-offline-") as scratch:
             fake = Path(scratch)
