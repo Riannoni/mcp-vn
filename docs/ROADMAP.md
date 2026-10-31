@@ -1,5 +1,7 @@
 # web-vn / Kagesekai — durable roadmap (2026-10-29)
 
+> **Новый приоритет: автономный GPU→pixel review→QA→fix цикл и почасовые отчёты.** [Регламент и роли](AUTONOMOUS-FIRST-SHOT-CYCLE-2026-10-31.md). Чат не является ручным GPU-исполнителем. 5/5 G1 при 1/5 G2 требуют нового результата, а не дополнительных unit-тестов.
+
 > **31.10.2026 CURRENT P0:** [Real-GPU first-shot protocol](FIRST-SHOT-GPU-ASSAULT-2026-10-31.md) + [first actual five-frame checkpoint](FIRST-SHOT-GPU-RESULT-2026-10-31.md). 5/5 GPU G1 ≤20 s, 1/5 visual G2, 0 human labels, G3 NO_GO. Optimize correct first-shot sprite/CG, not source-only throughput.
 
 > **Обязательный старт для всех агентов:** [../AGENTS.md](../AGENTS.md) → [DEVELOPMENT-AND-TESTING.md](DEVELOPMENT-AND-TESTING.md). Этот roadmap устанавливает приоритеты и acceptance blockers, но не заменяет процедуру доказательства визуальной корректности.
