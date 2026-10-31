@@ -112,6 +112,9 @@ def initialize():
 
 def claim(db,lane,owner):
     assert_current_boot(db)
+    if db.execute("SELECT 1 FROM task WHERE id LIKE ? AND state='blocked' LIMIT 1",
+                  (lane+'-%',)).fetchone():
+        return {'claimed':False,'reason':'blocked_requires_recovery_review'}
     if db.execute("SELECT v FROM team_meta WHERE k='state'").fetchone()[0]!='active':return {'claimed':False,'reason':'paused'}
     if git(lane,'status','--porcelain','--untracked-files=all'):
         return {'claimed':False,'reason':'dirty_worktree_needs_review'}
