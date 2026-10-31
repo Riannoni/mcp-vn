@@ -61,4 +61,3 @@ test("capture never persists invalid-metadata PNG",async()=>{
   await assert.rejects(fs.stat(dst),{code:"ENOENT"});
  }finally{await fs.rm(dir,{recursive:true,force:true})}
 });
-
