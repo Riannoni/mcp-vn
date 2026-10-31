@@ -209,6 +209,19 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
         self.derived.unlink()
         self.assert_denied_without_transition("sprite_derivative_missing_or_untrusted")
 
+    def test_valid_but_substituted_rgba_sha_not_bound_to_native_review(self):
+        # The replacement is a technically sound RGBA, not a corrupt file.
+        # A review of the ORIGINAL alone must not approve arbitrary derivatives.
+        im = Image.new("RGBA", (15, 23), (220, 110, 40, 255))
+        im.putpixel((0, 0), (0, 0, 0, 0))
+        stream = io.BytesIO()
+        im.save(stream, format="PNG")
+        changed = stream.getvalue()
+        self.derived.write_bytes(changed)
+        self.candidate["derived_rgba_sha256"] = sha(changed)
+        self.save()  # native GPU/source receipt deliberately still binds the old derivative
+        self.assert_denied_without_transition("trusted_sprite_derivative_not_in_native_gpu_receipt")
+
     def test_absent_native_task_id_does_not_accept_claim(self):
         self.review["reviewer_task"] = "G-999"
         self.rf.write_bytes(blob(self.review))
