@@ -47,7 +47,12 @@ def queue_ids(data):
         for entry in entries:
             if not isinstance(entry, (list, tuple)) or len(entry) < 2 or not isinstance(entry[1], str):
                 raise ValueError("unknown_queue_entry")
-            result.add(entry[1])
+            prompt_id = entry[1]
+            # Two queued executions with one UUID cannot be reconciled as
+            # a single durable owner. Never collapse this ambiguity into a set.
+            if prompt_id in result:
+                raise ValueError("duplicate_queue_prompt_id")
+            result.add(prompt_id)
     return result
 
 
