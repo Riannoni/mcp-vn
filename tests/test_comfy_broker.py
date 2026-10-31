@@ -331,6 +331,22 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         self.fake.finish(first[1]["prompt_id"])
         await self.until(lambda: len(self.fake.posts) == 2)
 
+    async def test_unknown_extension_gpu_submit_is_default_denied(self):
+        # A future custom-node POST must not bypass the broker owner queue.
+        status, first = await self.post(1)
+        self.assertEqual(status, 200)
+        await self.until(lambda: len(self.fake.posts) == 1)
+        async with self.client.post("/thirdparty_submit", json=self.body(2)) as resp:
+            self.assertEqual(resp.status, 403)
+            self.assertEqual((await resp.json())["error"], "unaudited_mutating_endpoint_denied")
+        self.assertEqual(len(self.fake.posts), 1)
+        async with self.client.delete("/api/history", json={}) as resp:
+            self.assertEqual(resp.status, 403)
+        async with self.client.post("/api/upload/model", json={}) as resp:
+            self.assertEqual(resp.status, 403)
+        self.fake.finish(first["prompt_id"])
+        await self.until(lambda: self.broker.owner() is None)
+
     async def test_external_gpu_lease_blocks_comfy_and_guards_free(self):
         async with self.client.post("/broker/external/acquire",
                                     json={"client": "kobold-gateway"}) as response:
