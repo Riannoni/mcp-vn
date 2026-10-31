@@ -25,7 +25,9 @@ TERMINAL = {"success", "error", "interrupted"}
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate",
                "proxy-authorization", "te", "trailer", "transfer-encoding",
                "upgrade", "host", "content-length"}
-UNSAFE_MUTATIONS = {"/queue", "/interrupt", "/free", "/history"}
+# Comfy custom-node extensions may expose arbitrary GPU queue insertion routes.
+# Fail-closed for every unknown mutating endpoint, not just known Comfy paths.
+SAFE_MUTATING_UPLOADS = {"/upload/image", "/upload/mask"}
 
 
 def canonical(obj):
@@ -526,9 +528,9 @@ async def passthrough(request):
         if broker.fault is not None or broker.owner() or not lease["lease_id"] or not hmac.compare_digest(
                 request.headers.get("X-GPU-Lease-ID", ""), lease["lease_id"]):
             return web.json_response({"error": "external_gpu_lease_required"}, status=403)
-    elif request.method != "GET" and canonical_path in UNSAFE_MUTATIONS:
-        return web.json_response({"error": "unsafe_queue_mutation_requires_operator"},
-                                 status=403)
+    elif request.method not in ("GET", "HEAD", "OPTIONS") and not (
+            request.method == "POST" and canonical_path in SAFE_MUTATING_UPLOADS):
+        return web.json_response({"error": "unaudited_mutating_endpoint_denied"}, status=403)
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     if request.method == "GET" and canonical_path == "/queue":
         try:
