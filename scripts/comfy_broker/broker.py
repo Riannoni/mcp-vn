@@ -392,14 +392,18 @@ async def submit(request):
         return web.json_response({"error": "invalid_json"}, status=400)
     if not isinstance(body, dict) or not isinstance(body.get("prompt"), dict):
         return web.json_response({"error": "invalid_prompt_shape"}, status=400)
-    # client_id is a WebSocket routing hint, prompt_id is a transport UUID.
-    # Neither should turn a reconnect/retry of the same graph into a second GPU job.
+    # A graph/seed is *not* an action ID. Two authorized games can submit the
+    # same graph, while a reconnect must reuse precisely one logical action.
+    # Never fall back to payload equality: it replays a completed other game.
+    # client_id routes WebSocket events; prompt_id is a transport UUID only.
+    explicit = request.headers.get("Idempotency-Key")
+    if explicit is None:
+        return web.json_response({"error": "logical_action_id_required"}, status=428)
+    if not (1 <= len(explicit) <= 200):
+        return web.json_response({"error": "invalid_idempotency_key"}, status=400)
     fingerprint = {k: v for k, v in body.items() if k not in ("client_id", "prompt_id")}
     digest = hashlib.sha256(canonical(fingerprint).encode()).hexdigest()
-    explicit = request.headers.get("Idempotency-Key")
-    if explicit is not None and not (1 <= len(explicit) <= 200):
-        return web.json_response({"error": "invalid_idempotency_key"}, status=400)
-    key = "explicit:" + explicit if explicit else "payload:" + digest
+    key = "explicit:" + explicit
     requested_wait = request.headers.get("X-Broker-Queue-Wait-Seconds")
     wait = None
     if requested_wait is not None:
