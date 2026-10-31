@@ -252,8 +252,11 @@ class LatencyProbeTests(unittest.TestCase):
     def test_stale_full_turn_cannot_join_same_lab_job(self):
         d = self.case()
         d["job_id"] = "authentic-job-A"
+        d["action_id"] = "canonical-action"
+        d["action_started_at"] = "2026-10-31T09:59:58Z"
         (self.lab / "BG-01-result.json").write_text(json.dumps(d))
         stale = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "action_id": "canonical-action", "png_sha256": "a" * 64,
                  "started_at": "2010-01-01T00:00:00Z",
                  "completed_at": "2010-01-01T00:00:30Z"}
         with self.assertRaisesRegex(probe.EvidenceError, "timeline|stale|lifecycle"):
@@ -311,6 +314,7 @@ class LatencyProbeTests(unittest.TestCase):
         d = self.case()
         d["job_id"] = "authentic-job-A"
         d["action_id"] = "canonical-action"
+        d["action_started_at"] = "2026-10-31T09:59:58Z"
         (self.lab / "BG-01-result.json").write_text(json.dumps(d))
         wrong = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
                  "png_sha256": "a" * 64, "action_id": "unrelated-action",
@@ -323,6 +327,7 @@ class LatencyProbeTests(unittest.TestCase):
         d = self.case()
         d["job_id"] = "authentic-job-A"
         d["action_id"] = "canonical-action"
+        d["action_started_at"] = "2026-10-31T09:59:58Z"
         (self.lab / "BG-01-result.json").write_text(json.dumps(d))
         event = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
                  "png_sha256": "a" * 64, "action_id": "canonical-action",
@@ -332,6 +337,66 @@ class LatencyProbeTests(unittest.TestCase):
         self.assertEqual(report["lab"][0]["stages_s"]["full_turn"], 22)
         self.assertFalse(report["lab"][0]["stage_receipts_authenticated"])
         self.assertEqual(report["trusted_browser_e2e"], {"status": "NOT_MEASURED", "n": 0})
+
+    def test_same_job_qa_start_before_source_rejected_even_if_end_after(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        forged = {"kind": "stage", "stage": "qa", "job_id": "authentic-job-A",
+                  "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "started_at": "2010-01-01T00:00:00Z",
+                  "completed_at": "2026-10-31T10:00:12Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "timeline|lifecycle|source"):
+            probe.build_report(self.lab, [forged], verify_png=False)
+
+    def test_same_job_full_turn_requires_source_action_start(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["action_id"] = "authentic-action-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        forged = {"kind": "full_turn", "job_id": "authentic-job-A",
+                  "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "action_id": "authentic-action-A",
+                  "started_at": "2010-01-01T00:00:00Z",
+                  "completed_at": "2026-10-31T10:00:12Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "action.start|action_started_at"):
+            probe.build_report(self.lab, [forged], verify_png=False)
+
+    def test_foreign_attempt_claim_is_rejected_even_same_job_png(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["attempt_id"] = "attempt-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        forged = {"kind": "stage", "stage": "gpu", "job_id": "authentic-job-A",
+                  "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "attempt_id": "attempt-B",
+                  "started_at": "2026-10-31T10:00:01Z",
+                  "completed_at": "2026-10-31T10:00:08Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "attempt"):
+            probe.build_report(self.lab, [forged], verify_png=False)
+
+    def test_bound_action_start_and_attempt_remain_descriptive_not_trusted(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        d["attempt_id"] = "attempt-A"
+        d["action_id"] = "authentic-action-A"
+        d["action_started_at"] = "2026-10-31T09:59:58Z"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        stage = {"kind": "stage", "stage": "gpu", "job_id": "authentic-job-A",
+                 "prompt_id": "p1", "png_sha256": "a" * 64,
+                 "attempt_id": "attempt-A",
+                 "started_at": "2026-10-31T10:00:01Z",
+                 "completed_at": "2026-10-31T10:00:08Z"}
+        turn = {"kind": "full_turn", "job_id": "authentic-job-A",
+                "prompt_id": "p1", "png_sha256": "a" * 64,
+                "attempt_id": "attempt-A", "action_id": "authentic-action-A",
+                "started_at": "2026-10-31T09:59:58Z",
+                "completed_at": "2026-10-31T10:00:20Z"}
+        row = probe.build_report(self.lab, [stage, turn], verify_png=False)
+        self.assertEqual(row["lab"][0]["stages_s"]["gpu"], 7)
+        self.assertEqual(row["lab"][0]["stages_s"]["full_turn"], 22)
+        self.assertFalse(row["lab"][0]["stage_receipts_authenticated"])
+        self.assertEqual(row["trusted_browser_e2e"]["n"], 0)
 
     def test_duplicate_prompt_across_jobs_rejected(self):
         with self.assertRaises(probe.EvidenceError):
