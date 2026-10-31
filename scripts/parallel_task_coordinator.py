@@ -200,6 +200,33 @@ def do_task(action, workspace, task_id):
     raise ValueError("Action not in allowlist")
 
 
+def persist_evidence(outdir, task_id, fence, blob):
+    """Write immutable per-attempt evidence, never overwrite another worker."""
+    if not isinstance(blob, bytes):
+        raise TypeError("Evidence content must be bytes")
+    outdir = Path(outdir)
+    if not outdir.is_dir():
+        raise FileNotFoundError("Evidence directory not found")
+    # Hash task name and fencing token to avoid traversal and ambiguous filenames.
+    filename = hashlib.sha256(
+        (task_id + "\0" + fence).encode("utf-8")
+    ).hexdigest() + ".json"
+    path = outdir / filename
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(blob)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
+
+
 def worker(dbpath, workspace, outdir, owner, task_id=None):
     db = database(dbpath)
     lease = claim(db, owner, ttl=60)
@@ -212,10 +239,8 @@ def worker(dbpath, workspace, outdir, owner, task_id=None):
         result = do_task(lease["action"], workspace, lease["id"])
         # Keep two independent processes active long enough for a concurrency canary.
         time.sleep(0.7)
-        evidence_path = outdir / (lease["id"] + ".json")
         blob = json.dumps(result, sort_keys=True).encode()
-        evidence_path.write_bytes(blob)
-        evidence_path.chmod(0o600)
+        evidence_path = persist_evidence(outdir, lease["id"], lease["fence"], blob)
         evidence = {"sha256": hashlib.sha256(blob).hexdigest(),
                     "path": evidence_path.name,
                     "result_type": "source_only",
