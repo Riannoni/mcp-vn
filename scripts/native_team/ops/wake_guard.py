@@ -11,6 +11,8 @@ import sqlite3
 import subprocess
 import time
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 from quota_gate import permit as quota_permit
 
 LANES={"R":"renderer","Q":"qa","G":"golden","S":"reliability"}
