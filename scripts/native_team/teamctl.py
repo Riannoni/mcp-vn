@@ -111,6 +111,7 @@ def initialize():
     return {'ready':True,'root':str(ROOT),'tasks':len(SEED)}
 
 def claim(db,lane,owner):
+    assert_current_boot(db)
     if db.execute("SELECT v FROM team_meta WHERE k='state'").fetchone()[0]!='active':return {'claimed':False,'reason':'paused'}
     if git(lane,'status','--porcelain','--untracked-files=all'):
         return {'claimed':False,'reason':'dirty_worktree_needs_review'}
@@ -125,6 +126,7 @@ def claim(db,lane,owner):
     return {'claimed':True,**item,'lane':lane,'worktree':str(ROOT/('lane-'+LANES[lane])), 'paths':json.loads(task[0])}
 
 def submit(db,lane,owner,fence,tid,file):
+    assert_current_boot(db)
     if not tid.startswith(lane+'-'):
         raise ValueError('wrong worker lane for task')
     original = Path(file)
@@ -216,10 +218,36 @@ def review(db,task_id,approve,note,verified_commit_sha=None):
 
 
 
-def watchdog(db):
+def boot_id():
+    """Linux boot identity, safe to log; changing across reboots."""
+    return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def assert_current_boot(db):
+    """Prevent stale post-reboot worker heartbeats/submissions before watchdog."""
+    previous=db.execute("SELECT v FROM team_meta WHERE k='boot_id'").fetchone()
+    if previous and previous['v']!=boot_id():
+        raise RuntimeError('host reboot detected; watchdog must reconcile interrupted leases')
+
+
+def watchdog(db,observed_boot_id=None):
     now=time.time()
     db.execute('BEGIN IMMEDIATE')
     try:
+        current_boot=observed_boot_id or boot_id()
+        previous=db.execute("SELECT v FROM team_meta WHERE k='boot_id'").fetchone()
+        rebooted=previous is not None and previous['v']!=current_boot
+        if previous is None:
+            db.execute("INSERT INTO team_meta(k,v) VALUES('boot_id',?)",(current_boot,))
+            c.emit(db,'TEAM','boot_baseline','initial boot identity established')
+        elif rebooted:
+            interrupted=db.execute("SELECT id FROM task WHERE state='leased'").fetchall()
+            for row in interrupted:
+                db.execute("UPDATE task SET state='blocked',owner=NULL,fence=NULL,lease_until=0 "
+                           "WHERE id=? AND state='leased'",(row['id'],))
+                c.emit(db,row['id'],'reboot_interrupted','lease fenced and blocked after host restart')
+            db.execute("UPDATE team_meta SET v=? WHERE k='boot_id'",(current_boot,))
+            c.emit(db,'TEAM','boot_changed',str(len(interrupted))+' interrupted leases; no blind retry')
         # In forked coordinator: lease expiry blocks, no blind retry.
         c._expire(db,now)
         warnings=[]
@@ -263,7 +291,9 @@ def main():
         if args.cmd=='status':result=status(db)
         elif args.cmd=='watchdog':result=watchdog(db)
         elif args.cmd=='claim':result=claim(db,args.lane,args.owner)
-        elif args.cmd=='heartbeat':result={'accepted':c.heartbeat(db,args.task,args.owner,args.fence,ttl=2700)}
+        elif args.cmd=='heartbeat':
+            assert_current_boot(db)
+            result={'accepted':c.heartbeat(db,args.task,args.owner,args.fence,ttl=2700)}
         elif args.cmd=='submit':result=submit(db,args.lane,args.owner,args.fence,args.task,args.evidence)
         elif args.cmd=='review':result=review(db,args.task,args.approve,args.note,args.verified_commit)
         elif args.cmd=='enqueue':
