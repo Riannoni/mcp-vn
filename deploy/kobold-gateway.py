@@ -230,10 +230,9 @@ def generate(payload: dict):
     # Image generation and narrative inference share one Radeon. Respect
     # any in-progress ComfyUI task rather than evicting its model.
     current_jobs = http_json("http://127.0.0.1:8188/queue", timeout=5)
-    if current_jobs.get("queue_running") or current_jobs.get("queue_pending"):
-        raise RuntimeError("GPU busy with image-generation jobs; retry afterwards")
-
-    mode = backend_for(chosen)
+    gpu_busy = bool(current_jobs.get("queue_running") or current_jobs.get("queue_pending"))
+    # Keep local narration available on CPU while the sole Radeon is owned.
+    mode = "cpu" if gpu_busy else backend_for(chosen)
     try:
         if mode == "rocm":
             with gpu_lease() as lease_id:

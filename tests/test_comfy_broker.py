@@ -31,6 +31,7 @@ class FakeComfy:
         self.app.router.add_post("/prompt", self.submit)
         self.app.router.add_get("/history/{pid}", self.get_history)
         self.app.router.add_post("/upload/image", self.upload)
+        self.app.router.add_post("/api/upload/image", self.upload)
         self.app.router.add_post("/free", self.free)
         self.app.router.add_get("/view", self.view)
         self.app.router.add_get("/ws", self.ws)
@@ -68,6 +69,11 @@ class FakeComfy:
         return web.json_response({"freed": True})
 
     async def upload(self, request):
+        if request.content_type.startswith("multipart/"):
+            reader = await request.multipart()
+            field = await reader.next()
+            data = await field.read()
+            return web.json_response({"filename": field.filename, "size": len(data)})
         return web.Response(body=await request.read(), content_type="application/octet-stream")
 
     async def view(self, request):
@@ -474,6 +480,16 @@ class BrokerTests(unittest.IsolatedAsyncioTestCase):
         async with self.client.post("/prompt", json=self.body(3),
                                     headers={"X-Broker-Queue-Wait-Seconds": "NaN"}) as response:
             self.assertEqual(response.status, 400)
+
+    async def test_real_multipart_upload_passes_through_alias(self):
+        from aiohttp import FormData
+        form = FormData()
+        form.add_field("image", b"\x89PNG\r\n\x1a\nfake", filename="test.png",
+                       content_type="image/png")
+        async with self.client.post("/api/upload/image", data=form) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(await response.json(),
+                             {"filename": "test.png", "size": 12})
 
     async def test_second_broker_same_state_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "another_broker"):

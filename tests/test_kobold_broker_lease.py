@@ -79,6 +79,21 @@ class GatewayLeaseTests(unittest.TestCase):
         self.assertEqual(result["backend"], "rocm")
         self.assertEqual(events, ["acquire", "inference", "release"])
 
+    def test_preflight_comfy_queue_busy_uses_cpu(self):
+        modes = []
+        def runner(*args, **kwargs):
+            modes.append(args[-1])
+            return {"backend": "cpu"}
+        with patch.object(g, "MODEL", File()), patch.object(g, "BINARY", File()), \
+             patch.dict(g.OPTIONS, {g.MODEL_ID: (File(), g.MODEL_SIZE, 4096, 10)}), \
+             patch.object(g, "backend_for", return_value="rocm"), \
+             patch.object(g, "http_json", return_value={"queue_running": [["job"]], "queue_pending": []}), \
+             patch.object(g, "gpu_lease", side_effect=AssertionError("GPU lease must not be acquired")), \
+             patch.object(g, "run_single_inference", side_effect=runner):
+            result = g.generate({"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(result["backend"], "cpu")
+        self.assertEqual(modes, ["cpu"])
+
     def test_gpu_contention_uses_cpu_without_rocm_circuit_breaker(self):
         events = []
         @contextmanager
