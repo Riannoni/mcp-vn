@@ -22,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1] / "worker"))
 from identity_graph_contract import validate_sdxl_identity_graph, IdentityGraphBlocked
 from identity_wardrobe_preflight import preflight
+from identity_face_upload_pixels import verify_sprite_face_upload
 
 SHA = re.compile(r"^[a-f0-9]{64}$")
 CHECKPOINT = "CyberRealisticPony_V18.0_F16.safetensors"
@@ -149,7 +150,28 @@ def read_source(root, source_sha, *, comfy_input=None):
     if not isinstance(fname, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,239}[.]png", fname):
         raise ValueError("unsafe_face_upload_name")
     face_uploaded_sha = _require_sha(upload.get("upload_sha256"), "face_upload")
-    _image_at(comfy_input / fname, face_uploaded_sha)
+    upload_path = comfy_input / fname
+    _image_at(upload_path, face_uploaded_sha)
+    # The merged #111 CPU boundary replays the installed worker's exact
+    # original-face -> 512x512 Comfy upload transform. A matching, newly
+    # recomputed transport hash alone does not prove matching pixels.
+    # Frozen actor/asset/outfit fields are taken from the separately pinned
+    # creation receipt, not reflected back from the current job as "trust".
+    # Source-origin authentication still requires independent attestation.
+    verify_sprite_face_upload(
+        canonical_bytes=_read_pinned(face_original, src["face_original_sha256"],
+                                     max_bytes=MAX_PRIVATE_IMAGE),
+        uploaded_bytes=_read_pinned(upload_path, face_uploaded_sha,
+                                   max_bytes=MAX_PRIVATE_IMAGE),
+        canonical_sha256=src["face_original_sha256"],
+        uploaded_sha256=face_uploaded_sha,
+        actor_id=actor,
+        frozen_actor_id=receipt.get("frozen_actor_id"),
+        face_asset=face_asset,
+        frozen_face_asset=receipt.get("frozen_face_asset"),
+        current_outfit=outfit,
+        frozen_outfit=receipt.get("frozen_current_outfit"),
+    )
 
     if _node(graph, "1", "CheckpointLoaderSimple").get("ckpt_name") != CHECKPOINT:
         raise ValueError("model_family_or_checkpoint_changed")
@@ -215,6 +237,9 @@ def build(root, p, prefix, *, comfy_input=None):
         "scene_contract_sha256": src["scene_contract_sha256"],
         "creation_receipt_sha256": src["creation_receipt_sha256"],
         "canonical_face_sha256": src["face_original_sha256"],
+        "face_upload_sha256": src["face_uploads"][src["job"]["spec"]["character"]]["upload_sha256"],
+        "canonical_face_upload_pixels_match_cpu": True,
+        "origin_authenticated": False,
         "outfit_revision_sha256": src["outfit_revision_sha256"],
         "source_save_version": src["save_version"],
         # These digests are only claimed by the source manifest; verifying
