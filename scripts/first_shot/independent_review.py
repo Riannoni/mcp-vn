@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 import io
+from contextlib import closing
 import sqlite3
 import sys
 
@@ -51,7 +52,7 @@ def _trusted_original_review(candidate, review):
     database = NATIVE_ROOT / "state/team.sqlite3"
     if not database.is_file() or database.is_symlink():
         raise ValueError("trusted_visual_review_database_missing")
-    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=5) as db:
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=5)) as db:
         db.row_factory = sqlite3.Row
         row = db.execute(
             "SELECT t.action,t.state,t.result,v.spec_sha256,v.spec_json,"
