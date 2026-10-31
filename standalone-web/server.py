@@ -155,9 +155,14 @@ def summarize_comfy_failure(status):
   return "ComfyUI ("+node_type+", "+kind+"): "+(msg[:300] or "ошибка выполнения")
  return "ComfyUI не смог завершить генерацию; смотри журнал ComfyUI."
 
-def comfy(path,data=None,timeout=18):
+def comfy(path,data=None,timeout=18,idempotency_key=None):
  b=json.dumps(data).encode() if data is not None else None
- r=urllib.request.Request(COMFY+path,data=b,headers={"Content-Type":"application/json"},
+ headers={"Content-Type":"application/json"}
+ if idempotency_key is not None:
+  if path not in ("/prompt","/api/prompt") or b is None:
+   raise ValueError("Broker idempotency key is valid only for prompt submit")
+  headers["Idempotency-Key"]=idempotency_key
+ r=urllib.request.Request(COMFY+path,data=b,headers=headers,
                           method="POST" if b is not None else "GET")
  with urllib.request.urlopen(r,timeout=timeout) as res:return json.loads(res.read(2_000_000))
 def router_token():
@@ -273,7 +278,8 @@ class Store:
     self.update(ident,status="working",stage="Подготовка")
     t=time.monotonic()
     g=graph(j["model"],j["prompt"],j["negative"],j["width"],j["height"],j["seed"],ident)
-    result=comfy("/prompt",{"prompt":g,"client_id":"vn-model-lab"},30)
+    result=comfy("/prompt",{"prompt":g,"client_id":"vn-model-lab"},30,
+                 idempotency_key="vn-model-lab:"+ident)
     pid=result.get("prompt_id")
     if not pid:raise RuntimeError("ComfyUI отклонил задачу: "+str(result)[:220])
     self.update(ident,stage="Генерация на GPU",comfy_id=pid)
