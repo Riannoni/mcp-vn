@@ -1,0 +1,15 @@
+[Unit]
+Description=Fail-closed localhost ComfyUI backend UID guard
+Before=comfy-broker.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/comfy-broker-firewall apply
+ExecReload=/usr/local/libexec/comfy-broker-firewall apply
+RemainAfterExit=yes
+# Intentionally NO ExecStop: stopping a unit must not expose backend 8189.
+# Remove only after Comfy 8189 is stopped, via explicit rollback procedure.
+
+[Install]
+WantedBy=multi-user.target

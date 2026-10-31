@@ -1,0 +1,41 @@
+#!/bin/sh
+# Dedicated nftables table; firewalld's own table reloads must not remove it.
+# Backend 8189 is reachable only by the static comfybroker UID on host loopback.
+# Linux routes 0.0.0.0 to lo/127.0.0.1: a daddr-only 127.0.0.1 nft rule
+# is BYPASSABLE via connect("0.0.0.0", 8189). Guard the egress interface,
+# not just the user-provided destination. Covers IPv4 and IPv6 local sockets.
+set -eu
+command -v nft >/dev/null
+uid="$(id -u comfybroker)"
+case "${1:-}" in
+  apply)
+    [ "$(id -u)" = 0 ] || { echo "root required" >&2; exit 1; }
+    nft -f - <<EOF
+destroy table inet comfy_broker_guard
+add table inet comfy_broker_guard
+add chain inet comfy_broker_guard output { type filter hook output priority -150; policy accept; }
+add rule inet comfy_broker_guard output meta oifname "lo" tcp dport 8189 meta skuid != $uid reject with tcp reset
+EOF
+    ;;
+  check)
+    rules="$(nft -nn list table inet comfy_broker_guard)"
+    # Fail the service preflight if the guard has been narrowed to 127.0.0.1.
+    # An untrusted Xavok process can reach a 127.0.0.1-bound socket using
+    # 0.0.0.0, so all lo output destinations must be fenced.
+    printf '%s\n' "$rules" | grep -F 'hook output' >/dev/null
+    printf '%s\n' "$rules" | grep -F "oifname \"lo\" tcp dport 8189 meta skuid != $uid reject with tcp reset" >/dev/null
+    ;;
+  remove)
+    [ "$(id -u)" = 0 ] || { echo "root required" >&2; exit 1; }
+    # Caller MUST first prove Comfy backend no longer listens on 8189.
+    if ss -lnt '( sport = :8189 )' | grep -q ':8189'; then
+      echo "REFUSE: backend 8189 still listening" >&2
+      exit 1
+    fi
+    nft delete table inet comfy_broker_guard
+    ;;
+  *)
+    echo "usage: $0 apply|check|remove" >&2
+    exit 2
+    ;;
+esac

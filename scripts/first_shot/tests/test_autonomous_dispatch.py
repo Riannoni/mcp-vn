@@ -61,4 +61,40 @@ class LocalDispatchTests(unittest.TestCase):
         self.assertFalse(m.queue(self.root,self.plan)["enqueued"])
     def test_no_private_data_in_user_visible_response(self):
         self.assertNotIn("new_value",m.queue(self.root,self.plan))
+    def test_success_moves_running_path_to_review_pending(self):
+        """Regression: after pending->running, never rename the stale pending path."""
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        self.assertTrue(m.queue(self.root, self.plan)["enqueued"])
+        with tempfile.TemporaryDirectory() as home:
+            output = Path(home)/".local/share/mcp-vn-comfy/output"
+            output.mkdir(parents=True)
+            name = "vn_zimage_probe_ab_cg03_lean_v2_exact.png"
+            (output/name).write_bytes(b"\x89PNG\r\n\x1a\nfake")
+            pid = "11111111-1111-4111-8111-111111111111"
+            def fake_api(endpoint, data=None, timeout=8, idempotency_key=None):
+                if endpoint == "/prompt":
+                    self.assertEqual(idempotency_key, "first-shot-ab:CG03_LEAN_V2")
+                    return {"prompt_id": pid}
+                if endpoint == "/history/" + pid:
+                    return {pid: {"status": {"status_str": "success"},
+                                  "outputs": {"node": {"images": [
+                                      {"filename": name, "type": "output", "subfolder": ""}]}}}}
+                raise AssertionError(endpoint)
+            fake_image = MagicMock()
+            fake_image.__enter__.return_value.size = (32, 32)
+            fake_image.__enter__.return_value.verify.return_value = None
+            pil = SimpleNamespace(Image=SimpleNamespace(open=lambda _: fake_image))
+            with patch.object(m.r, "queue_empty", return_value=True), \
+                 patch.object(m.r, "api", side_effect=fake_api), \
+                 patch.object(m.z, "create_graph", return_value={"one": {}}), \
+                 patch.object(m.Path, "home", return_value=Path(home)), \
+                 patch.dict(sys.modules, {"PIL": pil}):
+                result = m.tick(self.root)
+        self.assertEqual(result["status"], "GPU_FINISHED_REVIEW_REQUIRED")
+        self.assertFalse(list((self.root/"running").glob("*.json")))
+        self.assertTrue((self.root/"review_pending"/"CG03_LEAN_V2.json").exists())
+        self.assertEqual(json.loads((self.root/"runs"/"CG03_LEAN_V2"/"result.json").read_text())["prompt_id"], pid)
+
 if __name__=="__main__":unittest.main()

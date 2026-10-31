@@ -1,0 +1,32 @@
+[Unit]
+Description=Durable single-owner ComfyUI HTTP/WebSocket broker
+Requires=comfy-broker-firewall.service
+After=network-online.target comfy-broker-firewall.service
+
+[Service]
+Type=simple
+User=comfybroker
+Group=comfybroker
+WorkingDirectory=/opt/comfy-broker
+ExecStartPre=+/usr/local/libexec/comfy-broker-firewall check
+ExecStart=/opt/comfy-broker/venv/bin/python /opt/comfy-broker/broker.py --listen 127.0.0.1 --port 8188 --backend http://127.0.0.1:8189 --state-dir /var/lib/comfy-broker --queue-wait 120 --backend-timeout 30
+Restart=on-failure
+RestartSec=3
+StateDirectory=comfy-broker
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+MemoryMax=256M
+TasksMax=64
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

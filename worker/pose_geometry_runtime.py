@@ -38,7 +38,8 @@ def verify_with_comfy(job,image_bytes,reference,comfy,output_dir,request,upload)
             "pose_kps":["2",1],"filename_prefix":prefix}},
     }
     response=request(comfy,"/prompt","POST",{
-        "prompt":graph,"client_id":"mcp-vn-pose-qa"},timeout=25)
+        "prompt":graph,"client_id":"mcp-vn-pose-qa"},
+        headers={"Idempotency-Key":"mcp-vn-pose-qa:"+prefix},timeout=25)
     prompt_id=response["prompt_id"]
     output=Path(output_dir)
     start=time.monotonic()

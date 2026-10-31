@@ -29,15 +29,33 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def api(path, data=None, timeout=8):
+def api(path, data=None, timeout=8, idempotency_key=None):
+    headers = {"Content-Type": "application/json"} if data is not None else {}
+    if data is not None and path in ("/prompt", "/api/prompt"):
+        headers["X-Broker-Queue-Wait-Seconds"] = "8"
+    if idempotency_key is not None:
+        if data is None or path not in ("/prompt", "/api/prompt"):
+            raise ValueError("Idempotency key only for Comfy prompt submits")
+        headers["Idempotency-Key"] = idempotency_key
     req = urllib.request.Request(
         COMFY + path,
         data=None if data is None else json.dumps(data).encode("utf-8"),
-        headers={"Content-Type": "application/json"} if data is not None else {},
+        headers=headers,
         method="POST" if data is not None else "GET",
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.load(response)
+
+
+def first_shot_idempotency_key(case_id, outdir):
+    """Unique per immutable first-shot run directory, stable across a lost receipt.
+
+    Two different explicitly authorized lab runs of the SAME graph/seed must
+    not silently reuse a prior broker prompt_id. Never reuse a run directory.
+    """
+    run_path = str(Path(outdir).expanduser().resolve())
+    digest = hashlib.sha256(run_path.encode("utf-8")).hexdigest()
+    return "first-shot-v1:" + digest + ":" + case_id
 
 
 def queue_empty():
@@ -109,7 +127,8 @@ def run(case_id, outdir, submit=False, max_seconds=90):
             raise RuntimeError("Queue changed between graph creation and submit")
         start = time.monotonic()
         # One and only one direct Comfy submission, isolated filename prefix.
-        reply = api("/prompt", {"prompt":graph, "client_id":"vn-first-shot-canary"}, timeout=12)
+        reply = api("/prompt", {"prompt":graph, "client_id":"vn-first-shot-canary"},
+                    timeout=12, idempotency_key=first_shot_idempotency_key(case_id, outdir))
         prompt_id = reply.get("prompt_id")
         if not isinstance(prompt_id,str) or len(prompt_id)<8:
             record["status"]="UNKNOWN_SUBMISSION"

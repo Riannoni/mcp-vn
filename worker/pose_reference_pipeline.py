@@ -87,12 +87,15 @@ def _get_json(url: str, timeout: int = 30):
         return json.load(response)
 
 
-def _post_json(url: str, obj, timeout: int = 30):
+def _post_json(url: str, obj, timeout: int = 30, idempotency_key: str | None = None):
     from urllib.request import Request
     raw = json.dumps(obj).encode()
-    with urlopen(Request(url, data=raw,
-                         headers={"Content-Type":"application/json",
-                                  "User-Agent":USER_AGENT}), timeout=timeout) as response:
+    headers={"Content-Type":"application/json", "User-Agent":USER_AGENT}
+    if idempotency_key is not None:
+        if not url.endswith(("/prompt", "/api/prompt")):
+            raise ValueError("Broker idempotency key requires prompt URL")
+        headers["Idempotency-Key"]=idempotency_key
+    with urlopen(Request(url, data=raw,headers=headers),timeout=timeout) as response:
         return json.load(response)
 
 
@@ -238,7 +241,14 @@ def extract_guides(root=DEFAULT_ROOT):
             "4":{"class_type":"SavePoseKpsAsJsonFile","inputs":{
                 "pose_kps":["2",1],"filename_prefix":prefix+"_keypoints"}},
         }
-        response=_post_json(HOST+"/prompt",{"prompt":graph,"client_id":"vn-pose-ref-v1"},timeout=35)
+        # Distinguish a changed source photo even when Comfy LoadImage points
+        # at the same overwritten input filename. Retried SAME extraction is
+        # idempotent; new model/workflow versions must use a new manifest run.
+        source_digest=str(record["reference_sha256"])
+        plan_digest=_sha(json.dumps(graph,sort_keys=True).encode())
+        receipt_key="vn-pose-ref-v1:"+_sha((str(record["id"])+":"+source_digest+":"+plan_digest).encode())
+        response=_post_json(HOST+"/prompt",{"prompt":graph,"client_id":"vn-pose-ref-v1"},
+                            timeout=35,idempotency_key=receipt_key)
         if response.get("node_errors"):
             raise RuntimeError(str(response["node_errors"]))
         key=response["prompt_id"]
