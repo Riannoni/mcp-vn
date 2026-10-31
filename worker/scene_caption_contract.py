@@ -23,6 +23,16 @@ def insufficient_scene_caption(caption):
     words=re.findall(r"[a-zA-Z]+",str(caption or ""))
     return len(words)<8
 
+# A caption may contrast the wall with a ground surface ("hands on wall,
+# not pavement"). Remove only explicitly negated ground targets before
+# searching for affirmative hands-to-ground contradictions. A later positive
+# mention of hands on the ground must still veto the scene.
+_NEGATED_GROUND_TARGET=re.compile(
+    r"\b(?:not|never|rather\s+than|instead\s+of)\s+"
+    r"(?:(?:on|onto|against|touching)\s+)?(?:the\s+)?"
+    r"(?:ground|paving|pavement|street)\b",re.I)
+
+
 def scene_action_conflicts(characters,caption,narrator_prompt):
     """Veto clear contradictions between a requested wall brace and actual pose.
 
@@ -42,8 +52,9 @@ def scene_action_conflicts(characters,caption,narrator_prompt):
     desc=str(caption).lower()
     if re.search(r"(?<![a-z])(?:lying|laying|reclining|crawling|sitting|kneeling|crouching|squatting)(?![a-z])",desc):
         return ["CG physical pose contradicts intended standing wall contact"]
+    ground_evidence=_NEGATED_GROUND_TARGET.sub("",desc)
     if re.search(r"(?<![a-z])(?:hand|hands|elbow|elbows)(?![a-z]).{0,25}"
-                 r"(?<![a-z])(?:ground|paving|pavement|street)(?![a-z])",desc):
+                 r"(?<![a-z])(?:ground|paving|pavement|street)(?![a-z])",ground_evidence):
         return ["CG hands are on the ground instead of on the required wall"]
     return []
 
