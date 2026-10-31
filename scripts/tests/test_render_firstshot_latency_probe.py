@@ -239,6 +239,62 @@ class LatencyProbeTests(unittest.TestCase):
         self.assertEqual(row["g2"], "FAIL")
         self.assertFalse(row["human_label"])
 
+    def test_lab_wrong_job_cannot_reuse_correct_prompt_and_fake_full_turn(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        forged = {"kind": "full_turn", "job_id": "wrong-job-B", "prompt_id": "p1",
+                  "started_at": "2010-01-01T00:00:00Z",
+                  "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "job_id|job"):
+            probe.build_report(self.lab, [forged], verify_png=False)
+
+    def test_stale_full_turn_cannot_join_same_lab_job(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        stale = {"kind": "full_turn", "job_id": "authentic-job-A", "prompt_id": "p1",
+                 "started_at": "2010-01-01T00:00:00Z",
+                 "completed_at": "2010-01-01T00:00:30Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "timeline|stale|lifecycle"):
+            probe.build_report(self.lab, [stale], verify_png=False)
+
+    def test_unanchored_lab_result_rejects_stage_join_even_with_same_prompt(self):
+        self.case()  # Original receipt has no authentic job_id.
+        invented = {"kind": "stage", "job_id": "invented-job", "prompt_id": "p1",
+                    "stage": "gpu", "started_at": "2026-10-31T10:00:01Z",
+                    "completed_at": "2026-10-31T10:00:09Z"}
+        with self.assertRaisesRegex(probe.EvidenceError, "job_id|unanchored"):
+            probe.build_report(self.lab, [invented], verify_png=False)
+
+    def test_correctly_bound_lab_gpu_stage_inside_job_window_is_preserved(self):
+        d = self.case()
+        d["job_id"] = "authentic-job-A"
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        observed = {"kind": "stage", "job_id": "authentic-job-A", "prompt_id": "p1",
+                    "stage": "gpu", "started_at": "2026-10-31T10:00:01Z",
+                    "completed_at": "2026-10-31T10:00:09Z"}
+        row = probe.build_report(self.lab, [observed], verify_png=False)["lab"][0]
+        self.assertEqual(row["job_id"], "authentic-job-A")
+        self.assertEqual(row["stages_s"]["gpu"], 8)
+
+    def test_png_container_crc_does_not_certify_decoded_g1(self):
+        import struct
+        import zlib
+        def chunk(name, data):
+            return (struct.pack(">I", len(data)) + name + data
+                    + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff))
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+        invalid_idat = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+                        + chunk(b"IDAT", b"not-valid-zlib") + chunk(b"IEND", b""))
+        self._bound_file_and_review(invalid_idat, ["environment"])
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertEqual(row["original_png_validation"], "container_crc_only")
+        self.assertFalse(row["original_png_decoded"])
+        self.assertEqual(row["g1_claim"], "PASS")
+        self.assertEqual(row["g1"], "UNVERIFIED")
+
     def test_duplicate_prompt_across_jobs_rejected(self):
         with self.assertRaises(probe.EvidenceError):
             probe.build_report(self.lab, [
