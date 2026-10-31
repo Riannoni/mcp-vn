@@ -131,6 +131,9 @@ class SDXLCanonicalSpriteFactorTests(unittest.TestCase):
             "outfit_revision_sha256": self.manifest["outfit_revision_sha256"],
             "face_original_sha256": self.face_sha,
             "save_version": 10,
+            "frozen_actor_id": "Actor_A",
+            "frozen_face_asset": self.asset,
+            "frozen_current_outfit": "closed blue jacket",
         }
         self.repin()
 
@@ -221,6 +224,34 @@ class SDXLCanonicalSpriteFactorTests(unittest.TestCase):
         Image.new("RGB", (512,512), (1,2,3)).save(self.input / "face0.png")
         with self.assertRaisesRegex(ValueError, "private_source_sha_changed"):
             self._validate()
+
+    def test_rejects_rehashed_substituted_face_pixels(self):
+        Image.new("RGB", (512, 512), (17, 5, 199)).save(self.input / "face0.png")
+        actual = (self.input / "face0.png").read_bytes()
+        # Attacker legitimately recomputed the transport checksum, but not
+        # the immutable canonical original pixels.
+        self.manifest["face_uploads"]["Actor_A"]["upload_sha256"] = hashlib.sha256(actual).hexdigest()
+        self.repin()
+        with self.assertRaisesRegex(ValueError, "canonical_face_upload_pixels_do_not_match"):
+            self._validate()
+
+    def test_rejects_creation_receipt_wrong_frozen_actor(self):
+        self.receipt["frozen_actor_id"] = "Actor_B"
+        self.repin()
+        with self.assertRaisesRegex(ValueError, "canonical_actor_attribution_mismatch"):
+            self._validate()
+
+    def test_rejects_creation_receipt_wrong_frozen_outfit(self):
+        self.receipt["frozen_current_outfit"] = "old red coat"
+        self.repin()
+        with self.assertRaisesRegex(ValueError, "canonical_current_outfit_mismatch"):
+            self._validate()
+
+    def test_positive_evidence_declares_only_cpu_pixel_binding(self):
+        _, evidence = self._build()
+        self.assertTrue(evidence["canonical_face_upload_pixels_match_cpu"])
+        self.assertFalse(evidence["origin_authenticated"])
+        self.assertFalse(evidence["publish_eligible"])
 
     def test_creation_receipt_missing_blocks(self):
         (self.root / "creation_receipts" / (self.manifest["creation_receipt_sha256"]+".json")).unlink()
