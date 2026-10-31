@@ -109,11 +109,25 @@ function ensureRealScene(game,spec){
 // only the R-10 enqueue HMAC makes it tamper-evident. Not a visual PASS.
 export function deriveNarrativeSourceProvenance(game,spec){
  const {scene,contract,canonicalActors,contacts}=ensureRealScene(game,spec);
- const last=Array.isArray(game.messages)?[...game.messages].reverse()
-  .find(m=>m?.role==="narrator"&&typeof m.text==="string"&&m.text.trim()):null;
+ const messages=Array.isArray(game.messages)?game.messages:[];
+ const nIndex=messages.findLastIndex(m=>m?.role==="narrator"&&
+  typeof m.text==="string"&&m.text.trim());
+ const pIndex=messages.findLastIndex(m=>m?.role==="player"&&
+  typeof m.text==="string"&&m.text.trim());
+ const last=nIndex<0?null:messages[nIndex];
+ const action=pIndex<0?null:messages[pIndex];
  const prompt=scene.image_prompts?.cg;
  const storedPrompt=typeof prompt==="string"&&prompt.trim()?prompt:null;
  const hasNarrator=typeof last?.id==="string"&&last.id.length>0;
+ const actionId=game.turn_metrics?.last?.action_id;
+ const sameCommittedTurn=hasNarrator&&typeof action?.id==="string"&&
+  action.id===actionId&&pIndex>=0&&nIndex>pIndex&&
+  game.awaiting_narrator!==true;
+ // A producer marking a fallback/mismatched prompt as narrator-authored is
+ // not a valid narration provenance claim, even when its image is beautiful.
+ if(spec.narrator_prompt===true)
+  requireTrue(storedPrompt&&norm(spec.prompt)===norm(storedPrompt),
+   "narrator image prompt differs from canonical scene prompt");
  return {
   schema:"web_vn_canonical_source_v1",
   source_phase:"game_store_art_snapshot_before_enqueue",
@@ -121,11 +135,14 @@ export function deriveNarrativeSourceProvenance(game,spec){
   scene_revision:Number.isSafeInteger(scene.cg_revision)?scene.cg_revision:0,
   scene_intent_sha256:digest(sceneIntentFingerprint(scene)),
   typed_contract_sha256:digest(JSON.stringify(contract)),
+  action_id:sameCommittedTurn?action.id:null,
+  action_message_sha256:sameCommittedTurn?digest(JSON.stringify({
+   id:action.id,at:action.at??null,text:action.text})):null,
   narrative_message_id:hasNarrator?last.id:null,
   narrative_message_sha256:hasNarrator?digest(JSON.stringify({
    id:last.id,at:last.at??null,speaker:last.speaker??null,text:last.text})):null,
   narrator_cg_prompt_sha256:storedPrompt?digest(storedPrompt):null,
-  narrative_origin:hasNarrator&&storedPrompt?
+  narrative_origin:sameCommittedTurn&&spec.narrator_prompt===true&&storedPrompt?
    "canonical_narration_and_scene_cg_prompt":"incomplete_not_narrative_verified",
   canonical_actors:canonicalActors,source_contacts_count:contacts.length,
   explicit_contacts_sha256:digest(JSON.stringify(contacts)),
@@ -169,6 +186,7 @@ function verifyProducer(job,producerKey){
   payload.job_id===job.id&&payload.game_id===job.game_id&&
   payload.game_version===source.game_version&&
   payload.scene_revision===source.scene_revision&&
+  source.narrative_origin==="canonical_narration_and_scene_cg_prompt"&&
   payload.spec_sha256===digest(JSON.stringify(job.spec))&&
   payload.visual_contract_sha256===digest(JSON.stringify(job.spec.visual_contract))&&
   payload.scene_fingerprint_sha256===digest(job.spec.cg_basis_snapshot)&&
