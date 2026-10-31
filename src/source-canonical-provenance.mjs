@@ -196,6 +196,15 @@ function verifyProducer(job,producerKey){
   payload.result_sha256===null&&payload.output_binding==="pending_not_verified",
   "source receipt job/spec/save/scene/prompt no longer matches trusted creation");
  const assets=payload.source_assets;
+ // All signed sources must belong to the named canonical scene. A valid HMAC
+ // over extra actor references is NOT scene attribution or identity evidence.
+ requireTrue(Array.isArray(source.canonical_actors)&&
+  source.canonical_actors.length>0&&source.canonical_actors.length<=12,
+  "canonical source named actor set missing or invalid");
+ const expectedAssetCount=1+source.canonical_actors.length+
+  source.canonical_actors.filter(actor=>!!actor.body_asset).length;
+ requireTrue(Array.isArray(assets)&&assets.length===expectedAssetCount,
+  "canonical source asset count mismatch: unexpected or missing source reference");
  const match=(role,name,actor)=>Array.isArray(assets)&&assets.some(x=>
   x?.role===role&&x.asset===name&&(actor===undefined||x.actor===actor)&&HEX.test(x.sha256));
  requireTrue(match("background",job.spec.background_asset),
