@@ -100,6 +100,7 @@ def claim(db, owner, ttl=120, now=None, lane=None):
         succeeded = {x["id"] for x in db.execute("SELECT id FROM task WHERE state='done'")}
         candidates = db.execute(
             "SELECT * FROM task WHERE state='pending' ORDER BY priority DESC,id ASC").fetchall()
+        parked = [x for x in db.execute("SELECT id,paths,state FROM task WHERE state IN ('blocked','review_pending')")]
         for row in candidates:
             if lane is not None and not row["id"].startswith(lane+"-"):
                 continue
@@ -107,6 +108,11 @@ def claim(db, owner, ttl=120, now=None, lane=None):
                 continue
             p = json.loads(row["paths"])
             if any(_paths_conflict(p, json.loads(a["paths"])) for a in active):
+                continue
+            # Review/failed work is a fence on overlapping source, not every
+            # unrelated P0 task. Dependency success is still mandatory.
+            if any(_paths_conflict(p,json.loads(a["paths"])) for a in parked
+                   if a["id"] != row["id"]):
                 continue
             fence = uuid.uuid4().hex
             db.execute(
