@@ -100,7 +100,7 @@ def check(root,lane,reserve=False,requestor="chief",now=None,cooldown=COOLDOWN_S
         instant=time.time() if now is None else now
         result=readiness(root,lane,db,instant,cooldown)
         if result["eligible"]:
-            quota=quota_permit(root,instant)
+            quota=quota_permit(root,instant,provider="chatgpt_scheduled")
             if not quota["eligible"]:
                 result={**result,**quota}
         if reserve and result["eligible"]:
@@ -179,7 +179,7 @@ def check_review(root,reserve=False,requestor='worker',now=None,cooldown=120):
         instant=time.time() if now is None else now
         outcome=review_readiness(db,instant,cooldown)
         if outcome["eligible"]:
-            quota=quota_permit(root,instant)
+            quota=quota_permit(root,instant,provider="chatgpt_scheduled")
             if not quota["eligible"]:
                 outcome={**outcome,**quota}
         if reserve and outcome['eligible']:
