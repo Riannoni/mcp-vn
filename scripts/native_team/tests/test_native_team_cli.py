@@ -179,7 +179,14 @@ class FourLaneControlTests(unittest.TestCase):
         self.assertEqual(x["state"],"blocked")
         self.assertIsNone(x["owner"])
         self.assertIsNone(x["fence"])
-        self.assertFalse(m.claim(self.db,"R","second")["claimed"])
+        with self.assertRaisesRegex(RuntimeError,"host reboot detected"):
+            m.claim(self.db,"R","second")
+
+    def test_blocked_lane_cannot_claim_followup_until_review(self):
+        self.db.execute("UPDATE task SET state='blocked' WHERE id='R-01'")
+        answer=m.claim(self.db,"R","new-owner")
+        self.assertFalse(answer["claimed"])
+        self.assertEqual(answer["reason"],"blocked_requires_recovery_review")
 
     def test_no_reboot_does_not_fence_live_lease(self):
         import time
