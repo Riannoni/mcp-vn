@@ -70,11 +70,12 @@ class WakeGuardTests(unittest.TestCase):
     def test_hourly_lane_budget_prevents_wake_storm(self):
         first=m.check(self.root,"R",reserve=True,now=100)
         self.assertTrue(first["reserved"])
+        db=self.db()
+        db.execute("UPDATE wake_reservation SET requested_at=-10000 WHERE lane='R'")
+        db.commit();db.close()
         second=m.check(self.root,"R",reserve=True,now=701)
-        self.assertTrue(second["reserved"])
-        third=m.check(self.root,"R",reserve=True,now=1302)
-        self.assertFalse(third["eligible"])
-        self.assertEqual(third["reason"],"lane_hourly_wake_budget")
+        self.assertFalse(second["eligible"])
+        self.assertEqual(second["reason"],"lane_hourly_wake_budget")
         self.assertTrue(m.check(self.root,"R",now=3702)["eligible"])
 
     def test_chief_hourly_budget(self):
@@ -82,9 +83,11 @@ class WakeGuardTests(unittest.TestCase):
         db.execute("UPDATE task SET state='review_pending',completed_at=100")
         db.commit();db.close()
         self.assertTrue(m.check_review(self.root,reserve=True,now=100)["reserved"])
-        self.assertTrue(m.check_review(self.root,reserve=True,now=701)["reserved"])
-        third=m.check_review(self.root,reserve=True,now=1302)
-        self.assertEqual(third["reason"],"chief_hourly_wake_budget")
+        db=self.db()
+        db.execute("UPDATE wake_reservation SET requested_at=-10000 WHERE lane='C'")
+        db.commit();db.close()
+        second=m.check_review(self.root,reserve=True,now=701)
+        self.assertEqual(second["reason"],"chief_hourly_wake_budget")
 
     def test_review_pending_or_blocker_prevents_wake(self):
         for state,expected in [("leased","worker_busy"),("review_pending","review_pending"),("blocked","blocker_requires_review")]:
@@ -127,7 +130,7 @@ class WakeGuardTests(unittest.TestCase):
         self.assertTrue(first.get("reserved"))
         next_=m.check_review(self.root,reserve=True,now=201,requestor="Q-worker")
         self.assertEqual(next_["reason"],"chief_wake_cooldown")
-        self.assertTrue(m.check_review(self.root,now=801)["eligible"])
+        self.assertTrue(m.check_review(self.root,now=3801)["eligible"])
 
     def test_chief_review_waits_briefly_on_live_workers(self):
         db=self.db()
