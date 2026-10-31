@@ -53,6 +53,24 @@ class NativeWakeMeshTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
             x=list(ex.map(lambda _: self.call(),range(4)))
         self.assertEqual(sum(bool(z.get("reserved")) for z in x),1)
+    def test_all_fifteen_native_cloud_roles_are_explicitly_mapped(self):
+        self.assertEqual(len(m.TARGETS), 15)
+        self.assertEqual(m.TARGETS["dispatcher"], "6ae5e8ac2e58819188b5f87aa17d0f97")
+        self.assertEqual(m.TARGETS["decision"], "6ae5e8a59f2c8191a29d40c1c12712f0")
+        self.assertEqual(m.TARGETS["gpu_lab"], "6ae5e8a91cfc8191bb938957f214f8c3")
+
+    def test_dispatcher_cross_wake_new_roles_is_fenced(self):
+        a=m.check(self.root,"gpu_lab","review_accepted",S1,"dispatcher",True,100)
+        self.assertTrue(a["reserved"])
+        self.assertEqual(a["automation_id"],m.TARGETS["gpu_lab"])
+        b=m.check(self.root,"gpu_lab","review_accepted",S1,"decision",True,400)
+        self.assertEqual(b["reason"],"already_requested_for_exact_evidence")
+        c=m.check(self.root,"decision","source_pr_ready",S2,"dispatcher",True,100)
+        self.assertTrue(c["reserved"])
+        self.assertEqual(c["automation_id"],m.TARGETS["decision"])
+        d=m.check(self.root,"dispatcher","source_pr_ready",S3,"dispatcher",True,100)
+        self.assertEqual(d["reason"],"self_wake_not_needed")
+
     def test_missing_native_state_is_error(self):
         (self.root/"state").rmdir()
         with self.assertRaises(FileNotFoundError):
