@@ -110,6 +110,18 @@ def _trusted_original_review(candidate, review):
     for key in mandatory:
         if review["mandatory"][key] != trusted["mandatory"][key]["verdict"]:
             raise ValueError("trusted_visual_verdict_not_from_reviewer")
+    if candidate.get("factor") == "sdxl_sprite_body_source":
+        # The typed native receipt must bind the POSTPROCESSED result too:
+        # accepting a fresh hash chosen by the caller would not establish
+        # that the independent Golden task saw this particular derivative.
+        if "sprite_alpha" not in mandatory:
+            raise ValueError("trusted_sprite_alpha_not_mandatory")
+        bound_source = json.loads(native_golden._private_file(
+            spec["artifacts"]["gpu_receipt"], "gpu_receipt"
+        ))
+        if (bound_source.get("derived_rgba_sha256") != candidate.get("derived_rgba_sha256")
+                or bound_source.get("derived_rgba_path") != candidate.get("derived_rgba_path")):
+            raise ValueError("trusted_sprite_derivative_not_in_native_gpu_receipt")
     original_raw = native_golden._private_file(spec["artifacts"]["original_png"], "original_png")
     _full_png(original_raw)
     return mandatory
