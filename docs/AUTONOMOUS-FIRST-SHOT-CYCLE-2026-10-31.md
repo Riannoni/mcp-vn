@@ -8,7 +8,7 @@ On one RX 9070 XT, prove BG + identity-preserving transparent sprite + 3 differe
 
 ## Active scheduled autonomous work + report
 
-The ChatGPT account has a maximum of five enabled task automations. Assign four autonomous agents and one **read-only hourly reporter**:
+**2026-10-31 V14 correction:** The observed cap of five is on concurrently enabled **ChatGPT Scheduled Automation records**, not on the total number of independent workers. Four cloud roles plus one separate GPU Broker Engineer occupy five current slots. The extra read-only reporter is **paused**, because the Chief already sends a substantive hourly report. More workers can run concurrently as locally managed, quota-gated Codex subagents and CPU/services (not as extra enabled Schedule records beyond the cap). Prior allocation (below) is historical, not live:
 
 | Function | Automation / lane | Responsible for |
 |---|---|---|
@@ -18,9 +18,20 @@ The ChatGPT account has a maximum of five enabled task automations. Assign four 
 | Golden / independent visual reviewer | `6ae57b3d794c8191aff21eac865b780b` / G | fetch exact **original** PNG by prompt ID/SHA and original private scene refs, independently inspect pixels, verdict every applicable typed constraint, mark new candidate G2 PASS only when all mandatory VERIFIED |
 | Hourly read-only reporter | `6ae5c7e719648191a68a4ffb4117452a` | report in the user-initiated ChatGPT task flow once per hour in Europe/Helsinki, beginning Oct 31 at 13:00; report actual GPU/PNG counts, G1/G2, commits, E2E latency, active leases/blockers and quota, without running experiments |
 
+In addition, the old scheduled reporter `6ae5c7e719648191a68a4ffb4117452a` is PAUSED (not deleted). New fifth cloud role: GPU Broker Engineer `6ae5d49054d48191ba1a0c2f2ba55816` investigates/enforces a single writer for **every** Comfy `/prompt` path. Four named local Codex Astra High subagents have been configured for bounded read-only broker, pose, identity and QA audits. Actual model identity in ChatGPT scheduled automation metadata remains MODEL_UNVERIFIED. A live local Codex audit was launched in a protected read-only unit, separate from old long-running night agent.
+
 Earlier QA-only schedule `6ae57b3a03a48191889e3b0073c8e359` is intentionally **paused** to free an active automation slot: its Q-10 lease ended BLOCKED after platform SCP rejection, not a code/GPU failure. Move its legitimate QA duties to Reliability's separate **Q-lane** with independent Chief reviewer, without claiming Q-10 PASS or bypassing the known blocker. Golden is retained as independently executing visual evidence role. If Golden cannot retrieve full original pixels through scheduled tools, report `NOT_REVIEWED` and escalate; do not substitute image filenames, thumbnails, CLIP/VLM captions or a summary written by a different worker.
 
 **Hourly report delivery limitation:** scheduling is provided by the ChatGPT Automations service; it cannot guarantee a real-time exact execution instant or that arbitrary other worker chat messages appear in this exact thread. The reporter was explicitly created from the user's current conversation and must write a substantive answer there rather than a GitHub-only comment. If UI/task delivery routes elsewhere, report the discrepancy—never pretend a notification arrived.
+
+## V14 live blocker ledger — rechecked 2026-10-31 19:01 Asia/Novosibirsk
+
+- `web-vn-first-shot-autonomous.timer` is **installed and active**, 1-min cadence. Exact installed source S-14 patch `ae6967c28fffb51087f2b43751d93c2f4accab14` was independently approved by Chief, 29/29 offline tests PASS and empty-proposal smoke `NO_APPROVED_WORK`, no live game writes.
+- R-13 is an **actual** one-factor prompt-only GPU candidate (not first-shot v1): Comfy prompt ID `7b3b344b-fd8c-4068-8bd6-e541266ec174`, exact PNG SHA `a10c347a814d4a212b8e6b02245d0c0e4ad85fb0a244457ea59d1005cc2f43ef`, 1024x592, 6.029 s G1 PASS. Golden independently viewed original bytes and found **G2 FAIL** (near-upright torso, wrong view, cropped boots; palms/wall and canonical identity not proven). Do NOT resubmit R-13.
+- **True Comfy single ownership NOT enforced:** both `mcp-vn/worker.py` and `mcp-vn-model-lab/server.py` POST `/prompt` directly to Comfy 127.0.0.1:8188 and bypass autonomous_dispatch.py's local flock. An empty Comfy queue alone is insufficient. GPU Broker Engineer owns a tested gateway strategy with a technical bypass prevention; no production restart/deploy before version-scope + rollback.
+- G-10 independent Golden original-image review completed, but source-only `teamctl submit` rejected visual-only work without non-empty source file changed_paths. Build a separate source-independent, exact-SHA Golden evidence submit/review path; no false `source-only` receipt or reusing blocked task ID.
+- G-11 generated a local synthetic 40° projected-lean 2D pose guide with precise SHA, **not approved** (no genuine separate HMAC approval; a 2D diagram alone does not prove actual 3D camera/contact). Existing original `wall_push_correct_side_a` is approved for SIDE view, whereas CG-03 needs THREE-QUARTER REAR; rear-oblique guides 01/02 are still DRAFT. Do not silently switch cameras. R-14 depends on independently validated exact-view guide + technical GPU ownership.
+- Q-10/Q-11 delivery restrictions and S-13 namespace canary are separate work for Reliability; tests do not prove full-game latency. G3 remains NO_GO and frozen five-frame v1 remains 5/5 G1, 1/5 G2.
 
 ## Autonomous closed-loop state machine
 
