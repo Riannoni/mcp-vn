@@ -131,3 +131,29 @@ The owner explicitly requested an independent effectiveness/scale review of the 
 **Rollback of control-plane only:** pause the five Scheduled Tasks before replacing code; copy back the verified `control/*.before-audit-v2-20261031.py` backups under the same module names; run isolated control tests, check SQLite and watchdog state, then re-enable the schedules. Never roll back or reset dirty worker source trees or user game state. A separate owner-approved gate is required before deployment or GPU writes.
 
 **Final role adjustment after audit:** the Golden worker's active Scheduled Task prompt was updated to prioritize **real PNG evidence, independent human labels, abstention/error calibration and release metrics**, not further synthetic dataset inflation. It first completes already queued G-03 latency tests, then asks the chief for evidence-backed G2 tasks. This uses the existing fourth lane, not a sixth scheduled cloud agent. Chief report remains hourly at approximately **13:42 Asia/Novosibirsk** after the four approximately **13:24** worker starts.
+
+
+## 2026-10-31: minimize cloud worker idle time — guarded on-demand wake
+
+**Proof, not a promise:** at approximately 12:58–13:00 Asia/Novosibirsk, the owner explicitly authorized and a chat operator invoked official `Automations.run_now` for the *existing* four worker schedules. The returned status initially meant only "requested", but **all four distinct native ChatGPT runs later entered `in_progress`** and corresponding local PC SQLite jobs R-03, Q-03, G-03, S-03 were really claimed via SSH-MCP. Worker R-03 entered `review_pending` around 13:01; other workers proceeded independently. This demonstrated a supported **on-demand** wake path in addition to hourly scheduled wakeups. It did not create extra ChatGPT accounts, make Codex API calls or bypass plan limits.
+
+**Implemented guarded dispatch architecture:**
+
+- PC-only `scripts/native_team/ops/wake_guard.py`, installed as `control/wake_guard.py`: read-only eligibility scan (team active, lane clean, no active lease, no `review_pending` or `blocked`, completed dependency closure, global file-scope disjointness, at least one ready pending job). Its `--reserve` option atomically stores a *single* candidate `wake_reservation` in SQLite with **3600-second cooldown**, so concurrent supervisors cannot endlessly request the same task. A reservation **never** runs a model.
+- PC-only `control/wake-scan.py`, invoked by existing one-minute user watchdog, records `state/wake-ready.json` with honest lane status/reason. This is strictly advisory; no web requests or ChatGPT invocation and no credential access. Existing heartbeat/quota/watchdog data remain intact; diagnostics failures do not bring down the main watchdog.
+- The **Chief Scheduled Task** prompt now contains exact worker automation IDs and instructs it to check completed independent review and meaningful backlog, read current cloud `Automations.peek` status, ensure it is not already running and next regular schedule is more than 10 minutes away, then **reserve** via local SQLite and call the first-party `Automations.run_now` once if that action is genuinely present in its tool set. It must distinguish `run_now requested` from `worker started`, avoid repeats, respect plan quotas and report inability when this task execution has no Automations action. This **cloud-Chief-to-worker triggering is configured but not yet empirically confirmed**; do not claim it works until the next chief run actually shows tool execution and subsequent SQLite claims.
+- The ordinary recurring four hourly worker schedules and a single hourly chief report remain **enabled** and unchanged. Workers already use bounded multi-task loop (up to 2 independent source tasks in one cloud invocation); local watchdog does not fabricate work. Never create meaningless queued tasks just for high utilization.
+
+Operational read-only canary from PC:
+
+```bash
+root="$HOME/.local/share/web-vn-native-team/run-20261031-full"
+cat "$root/state/wake-ready.json"
+python3 "$root/control/wake_guard.py" --root "$root" --lane R
+```
+
+Only an authorized human or cloud chief with supported Automations tools may reserve/issue a wake. Reservation, if used, is `--reserve --requestor chief`; successful reservation is **not** proof that the model ran. A failed run request remains under cooldown to prevent storms; the next chief reviews the platform error and retries no sooner than permitted.
+
+**Why not add more workers?** Four source tasks normally completed in ~1–3 minutes each in the first experiment, leaving substantial idle time because ChatGPT Scheduled Tasks are not continuously running processes. On-demand wakes improve utilization *when the platform permits and independently useful tasks are queued*, but can increase ChatGPT plan usage. The one-GPU, G2 original pixel QA and reviewer throughput remain the real bottlenecks. Scaling to 5–8 coding workers before independently accepted real CGs would increase review and context overhead, not solve first-shot render quality. Even successful on-demand runs cannot guarantee continuous 24/7 model inference: quotas, tool permissions, scheduled-task limits, backlog dependencies, reviews and safety blocks still apply.
+
+**Validation:** isolated GitHub checkout tests of the full native-team suite **32/32 PASS**, including 8 new wake cooldown/readiness/blocker cases. Installed wake scanner returned correctly differentiated `worker_busy` and `review_pending` during real concurrent ChatGPT activity. No production game/Comfy restart, GPU job, auto merge, public private-artifact upload or old Codex reactivation.
