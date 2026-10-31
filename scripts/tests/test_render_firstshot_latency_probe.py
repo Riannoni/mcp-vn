@@ -90,6 +90,38 @@ class LatencyProbeTests(unittest.TestCase):
                 "started_at": "2026-10-31T10:00:10Z", "completed_at": "2026-10-31T10:00:00Z"}],
                 verify_png=False)
 
+    def test_skipping_png_hash_cannot_create_visual_or_human_pass(self):
+        self.case()
+        review = {"case": "BG-01", "prompt_id": "p1", "png_sha256": "a" * 64,
+                  "original_pixels_reviewed": True, "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_human", "human_label": True}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=False)["lab"][0]
+        self.assertEqual(row["g2"], "NOT_REVIEWED")
+        self.assertFalse(row["human_label"])
+        self.assertNotIn("sha_bound_pixel_review", row["evidence"])
+
+    def test_verified_original_png_can_pass_independent_review(self):
+        import hashlib
+        data = b"real checked bytes, not a generated image"
+        png = self.root / "original.png"
+        png.write_bytes(data)
+        d = self.case()
+        d["png_sha256"] = hashlib.sha256(data).hexdigest()
+        d["original_png_path"] = str(png)
+        (self.lab / "BG-01-result.json").write_text(json.dumps(d))
+        review = {"case": "BG-01", "prompt_id": "p1",
+                  "png_sha256": d["png_sha256"], "original_pixels_reviewed": True,
+                  "mandatory": ["environment"],
+                  "checks": {"environment": "verified"},
+                  "reviewer_type": "independent_reviewer", "human_label": False}
+        (self.lab / "BG-01-pixel-review.json").write_text(json.dumps(review))
+        row = probe.build_report(self.lab, [], verify_png=True)["lab"][0]
+        self.assertEqual(row["g2"], "PASS")
+        self.assertTrue(row["original_png_sha_verified"])
+        self.assertIn("sha_bound_pixel_review", row["evidence"])
+
     def test_sha_and_review_prompt_mismatch_rejected(self):
         self.case()
         review = {"case": "BG-01", "prompt_id": "different", "png_sha256": "a" * 64,
