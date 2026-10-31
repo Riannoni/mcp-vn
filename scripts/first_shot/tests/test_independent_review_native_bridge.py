@@ -91,7 +91,9 @@ class NativeOriginalReceiptBridge(unittest.TestCase):
         source = {
             "status": "GPU_FINISHED_REVIEW_REQUIRED", "prompt_id": self.prompt_id,
             "case": self.candidate["case"], "png_sha256": original_sha,
-            "original_png_path": str(self.original)
+            "original_png_path": str(self.original),
+            "derived_rgba_path": str(self.derived),
+            "derived_rgba_sha256": self.candidate["derived_rgba_sha256"]
         }
         self.desc["gpu_receipt"] = self.artifact("gpu.json", blob(source))
         self.spec = {
