@@ -22,6 +22,11 @@ ShmSize=2g
 Exec=/bin/bash -lc "exec python3 $COMFYUI_PATH/main.py --listen 0.0.0.0 --port 8188 --disable-auto-launch --extra-model-paths-config /data/extra_model_paths.yaml --input-directory /data/input --output-directory /data/output --temp-directory /data/temp --user-directory /data/user"
 
 [Service]
+# Quadlet is a USER service; it cannot Requires= a SYSTEM firewall unit.
+# Require a fresh root nft guard check before every 8189 backend restart,
+# otherwise a boot-order race exposes the backend without the broker.
+# Production rollout must provision Xavok passwordless check-only sudo first.
+ExecStartPre=/usr/bin/sudo -n /usr/local/libexec/comfy-broker-firewall check
 Restart=on-failure
 RestartSec=8
 TimeoutStartSec=180
