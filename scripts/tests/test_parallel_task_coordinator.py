@@ -62,6 +62,35 @@ class PilotTests(unittest.TestCase):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     self.add("bad",[path])
+    def test_stale_worker_cannot_replace_new_attempt_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            folder=pathlib.Path(td)
+            self.add()
+            first=m.claim(self.db,"old",ttl=5,now=100)
+            second=m.claim(self.db,"new",ttl=5,now=106)
+            fresh=b'{"result":"new"}'
+            fresh_path=m.persist_evidence(folder,"t1",second["fence"],fresh)
+            digest=__import__("hashlib").sha256(fresh).hexdigest()
+            self.assertTrue(m.complete(self.db,"t1","new",second["fence"],
+                {"sha256":digest,"path":fresh_path.name},now=107))
+            old_path=m.persist_evidence(folder,"t1",first["fence"],b'{"result":"old"}')
+            self.assertFalse(m.complete(self.db,"t1","old",first["fence"],
+                {"sha256":"bad","path":old_path.name},now=108))
+            self.assertNotEqual(fresh_path,old_path)
+            self.assertEqual(fresh_path.read_bytes(),fresh)
+            self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='t1'").fetchone()[0],"done")
+
+    def test_evidence_file_is_exclusive_and_private(self):
+        import stat
+        with tempfile.TemporaryDirectory() as td:
+            folder=pathlib.Path(td)
+            path=m.persist_evidence(folder,"../malicious","fence1",b"proof")
+            self.assertEqual(path.parent,folder)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode),0o600)
+            with self.assertRaises(FileExistsError):
+                m.persist_evidence(folder,"../malicious","fence1",b"overwrite")
+            self.assertEqual(path.read_bytes(),b"proof")
+
     def test_evidence_is_required(self):
         self.add()
         x=m.claim(self.db,"w1",now=100)
