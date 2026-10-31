@@ -73,8 +73,73 @@ class FourLaneControlTests(unittest.TestCase):
         }))
         self.assertTrue(m.submit(self.db, "R", "old", task["fence"], task["id"], path)["accepted"])
         self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"], "review_pending")
-        self.assertTrue(m.review(self.db, "R-01", True, "Independent source diff and test replay OK")["approved"])
+        commit=git(work, "rev-parse", "HEAD")
+        with self.assertRaises(ValueError):
+            m.review(self.db, "R-01", True, "Independent source diff and test replay OK")
+        self.assertTrue(m.review(self.db, "R-01", True, "Independent source diff and test replay OK", commit)["approved"])
         self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"], "done")
+
+    def test_uncommitted_source_never_submitted(self):
+        task = m.claim(self.db, "R", "writer")
+        work = self.root / "lane-renderer"
+        path = work / "worker/bimanual_scene_planner.py"
+        path.parent.mkdir(parents=True)
+        path.write_text("UNCOMMITTED = 1\n")
+        e = self.root / "evidence/renderer/uncommitted.json"
+        e.parent.mkdir(parents=True, exist_ok=True)
+        e.write_text(json.dumps({
+            "source_status":"tested_isolated", "g2":"UNVERIFIED",
+            "g3":"NO_GO", "tests":["red/green 1"], "summary":"pending",
+            "changed_paths":["worker/bimanual_scene_planner.py"]}))
+        with self.assertRaisesRegex(ValueError,"uncommitted"):
+            m.submit(self.db,"R","writer",task["fence"],task["id"],e)
+        self.assertEqual(self.db.execute("SELECT state FROM task WHERE id='R-01'").fetchone()["state"],"leased")
+
+    def test_committed_scope_and_moving_head_are_distinct(self):
+        first=m.claim(self.db, "R", "author")
+        work=self.root/"lane-renderer"
+        a=work/"worker/bimanual_scene_planner.py"
+        a.parent.mkdir(parents=True)
+        a.write_text("VERSION = 1\n")
+        git(work,"add",a.relative_to(work).as_posix())
+        git(work,"commit","-qm","one")
+        first_sha=git(work,"rev-parse","HEAD")
+        evidence=self.root/"evidence/renderer/proof1.json"
+        evidence.parent.mkdir(parents=True,exist_ok=True)
+        evidence.write_text(json.dumps({"source_status":"tested_isolated",
+            "g2":"UNVERIFIED","g3":"NO_GO","tests":["1/1"],
+            "summary":"One checked commit","changed_paths":["worker/bimanual_scene_planner.py"]}))
+        self.assertTrue(m.submit(self.db,"R","author",first["fence"],first["id"],evidence)["accepted"])
+        b=work/"tests/bimanual-scene-planner.test.py"
+        b.parent.mkdir(parents=True)
+        b.write_text("def test_new(): assert True\n")
+        git(work,"add",b.relative_to(work).as_posix())
+        git(work,"commit","-qm","later commit")
+        with self.assertRaisesRegex(ValueError,"exact submitted commit"):
+            m.review(self.db,"R-01",True,"Reviewed later code incorrectly",git(work,"rev-parse","HEAD"))
+        self.assertTrue(m.review(self.db,"R-01",True,"Independent test run on first commit",first_sha)["approved"])
+
+    def test_out_of_scope_commit_rejected(self):
+        task=m.claim(self.db,"R","author")
+        work=self.root/"lane-renderer"
+        f=work/"docs/unapproved.md"
+        f.write_text("unapproved\n")
+        git(work,"add","docs/unapproved.md")
+        git(work,"commit","-qm","bad")
+        evidence=self.root/"evidence/renderer/bad.json"
+        evidence.parent.mkdir(parents=True,exist_ok=True)
+        evidence.write_text(json.dumps({"source_status":"tested_isolated",
+            "g2":"UNVERIFIED","g3":"NO_GO","tests":["fake"],
+            "changed_paths":["worker/bimanual_scene_planner.py"]}))
+        with self.assertRaisesRegex(ValueError,"out-of-scope"):
+            m.submit(self.db,"R","author",task["fence"],task["id"],evidence)
+
+    def test_existing_symlink_escape_rejects_claim(self):
+        w=self.root/"lane-renderer"
+        p=w/"worker"
+        p.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,"escapes lane"):
+            m.claim(self.db,"R","author")
 
     def test_forged_visual_pass_is_rejected(self):
         task = m.claim(self.db, "R", "old")
