@@ -2,11 +2,101 @@
 // trusted enqueue->publish receipt; source attribution must be verified elsewhere.
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import {inflateSync} from "node:zlib";
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256=/^[0-9a-f]{64}$/i;
 const KINDS=new Set(["background","sprite","scene"]);
 const PNG_MAGIC=Buffer.from([137,80,78,71,13,10,26,10]);
+
+const PNG_LIMIT_BYTES=24*1024*1024;
+const PNG_LIMIT_PIXELS=16_000_000;
+const CRC_TABLE=Uint32Array.from({length:256},(_,n)=>{
+ let c=n;
+ for(let i=0;i<8;i++)c=c&1?0xedb88320^(c>>>1):c>>>1;
+ return c>>>0;
+});
+function crc32(bytes){
+ let crc=0xffffffff;
+ for(const byte of bytes)crc=CRC_TABLE[(crc^byte)&255]^(crc>>>8);
+ return (crc^0xffffffff)>>>0;
+}
+// Strict, bounded pixel decoding for the non-interlaced RGB/RGBA PNGs emitted
+// by Chromium screenshots. Fail closed for unsupported layouts; do not infer
+// that valid screenshot bytes authenticate their producer or prove browser paint.
+export function decodeScreenshotPng(bytes){
+ const invalid=reason=>{throw Error("Screenshot is not a fully decoded PNG: "+reason)};
+ if(!Buffer.isBuffer(bytes)||bytes.length<57||bytes.length>PNG_LIMIT_BYTES||
+    !bytes.subarray(0,PNG_MAGIC.length).equals(PNG_MAGIC))invalid("signature_or_size");
+ let p=PNG_MAGIC.length,ihdr=false,idat=false,endedIdat=false,iend=false;
+ let width=0,height=0,bpp=0;
+ const compressed=[];
+ while(p<bytes.length){
+  if(bytes.length-p<12)invalid("truncated_chunk");
+  const len=bytes.readUInt32BE(p),start=p+8;
+  if(len>bytes.length-start-4)invalid("chunk_bounds");
+  const end=start+len,kind=bytes.toString("ascii",p+4,p+8);
+  if(crc32(bytes.subarray(p+4,end))!==bytes.readUInt32BE(end))invalid("chunk_crc");
+  if(!ihdr&&kind!=="IHDR")invalid("missing_first_ihdr");
+  if(idat&&kind!=="IDAT")endedIdat=true;
+  if(kind==="IHDR"){
+   if(ihdr||p!==PNG_MAGIC.length||len!==13)invalid("duplicate_or_invalid_ihdr");
+   width=bytes.readUInt32BE(start);height=bytes.readUInt32BE(start+4);
+   const depth=bytes[start+8],color=bytes[start+9];
+   if(!width||!height||width>8192||height>8192||width*height>PNG_LIMIT_PIXELS)
+    invalid("dimensions");
+   if(depth!==8||(color!==2&&color!==6)||bytes[start+10]!==0||
+      bytes[start+11]!==0||bytes[start+12]!==0)invalid("unsupported_png_layout");
+   bpp=color===6?4:3;ihdr=true;
+  }else if(kind==="IDAT"){
+   if(!ihdr||endedIdat||iend)invalid("idat_order");
+   idat=true;compressed.push(bytes.subarray(start,end));
+  }else if(kind==="IEND"){
+   if(!idat||iend||len!==0||end+4!==bytes.length)invalid("invalid_iend");
+   iend=true;
+  }else if(kind==="PLTE"){
+   if(idat||len===0||len>768||len%3!==0)invalid("invalid_plte");
+  }else if((kind.charCodeAt(0)&32)===0){
+   invalid("unknown_critical_chunk");
+  }
+  p=end+4;
+  if(iend)break;
+ }
+ if(!ihdr||!idat||!iend||p!==bytes.length)invalid("incomplete_png");
+ const rowBytes=width*bpp,expected=(rowBytes+1)*height;
+ let inflated;
+ try{
+  const input=Buffer.concat(compressed);
+  const result=inflateSync(input,{info:true,maxOutputLength:expected});
+  if(result.engine.bytesWritten!==input.length)invalid("trailing_idat_data");
+  inflated=result.buffer;
+ }catch(e){invalid("idat_inflate_"+(e.message.includes("trailing_idat_data")?"trailing":"failed"))}
+ if(inflated.length!==expected)invalid("pixel_count");
+ const pixelHash=crypto.createHash("sha256");
+ let previous=Buffer.alloc(rowBytes);
+ for(let y=0;y<height;y++){
+  const offset=y*(rowBytes+1),filter=inflated[offset];
+  if(filter>4)invalid("invalid_scanline_filter");
+  const current=Buffer.allocUnsafe(rowBytes);
+  for(let x=0;x<rowBytes;x++){
+   const left=x>=bpp?current[x-bpp]:0,up=previous[x];
+   const upperLeft=x>=bpp?previous[x-bpp]:0;
+   let predict=0;
+   if(filter===1)predict=left;
+   else if(filter===2)predict=up;
+   else if(filter===3)predict=Math.floor((left+up)/2);
+   else if(filter===4){
+    const p=left+up-upperLeft;
+    const a=Math.abs(p-left),b=Math.abs(p-up),c=Math.abs(p-upperLeft);
+    predict=a<=b&&a<=c?left:b<=c?up:upperLeft;
+   }
+   current[x]=(inflated[offset+1+x]+predict)&255;
+  }
+  pixelHash.update(current);previous=current;
+ }
+ return {width,height,decoded_pixels_sha256:pixelHash.digest("hex")};
+}
+
 
 export function validateAssetBinding(binding){
  const errors=[];
@@ -87,8 +177,7 @@ export async function captureDisposableBrowserAsset(page,binding,{capture_path}=
  },{selector,expected,gameId:binding.game_id,kind:binding.kind});
  if(!observation?.ok)throw Error("Browser capture refused: "+(observation?.reason||"unknown"));
  const shot=await page.locator(selector).screenshot({timeout:5000,animations:"disabled"});
- if(!Buffer.isBuffer(shot)||shot.length<=PNG_MAGIC.length||
-    !shot.subarray(0,PNG_MAGIC.length).equals(PNG_MAGIC))throw Error("Screenshot is not a PNG");
+ const decoded=decodeScreenshotPng(shot);
  // Never overwrite an existing screenshot, particularly a canonical/private one.
  await fs.writeFile(capture_path,shot,{flag:"wx",mode:0o600});
  return {
@@ -98,6 +187,8 @@ export async function captureDisposableBrowserAsset(page,binding,{capture_path}=
   prompt_id:binding.prompt_id,contract_sha256:binding.contract_sha256,
   claimed_original_png_sha256:binding.original_png_sha256.toLowerCase(),
   screenshot_sha256:crypto.createHash("sha256").update(shot).digest("hex"),
+  screenshot_width:decoded.width,screenshot_height:decoded.height,
+  screenshot_decoded_pixels_sha256:decoded.decoded_pixels_sha256,
   asset_url_sha256:crypto.createHash("sha256").update(expected).digest("hex"),
   screenshot_epoch_ms:observation.epoch_ms,
   browser_performance_ms:observation.performance_ms,
