@@ -22,16 +22,16 @@ def readiness(root, lane, db, now, cooldown=COOLDOWN_S):
     state=db.execute("SELECT v FROM team_meta WHERE k='state'").fetchone()
     if state is None or state[0]!="active":
         return {"eligible":False,"reason":"team_inactive","lane":lane}
-    worktree=root/("lane-"+LANES[lane])
-    result=subprocess.run(["git","-C",str(worktree),"status","--porcelain",
-                           "--untracked-files=all"],capture_output=True,text=True,timeout=10)
-    if result.returncode or result.stdout.strip():
-        return {"eligible":False,"reason":"worktree_dirty_or_missing","lane":lane}
     tasks=db.execute("SELECT id,state,deps,paths FROM task WHERE id LIKE ? ORDER BY priority DESC,id",
                      (lane+"-%",)).fetchall()
     states=[t[1] for t in tasks]
     if "leased" in states:
         return {"eligible":False,"reason":"worker_busy","lane":lane}
+    worktree=root/("lane-"+LANES[lane])
+    result=subprocess.run(["git","-C",str(worktree),"status","--porcelain",
+                           "--untracked-files=all"],capture_output=True,text=True,timeout=10)
+    if result.returncode or result.stdout.strip():
+        return {"eligible":False,"reason":"worktree_dirty_or_missing","lane":lane}
     if "blocked" in states:
         return {"eligible":False,"reason":"blocker_requires_review","lane":lane}
     if "review_pending" in states:
