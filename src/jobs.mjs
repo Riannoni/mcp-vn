@@ -84,8 +84,13 @@ export async function enqueue({game_id,prompt,kind="background",style,character=
  // Only the real canonical game enqueue may issue this source record.
  // R-10 must HMAC-sign the resulting complete spec *after* this preflight;
  // R-11 separately binds the Comfy graph/prompt/original PNG.
- if(kind==="scene"&&spec.composition==="neural_story")
-  spec.source_provenance_v1=deriveNarrativeSourceProvenance(game,spec);
+  if(kind==="scene"&&spec.composition==="neural_story"){
+   spec.source_provenance_v1=deriveNarrativeSourceProvenance(game,spec);
+   // A URL/fingerprint is not proof that canonical source bytes exist.
+   // The separate R-10 receipt will bind their SHA256 after integration.
+   const plateBytes=await fs.readFile(path.join(dataRoot,"assets",spec.background_asset));
+   if(!plateBytes.length)throw Error("Canonical source plate bytes missing");
+  }
  const defaultPriority={background:90,sprite:80,scene:50,video:20,local_cg:65};
  const prio=priority===undefined?defaultPriority[kind]:Number(priority);
  if(!Number.isFinite(prio)||prio<0||prio>100)throw Error("Priority must be 0..100");
